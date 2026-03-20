@@ -1,34 +1,48 @@
-#![allow(unused)]
-
 use crate::sensor_fusion::{SensorFusion, q_dot};
+use core::ops::{Add, Div, Mul, Neg, Sub};
+use num_traits::{One, Zero};
 use vector_quaternion_matrix::{MathMethods, Quaternion, Vector3d};
 
+pub type MadgwickFilterf32 = MadgwickFilter<f32>;
+pub type MadgwickFilterf64 = MadgwickFilter<f64>;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct MadgwickFilter {
+pub struct MadgwickFilter<T> {
     // orientation quaternion
-    q: Quaternion,
-    acc_magnitude_squared_max: f32,
-    beta: f32,
+    q: Quaternion<T>,
+    acc_magnitude_squared_max: T,
+    beta: T,
 }
 
-impl Default for MadgwickFilter {
+impl<T> Default for MadgwickFilter<T>
+where
+    T: Zero + One + Default,
+{
     fn default() -> Self {
         MadgwickFilter {
-            q: Quaternion {
-                w: 1.0,
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            acc_magnitude_squared_max: 4.0,
-            beta: 1.0,
+            q: Quaternion::default(),
+            acc_magnitude_squared_max: T::one() + T::one() + T::one() + T::one(),
+            beta: T::one(),
         }
     }
 }
 
-impl MadgwickFilter {
-    pub fn set_beta(&mut self, beta: f32) {
-        self.set_free_parameters(beta, 0.0);
+impl<T> MadgwickFilter<T>
+where
+    T: Copy
+        + One
+        + Zero
+        + Neg<Output = T>
+        + PartialEq
+        + PartialOrd
+        + Add<Output = T>
+        + Sub<Output = T>
+        + Mul<Output = T>
+        + Div<Output = T>
+        + MathMethods,
+{
+    pub fn set_beta(&mut self, beta: T) {
+        self.set_free_parameters(beta, T::zero());
     }
 }
 
@@ -46,8 +60,21 @@ impl MadgwickFilter {
 /// For computation efficiency this code refactors the code used in many implementations (Arduino, Adafruit, M5Stack, Reefwing-AHRS),
 /// [see MadgwickRefactoring](../../../documents/MadgwickRefactoring.md)
 ///
-impl SensorFusion for MadgwickFilter {
-    fn set_free_parameters(&mut self, parameter0: f32, _parameter1: f32) {
+impl<T> SensorFusion<T> for MadgwickFilter<T>
+where
+    T: Copy
+        + One
+        + Zero
+        + Neg<Output = T>
+        + PartialEq
+        + PartialOrd
+        + Add<Output = T>
+        + Sub<Output = T>
+        + Mul<Output = T>
+        + Div<Output = T>
+        + MathMethods,
+{
+    fn set_free_parameters(&mut self, parameter0: T, _parameter1: T) {
         self.beta = parameter0;
     }
 
@@ -55,12 +82,7 @@ impl SensorFusion for MadgwickFilter {
         true
     }
 
-    fn update_orientation(
-        &mut self,
-        gyro_rps: &Vector3d,
-        acc: &Vector3d,
-        delta_t: f32,
-    ) -> Quaternion {
+    fn update_orientation(&mut self, gyro_rps: &Vector3d<T>, acc: &Vector3d<T>, delta_t: T) -> Quaternion<T> {
         // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate
         let mut q_dot = q_dot(&self.q, gyro_rps);
 
@@ -70,7 +92,7 @@ impl SensorFusion for MadgwickFilter {
         if acc_magnitude_squared <= self.acc_magnitude_squared_max {
             // Normalize acceleration if it is non-zero
             let mut a = *acc;
-            if acc_magnitude_squared != 0.0 {
+            if acc_magnitude_squared != T::zero() {
                 a *= acc_magnitude_squared.reciprocal_sqrt();
             }
             // make copies of the components of q to simplify the algebraic expressions
@@ -79,8 +101,9 @@ impl SensorFusion for MadgwickFilter {
             let q2 = self.q.y;
             let q3 = self.q.z;
             // Auxiliary variables to avoid repeated arithmetic
-            let _2q1q1_plus_2q2q2 = 2.0 * (q1 * q1 + q2 * q2);
-            let common = 2.0 * (q0 * q0 + q3 * q3 - 1.0 + _2q1q1_plus_2q2q2 + a.z);
+            let two = T::one() + T::one();
+            let _2q1q1_plus_2q2q2 = two * (q1 * q1 + q2 * q2);
+            let common = two * (q0 * q0 + q3 * q3 - T::one() + _2q1q1_plus_2q2q2 + a.z);
 
             // Gradient decent algorithm corrective step
             let mut step = Quaternion {
@@ -91,7 +114,7 @@ impl SensorFusion for MadgwickFilter {
             };
             step.normalize();
             // Subtract the corrective step from the quaternion derivative
-            q_dot -= self.beta * step;
+            q_dot -= step * self.beta;
         }
 
         // Update the orientation quaternion using simple Euler integration
@@ -104,24 +127,25 @@ impl SensorFusion for MadgwickFilter {
 
 #[cfg(any(debug_assertions, test))]
 mod tests {
+    #![allow(unused)]
     use super::*;
-
+    use vector_quaternion_matrix::{Quaternionf32, Vector3df32};
     fn is_normal<T: Sized + Send + Sync + Unpin>() {}
 
     #[test]
     fn normal_types() {
-        is_normal::<MadgwickFilter>();
+        is_normal::<MadgwickFilter<f32>>();
     }
     #[test]
     fn update_orientation() {
-        let mut sensor_fusion: MadgwickFilter = MadgwickFilter::default();
-        let requires_initialization = MadgwickFilter::requires_initialization();
+        let mut sensor_fusion = MadgwickFilterf32::default();
+        let requires_initialization = MadgwickFilterf32::requires_initialization();
         assert_eq!(requires_initialization, true);
         sensor_fusion.set_beta(1.0);
-        let gyro_rps: Vector3d = Vector3d::default();
-        let acc: Vector3d = Vector3d::default();
+        let gyro_rps = Vector3df32::default();
+        let acc = Vector3df32::default();
         let delta_t: f32 = 0.0;
-        let orientation: Quaternion = sensor_fusion.update_orientation(&gyro_rps, &acc, delta_t);
+        let orientation = sensor_fusion.update_orientation(&gyro_rps, &acc, delta_t);
         assert_eq!(
             orientation,
             Quaternion {

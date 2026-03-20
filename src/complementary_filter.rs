@@ -1,57 +1,81 @@
-#![allow(unused)]
+use core::ops::{Add, Div, Mul, Neg, Sub};
+use num_traits::{One, Zero};
+
 use crate::sensor_fusion::{SensorFusion, q_dot};
-use vector_quaternion_matrix::{Quaternion, Vector3d};
+use vector_quaternion_matrix::{MathMethods, Quaternion, Vector3d};
+
+pub type ComplementaryFilterf32 = ComplementaryFilter<f32>;
+pub type ComplementaryFilterf64 = ComplementaryFilter<f64>;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ComplementaryFilter {
+pub struct ComplementaryFilter<T> {
     // orientation quaternion
-    q: Quaternion,
-    acc_magnitude_squared_max: f32,
-    alpha: f32,
+    q: Quaternion<T>,
+    acc_magnitude_squared_max: T,
+    alpha: T,
 }
 
-impl Default for ComplementaryFilter {
+impl<T> Default for ComplementaryFilter<T>
+where
+    T: One + Zero,
+{
     fn default() -> Self {
         ComplementaryFilter {
-            q: Quaternion {
-                w: 1.0,
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            acc_magnitude_squared_max: 4.0,
-            alpha: 0.95,
+            q: Quaternion::default(),
+            acc_magnitude_squared_max: T::one() + T::one() + T::one() + T::one(),
+            alpha: T::one(),
         }
     }
 }
 
-impl ComplementaryFilter {
+impl<T> ComplementaryFilter<T>
+where
+    T: Copy
+        + One
+        + Zero
+        + Neg<Output = T>
+        + PartialEq
+        + PartialOrd
+        + Add<Output = T>
+        + Sub<Output = T>
+        + Mul<Output = T>
+        + Div<Output = T>
+        + MathMethods,
+{
     /// Calculate roll (theta) from the normalized accelerometer readings
-    pub fn roll_radians_from_acc_normalized(acc: Vector3d) -> f32 {
+    pub fn roll_radians_from_acc_normalized(acc: Vector3d<T>) -> T {
         (acc.y).atan2(acc.z)
     }
     /// Calculate pitch (phi) from the normalized accelerometer readings
-    pub fn pitch_radians_from_acc_normalized(acc: Vector3d) -> f32 {
+    pub fn pitch_radians_from_acc_normalized(acc: Vector3d<T>) -> T {
         (-acc.x).atan2((acc.y * acc.y + acc.z * acc.z).sqrt())
     }
-    pub fn set_alpha(&mut self, alpha: f32) {
-        self.set_free_parameters(alpha, 0.0);
+    pub fn set_alpha(&mut self, alpha: T) {
+        self.set_free_parameters(alpha, T::zero());
     }
 }
 
-impl SensorFusion for ComplementaryFilter {
-    fn set_free_parameters(&mut self, parameter0: f32, _parameter1: f32) {
+impl<T> SensorFusion<T> for ComplementaryFilter<T>
+where
+    T: Copy
+        + One
+        + Zero
+        + Neg<Output = T>
+        + PartialEq
+        + PartialOrd
+        + Add<Output = T>
+        + Sub<Output = T>
+        + Mul<Output = T>
+        + Div<Output = T>
+        + MathMethods,
+{
+    fn set_free_parameters(&mut self, parameter0: T, _parameter1: T) {
         self.alpha = parameter0;
     }
     fn requires_initialization() -> bool {
         false
     }
-    fn update_orientation(
-        &mut self,
-        gyro_rps: &Vector3d,
-        accelerometer: &Vector3d,
-        delta_t: f32,
-    ) -> Quaternion {
+    fn update_orientation(&mut self, gyro_rps: &Vector3d<T>, accelerometer: &Vector3d<T>, delta_t: T) -> Quaternion<T> {
         // Calculate quaternion derivative (qDot) from angular rate https://ahrs.readthedocs.io/en/latest/filters/angular.html#quaternion-derivative
         // Twice the actual value is used to reduce the number of multiplications needed
         let q_dot = q_dot(&self.q, gyro_rps);
@@ -61,14 +85,13 @@ impl SensorFusion for ComplementaryFilter {
         self.q += q_dot * delta_t;
 
         // use the normalized accelerometer data to calculate an estimate of the attitude
-        let acc: Vector3d = accelerometer.normalized();
-        let a = Quaternion::from_roll_pitch_angles_radians(
-            ComplementaryFilter::roll_radians_from_acc_normalized(acc),
-            ComplementaryFilter::pitch_radians_from_acc_normalized(acc),
-        );
+        let acc: Vector3d<T> = accelerometer.normalized();
+        let roll_radians: T = ComplementaryFilter::roll_radians_from_acc_normalized(acc);
+        let pitch_radians = ComplementaryFilter::pitch_radians_from_acc_normalized(acc);
+        let q: Quaternion<T> = Quaternion::from_roll_pitch_angles_radians(roll_radians, pitch_radians);
 
         // use a complementary filter to combine the gyro attitude estimate(q) with the accelerometer attitude estimate(a)
-        self.q = (self.q - a) * self.alpha + a; // optimized form of `self.alpha * q + (1.0 - self.alpha) * a` : uses fewer operations and can take advantage of multiply-add instruction
+        self.q = (self.q - q) * self.alpha + q; // optimized form of `self.alpha * q + (1.0 - self.alpha) * q` : uses fewer operations and can take advantage of multiply-add instruction
 
         // normalize the orientation quaternion
         self.q.normalize();
@@ -79,24 +102,26 @@ impl SensorFusion for ComplementaryFilter {
 
 #[cfg(any(debug_assertions, test))]
 mod tests {
+    #![allow(unused)]
     use super::*;
+    use vector_quaternion_matrix::{Quaternionf32, Vector3df32};
 
     fn is_normal<T: Sized + Send + Sync + Unpin>() {}
 
     #[test]
     fn normal_types() {
-        is_normal::<ComplementaryFilter>();
+        is_normal::<ComplementaryFilter<f32>>();
     }
     #[test]
     fn update_orientation() {
-        let mut sensor_fusion = ComplementaryFilter::default();
-        let requires_initialization = ComplementaryFilter::requires_initialization();
-        sensor_fusion.set_alpha(0.9);
+        let mut sensor_fusion = ComplementaryFilterf32::default();
+        let requires_initialization = ComplementaryFilterf32::requires_initialization();
+        sensor_fusion.set_alpha(1.0);
         assert_eq!(requires_initialization, false);
         let gyro_rps = Vector3d::default();
         let acc = Vector3d::default();
         let delta_t: f32 = 0.0;
-        let orientation: Quaternion = sensor_fusion.update_orientation(&gyro_rps, &acc, delta_t);
+        let orientation: Quaternionf32 = sensor_fusion.update_orientation(&gyro_rps, &acc, delta_t);
         assert_eq!(
             orientation,
             Quaternion {

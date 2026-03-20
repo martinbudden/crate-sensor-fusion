@@ -1,0 +1,10 @@
+# Maximum line width
+max_width = 120
+
+# Format code inside doc comments
+# format_code_in_doc_comments = true
+
+# Formatting heuristics
+# use_small_heuristics = "Max"
+# use_small_heuristics = "Default"
+# use_small_heuristics = "Off"

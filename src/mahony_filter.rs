@@ -1,32 +1,33 @@
-#![allow(unused)]
+use core::ops::{Add, Div, Mul, Neg, Sub};
+use num_traits::{One, Zero};
 
 use crate::sensor_fusion::{SensorFusion, q_dot};
-use vector_quaternion_matrix::{Quaternion, Vector3d};
+use vector_quaternion_matrix::{MathMethods, Quaternion, Vector3d};
+
+pub type MahonyFilterf32 = MahonyFilter<f32>;
+pub type MahonyFilterf64 = MahonyFilter<f64>;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct MahonyFilter {
-    // orientation quaternion
-    q: Quaternion,
-    kp: f32,
-    ki: f32,
-    error_integral: Vector3d,
-    gyro_rps_1: Vector3d,
-    gyro_rps_2: Vector3d,
+pub struct MahonyFilter<T> {
+    q: Quaternion<T>, // orientation quaternion
+    kp: T,
+    ki: T,
+    error_integral: Vector3d<T>,
+    gyro_rps_1: Vector3d<T>,
+    gyro_rps_2: Vector3d<T>,
     use_quadratic_interpolation: bool,
     use_matrix_exponential_approximation: bool,
 }
 
-impl Default for MahonyFilter {
+impl<T> Default for MahonyFilter<T>
+where
+    T: Zero + One + Default,
+{
     fn default() -> Self {
         MahonyFilter {
-            q: Quaternion {
-                w: 1.0,
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            kp: 10.0,
-            ki: 0.0,
+            q: Quaternion::default(),
+            kp: T::one(),
+            ki: T::zero(),
             error_integral: Vector3d::default(),
             gyro_rps_1: Vector3d::default(),
             gyro_rps_2: Vector3d::default(),
@@ -36,26 +37,48 @@ impl Default for MahonyFilter {
     }
 }
 
-impl MahonyFilter {
-    pub fn set_proportional_integral(&mut self, kp: f32, ki: f32) {
+impl<T> MahonyFilter<T>
+where
+    T: Copy
+        + One
+        + Zero
+        + Neg<Output = T>
+        + PartialEq
+        + PartialOrd
+        + Add<Output = T>
+        + Sub<Output = T>
+        + Mul<Output = T>
+        + Div<Output = T>
+        + MathMethods,
+{
+    pub fn set_proportional_integral(&mut self, kp: T, ki: T) {
         self.set_free_parameters(kp, ki);
     }
 }
 
-impl SensorFusion for MahonyFilter {
-    fn set_free_parameters(&mut self, parameter0: f32, parameter1: f32) {
+impl<T> SensorFusion<T> for MahonyFilter<T>
+where
+    T: Copy
+        + One
+        + Zero
+        + Neg<Output = T>
+        + PartialEq
+        + PartialOrd
+        + Add<Output = T>
+        + Sub<Output = T>
+        + Mul<Output = T>
+        + Div<Output = T>
+        + MathMethods,
+{
+    fn set_free_parameters(&mut self, parameter0: T, parameter1: T) {
         self.kp = parameter0;
         self.ki = parameter1;
     }
     fn requires_initialization() -> bool {
         true
     }
-    fn update_orientation(
-        &mut self,
-        gyro_rps: &Vector3d,
-        accelerometer: &Vector3d,
-        delta_t: f32,
-    ) -> Quaternion {
+
+    fn update_orientation(&mut self, gyro_rps: &Vector3d<T>, accelerometer: &Vector3d<T>, delta_t: T) -> Quaternion<T> {
         // Normalize acceleration
         let acc = accelerometer.normalized();
 
@@ -69,8 +92,14 @@ impl SensorFusion for MahonyFilter {
         // See https://docs.rosflight.org/v1.3/algorithms/estimator/#modifications-to-original-passive-filter for a publicly available explanation
         let mut gyro = *gyro_rps;
         if self.use_quadratic_interpolation {
-            gyro = *gyro_rps * (5.0 / 12.0) + self.gyro_rps_1 * (8.0 / 12.0)
-                - self.gyro_rps_2 * (1.0 / 12.0);
+            let two = T::one() + T::one();
+            let three = two + T::one();
+            let four = three + T::one();
+            let five = four + T::one();
+            let eight = two * four;
+            let twelve = three * four;
+            gyro = *gyro_rps * (five / twelve) + self.gyro_rps_1 * (eight / twelve)
+                - self.gyro_rps_2 * (T::one() / twelve);
             self.gyro_rps_2 = self.gyro_rps_1;
             self.gyro_rps_1 = *gyro_rps;
         }
@@ -79,7 +108,7 @@ impl SensorFusion for MahonyFilter {
         gyro += error * self.kp;
 
         // Apply integral feedback if ki set
-        if self.ki > 0.0 {
+        if self.ki > T::zero() {
             self.error_integral += error * (self.ki * delta_t); // note brackets to ensure scalar multiplication is performed before vector multiplication
             gyro += self.error_integral;
         }
@@ -87,19 +116,16 @@ impl SensorFusion for MahonyFilter {
         if self.use_matrix_exponential_approximation {
             // Matrix Exponential Approximation (From Attitude Representation and Kinematic Propagation for Low-Cost UAVs by Robert T. Casey, Equation 12)
             let gyro_magnitude = gyro.norm();
-            let theta = gyro_magnitude * 0.5 * delta_t;
+            let half = T::one() / (T::one() + T::one());
+            let theta = gyro_magnitude * half * delta_t;
             let (sin, cos) = theta.sin_cos();
             let t1 = cos;
-            let t2 = (1.0 / gyro_magnitude) * sin;
+            let t2 = (T::one() / gyro_magnitude) * sin;
 
-            self.q.w =
-                t1 * self.q.w + t2 * (-gyro.x * self.q.x - gyro.y * self.q.y - gyro.z * self.q.z);
-            self.q.x =
-                t1 * self.q.x + t2 * (gyro.x * self.q.w + gyro.z * self.q.y - gyro.y * self.q.z);
-            self.q.y =
-                t1 * self.q.y + t2 * (gyro.y * self.q.w - gyro.z * self.q.x + gyro.x * self.q.z);
-            self.q.z =
-                t1 * self.q.z + t2 * (gyro.z * self.q.w + gyro.y * self.q.x - gyro.x * self.q.y);
+            self.q.w = t1 * self.q.w + t2 * (-gyro.x * self.q.x - gyro.y * self.q.y - gyro.z * self.q.z);
+            self.q.x = t1 * self.q.x + t2 * (gyro.x * self.q.w + gyro.z * self.q.y - gyro.y * self.q.z);
+            self.q.y = t1 * self.q.y + t2 * (gyro.y * self.q.w - gyro.z * self.q.x + gyro.x * self.q.z);
+            self.q.z = t1 * self.q.z + t2 * (gyro.z * self.q.w + gyro.y * self.q.x - gyro.x * self.q.y);
         } else {
             let q_dot = q_dot(&self.q, &gyro);
             // Update the attitude quaternion using simple Euler integration
@@ -115,24 +141,25 @@ impl SensorFusion for MahonyFilter {
 
 #[cfg(any(debug_assertions, test))]
 mod tests {
+    #![allow(unused)]
     use super::*;
 
     fn is_normal<T: Sized + Send + Sync + Unpin>() {}
 
     #[test]
     fn normal_types() {
-        is_normal::<MahonyFilter>();
+        is_normal::<MahonyFilter<f32>>();
     }
     #[test]
     fn update_orientation() {
-        let mut sensor_fusion = MahonyFilter::default();
-        let requires_initialization = MahonyFilter::requires_initialization();
+        let mut sensor_fusion = MahonyFilterf32::default();
+        let requires_initialization = MahonyFilterf32::requires_initialization();
         sensor_fusion.set_proportional_integral(10.0, 0.0);
         assert_eq!(requires_initialization, true);
         let gyro_rps = Vector3d::default();
         let acc = Vector3d::default();
         let delta_t: f32 = 0.0;
-        let orientation: Quaternion = sensor_fusion.update_orientation(&gyro_rps, &acc, delta_t);
+        let orientation = sensor_fusion.update_orientation(&gyro_rps, &acc, delta_t);
         assert_eq!(
             orientation,
             Quaternion {

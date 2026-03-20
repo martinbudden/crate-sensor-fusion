@@ -3,9 +3,13 @@
         "Adafruit",
         "AHRS",
         "Budden",
+        "codegen",
+        "debuginfo",
+        "Filterf",
         "madgwick",
         "mahony",
         "qdot",
+        "Quaternionf",
         "Reefwing"
     ]
 }
