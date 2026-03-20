@@ -1,7 +1,8 @@
 use crate::sensor_fusion::{SensorFusion, q_dot};
 use core::ops::{Add, Div, Mul, Neg, Sub};
+use imu_sensors::ImuReading;
 use num_traits::{One, Zero};
-use vector_quaternion_matrix::{MathMethods, Quaternion, Vector3d};
+use vector_quaternion_matrix::{MathMethods, Quaternion};
 
 pub type MadgwickFilterf32 = MadgwickFilter<f32>;
 pub type MadgwickFilterf64 = MadgwickFilter<f64>;
@@ -82,16 +83,16 @@ where
         true
     }
 
-    fn update_orientation(&mut self, gyro_rps: &Vector3d<T>, acc: &Vector3d<T>, delta_t: T) -> Quaternion<T> {
+    fn update_orientation(&mut self, imu_reading: ImuReading<T>, delta_t: T) -> Quaternion<T> {
         // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate
-        let mut q_dot = q_dot(&self.q, gyro_rps);
+        let mut q_dot = q_dot(&self.q, imu_reading.gyro_rps);
 
         // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
         // so exclude it from the calculation in these cases
-        let acc_magnitude_squared = acc.squared_norm();
+        let acc_magnitude_squared = imu_reading.acc.squared_norm();
         if acc_magnitude_squared <= self.acc_magnitude_squared_max {
             // Normalize acceleration if it is non-zero
-            let mut a = *acc;
+            let mut a = imu_reading.acc;
             if acc_magnitude_squared != T::zero() {
                 a *= acc_magnitude_squared.reciprocal_sqrt();
             }
@@ -129,6 +130,7 @@ where
 mod tests {
     #![allow(unused)]
     use super::*;
+    use imu_sensors::ImuReadingf32;
     use vector_quaternion_matrix::{Quaternionf32, Vector3df32};
     fn is_normal<T: Sized + Send + Sync + Unpin>() {}
 
@@ -142,10 +144,9 @@ mod tests {
         let requires_initialization = MadgwickFilterf32::requires_initialization();
         assert_eq!(requires_initialization, true);
         sensor_fusion.set_beta(1.0);
-        let gyro_rps = Vector3df32::default();
-        let acc = Vector3df32::default();
         let delta_t: f32 = 0.0;
-        let orientation = sensor_fusion.update_orientation(&gyro_rps, &acc, delta_t);
+        let imu_reading = ImuReading::default();
+        let orientation = sensor_fusion.update_orientation(imu_reading, delta_t);
         assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 })
     }
 }

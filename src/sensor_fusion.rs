@@ -1,15 +1,16 @@
 use core::ops::{Add, Div, Mul, Sub};
+use imu_sensors::ImuReading;
 use num_traits::One;
 use vector_quaternion_matrix::{Quaternion, Vector3d};
 
 pub trait SensorFusion<T> {
-    fn update_orientation(&mut self, gyro_rps: &Vector3d<T>, acc: &Vector3d<T>, delta_t: T) -> Quaternion<T>;
+    fn update_orientation(&mut self, imu_reading: ImuReading<T>, delta_t: T) -> Quaternion<T>;
     fn set_free_parameters(&mut self, parameter0: T, parameter1: T);
     fn requires_initialization() -> bool;
 }
 
 /// Calculate quaternion derivative (dq/dt aka q_dot) from angular rate https://ahrs.readthedocs.io/en/latest/filters/angular.html#quaternion-derivative
-pub fn q_dot<T>(q: &Quaternion<T>, gyro_rps: &Vector3d<T>) -> Quaternion<T>
+pub fn q_dot<T>(q: &Quaternion<T>, gyro_rps: Vector3d<T>) -> Quaternion<T>
 where
     T: Copy + One + Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Div<Output = T>,
 {
@@ -25,6 +26,7 @@ where
 #[cfg(any(debug_assertions, test))]
 mod tests {
     use super::*;
+    use imu_sensors::ImuReadingf32;
 
     pub struct TestStruct;
     impl SensorFusion<f32> for TestStruct {
@@ -32,12 +34,7 @@ mod tests {
         fn requires_initialization() -> bool {
             true
         }
-        fn update_orientation(
-            &mut self,
-            _gyro_rps: &Vector3d<f32>,
-            _accelerometer: &Vector3d<f32>,
-            _delta_t: f32,
-        ) -> Quaternion<f32> {
+        fn update_orientation(&mut self, _imu_reading: ImuReadingf32, _delta_t: f32) -> Quaternion<f32> {
             Quaternion::default()
         }
     }
@@ -50,9 +47,9 @@ mod tests {
 
         test_struct.set_free_parameters(0.0, 0.0);
 
-        let gyro_rps = Vector3d::default();
-        let acc = Vector3d::default();
-        let orientation = test_struct.update_orientation(&gyro_rps, &acc, 0.0);
+        let delta_t: f32 = 0.0;
+        let imu_reading = ImuReadingf32::default();
+        let orientation = test_struct.update_orientation(imu_reading, delta_t);
         assert_eq!(orientation, Quaternion::default());
     }
 }
