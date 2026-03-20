@@ -160,14 +160,6 @@ mod tests {
         let acc = Vector3d::default();
         let delta_t: f32 = 0.0;
         let orientation = sensor_fusion.update_orientation(&gyro_rps, &acc, delta_t);
-        assert_eq!(
-            orientation,
-            Quaternion {
-                w: 1.0,
-                x: 0.0,
-                y: 0.0,
-                z: 0.0
-            }
-        )
+        assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 })
     }
 }
