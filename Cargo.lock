@@ -377,7 +377,7 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 [[package]]
 name = "imu-sensors"
 version = "0.1.0"
-source = "git+https://github.com/martinbudden/Crate-imu_sensors#4d457dba9a2d7eb21412e7ce74dc965c858d3f0c"
+source = "git+https://github.com/martinbudden/Crate-imu_sensors#53047ccb4fb2ce99361568651b12138677fee155"
 dependencies = [
  "cfg-if",
  "defmt",
@@ -782,7 +782,7 @@ checksum = "77439c1b53d2303b20d9459b1ade71a83c716e3f9c34f3228c00e6f185d6c002"
 [[package]]
 name = "vector-quaternion-matrix"
 version = "0.1.0"
-source = "git+https://github.com/martinbudden/Crate-vector_quaternion_matrix#a6064a87bbe6e86e109726b129b5c022679dcc27"
+source = "git+https://github.com/martinbudden/Crate-vector_quaternion_matrix#3509c30930cbee56d264096fc27638657781c861"
 dependencies = [
  "bytemuck",
  "libm",

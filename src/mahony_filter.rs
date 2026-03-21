@@ -2,8 +2,8 @@ use core::ops::{Add, Div, Mul, Neg, Sub};
 use num_traits::{One, Zero};
 
 use crate::sensor_fusion::{SensorFusion, q_dot};
-use vector_quaternion_matrix::{MathMethods, Quaternion, Vector3d};
 use imu_sensors::ImuReading;
+use vector_quaternion_matrix::{MathMethods, Quaternion, Vector3d};
 
 pub type MahonyFilterf32 = MahonyFilter<f32>;
 pub type MahonyFilterf64 = MahonyFilter<f64>;
