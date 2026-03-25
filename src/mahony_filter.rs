@@ -3,7 +3,7 @@ use num_traits::{One, Zero};
 
 use crate::sensor_fusion::{SensorFusion, q_dot};
 use imu_sensors::ImuReading;
-use vector_quaternion_matrix::{MathConstants, MathFunctions, Quaternion, Vector3d};
+use vector_quaternion_matrix::{MathConstants, MathMethods, Quaternion, Vector3d};
 
 pub type MahonyFilterf32 = MahonyFilter<f32>;
 pub type MahonyFilterf64 = MahonyFilter<f64>;
@@ -50,7 +50,7 @@ where
         + Sub<Output = T>
         + Mul<Output = T>
         + Div<Output = T>
-        + MathFunctions
+        + MathMethods
         + MathConstants,
 {
     pub fn set_proportional_integral(&mut self, kp: T, ki: T) {
@@ -70,7 +70,7 @@ where
         + Sub<Output = T>
         + Mul<Output = T>
         + Div<Output = T>
-        + MathFunctions
+        + MathMethods
         + MathConstants,
 {
     fn set_free_parameters(&mut self, parameter0: T, parameter1: T) {
