@@ -86,22 +86,23 @@ where
             let common = two * (q0 * q0 + q3 * q3 - T::one() + _2q1q1_plus_2q2q2 + a.z);
 
             // Gradient decent algorithm corrective step
-            let mut step = Quaternion {
+            let step = Quaternion {
                 w: q0 * (_2q1q1_plus_2q2q2) + q2 * a.x - q1 * a.y,
                 x: q1 * common - q3 * a.x - q0 * a.y,
                 y: q2 * common + q0 * a.x - q3 * a.y,
                 z: q3 * (_2q1q1_plus_2q2q2) - q1 * a.x - q2 * a.y,
-            };
-            step.normalize();
+            }
+            .normalized();
+
             // Subtract the corrective step from the quaternion derivative
             q_dot -= step * self.beta;
         }
 
         // Update the orientation quaternion using simple Euler integration
         self.q += q_dot * delta_t;
-        // Normalize the orientation quaternion
-        self.q.normalize();
-        self.q
+
+        // Return the normalized orientation quaternion
+        self.q.normalized()
     }
 
     fn fuse_acc_gyro_mag(
@@ -142,8 +143,10 @@ where
         let q1q1_plus_q2q2 = q1q1 + q2q2;
         let q2q2_plus_q3q3 = q2q2 + q3q3;
 
-        // Reference direction of Earth's magnetic field
         let two = T::one() + T::one();
+        let half = T::one() / two;
+
+        // Reference direction of Earth's magnetic field
         let h = Vector3d {
             x: m.x * (q0q0 + q1q1 - q2q2_plus_q3q3) + two * (m.y * (q1q2 - q0q3) + m.z * (q0q2 + q1q3)),
             y: two * (m.x * (q0q3 + q1q2) + m.y * (q0q0 - q1q1 + q2q2 - q3q3) + m.z * (q2q3 - q0q1)),
@@ -167,43 +170,41 @@ where
         let sum_squares_minus_one = q0q0 + q1q1_plus_q2q2 + q3q3 - T::one();
         let common = sum_squares_minus_one + q1q1_plus_q2q2 + a.z;
 
-        let half = T::one() / two;
         // Gradient decent algorithm corrective step
-        let s0 = q0 * two * (q1q1_plus_q2q2 * (T::one() + bz_bz) + bx_bx * q2q2_plus_q3q3) - q1 * a_dash.y
-            + q2 * (a_dash.x - m_bx.z)
-            + q3 * (m_bx.y - _4bx_bz * q0q1);
+        let step = Quaternion {
+            w: q0 * two * (q1q1_plus_q2q2 * (T::one() + bz_bz) + bx_bx * q2q2_plus_q3q3) - q1 * a_dash.y
+                + q2 * (a_dash.x - m_bx.z)
+                + q3 * (m_bx.y - _4bx_bz * q0q1),
 
-        let s1 = -q0 * a_dash.y
-            + q1 * two * (common + mz_bz + bx_bx * q2q2_plus_q3q3 + bz_bz * (sum_squares_minus_one + q1q1_plus_q2q2))
-            - q2 * m_bx.y
-            - q3 * (a_dash.x + m_bx.z + _4bx_bz * (half * sum_squares_minus_one + q1q1));
+            x: -q0 * a_dash.y
+                + q1 * two
+                    * (common + mz_bz + bx_bx * q2q2_plus_q3q3 + bz_bz * (sum_squares_minus_one + q1q1_plus_q2q2))
+                - q2 * m_bx.y
+                - q3 * (a_dash.x + m_bx.z + _4bx_bz * (half * sum_squares_minus_one + q1q1)),
 
-        let s2 = q0 * (a_dash.x - m_bx.z) - q1 * m_bx.y
-            + q2 * two
-                * (common
-                    + mz_bz
-                    + m_bx.x
-                    + bx_bx * (sum_squares_minus_one + q2q2_plus_q3q3)
-                    + bz_bz * (sum_squares_minus_one + q1q1_plus_q2q2))
-            - q3 * (a_dash.y + _4bx_bz * q1q2);
+            y: q0 * (a_dash.x - m_bx.z) - q1 * m_bx.y
+                + q2 * two
+                    * (common
+                        + mz_bz
+                        + m_bx.x
+                        + bx_bx * (sum_squares_minus_one + q2q2_plus_q3q3)
+                        + bz_bz * (sum_squares_minus_one + q1q1_plus_q2q2))
+                - q3 * (a_dash.y + _4bx_bz * q1q2),
 
-        let s3 =
-            q0 * m_bx.y - q1 * (a_dash.x + m_bx.z + _4bx_bz * (half * sum_squares_minus_one + q3q3)) - q2 * a_dash.y
+            z: q0 * m_bx.y - q1 * (a_dash.x + m_bx.z + _4bx_bz * (half * sum_squares_minus_one + q3q3)) - q2 * a_dash.y
                 + q3 * two
-                    * (q1q1_plus_q2q2 * (T::one() + bz_bz) + m_bx.x + bx_bx * (sum_squares_minus_one + q2q2_plus_q3q3));
+                    * (q1q1_plus_q2q2 * (T::one() + bz_bz) + m_bx.x + bx_bx * (sum_squares_minus_one + q2q2_plus_q3q3)),
+        }
+        .normalized();
 
-        let mut step = Quaternion { w: s0, x: s1, y: s2, z: s3 };
-        step.normalize();
-
-        let mut q_dot = q_dot(&self.q, gyro_rps);
-        q_dot -= step * self.beta;
+        // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate and subtract the corrective step.
+        let q_dot = q_dot(&self.q, gyro_rps) - step * self.beta;
 
         // Update the orientation quaternion using simple Euler integration
         self.q += q_dot * delta_t;
 
-        // Normalize the orientation quaternion
-        self.q.normalize();
-        self.q
+        // Return the normalized orientation quaternion
+        self.q.normalized()
     }
 }
 
