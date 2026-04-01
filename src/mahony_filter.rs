@@ -2,7 +2,9 @@ use core::ops::{Div, Neg, Sub};
 use num_traits::{One, Zero};
 
 use crate::sensor_fusion::{SensorFusion, q_dot};
-use vector_quaternion_matrix::{MathConstants, MathMethods, Quaternion, Vector3d};
+use vector_quaternion_matrix::{
+    MathConstants, Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3dMath, Vector3d,
+};
 
 pub type MahonyFilterf32 = MahonyFilter<f32>;
 pub type MahonyFilterf64 = MahonyFilter<f64>;
@@ -21,7 +23,7 @@ pub struct MahonyFilter<T> {
 
 impl<T> Default for MahonyFilter<T>
 where
-    T: Zero + One + Default + MathConstants,
+    T: Zero + One + Default + MathConstants + SqrtMethods + QuaternionMath + Vector3dMath,
 {
     fn default() -> Self {
         MahonyFilter {
@@ -47,8 +49,12 @@ where
         + PartialOrd
         + Sub<Output = T>
         + Div<Output = T>
-        + MathMethods
-        + MathConstants,
+        + TrigonometricMethods
+        + MathConstants
+        + SqrtMethods
+        + QuaternionMath
+        + Vector3dMath
+        + Vector3dMath,
 {
     pub fn set_proportional_integral(&mut self, kp: T, ki: T) {
         self.set_free_parameters(kp, ki);
@@ -64,8 +70,12 @@ where
         + PartialOrd
         + Sub<Output = T>
         + Div<Output = T>
-        + MathMethods
-        + MathConstants,
+        + TrigonometricMethods
+        + MathConstants
+        + SqrtMethods
+        + QuaternionMath
+        + Vector3dMath
+        + Vector3dMath,
 {
     fn set_free_parameters(&mut self, parameter0: T, parameter1: T) {
         self.kp = parameter0;
@@ -89,12 +99,12 @@ where
         // Quadratic Interpolation (From Attitude Representation and Kinematic Propagation for Low-Cost UAVs by Robert T. Casey, Equation 14)
         // See https://docs.rosflight.org/v1.3/algorithms/estimator/#modifications-to-original-passive-filter for a publicly available explanation
         let mut gyro = gyro_rps;
-        if self.use_quadratic_interpolation {
+        /*if self.use_quadratic_interpolation {
             gyro = gyro_rps * (T::FIVE / T::TWELVE) + self.gyro_rps_1 * (T::EIGHT / T::TWELVE)
                 - self.gyro_rps_2 * (T::one() / T::TWELVE);
             self.gyro_rps_2 = self.gyro_rps_1;
             self.gyro_rps_1 = gyro_rps;
-        }
+        }*/
 
         // Apply proportional feedback
         gyro += error * self.kp;

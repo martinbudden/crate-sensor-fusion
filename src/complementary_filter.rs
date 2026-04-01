@@ -2,7 +2,7 @@ use core::ops::{Div, Neg, Sub};
 use num_traits::{One, Zero};
 
 use crate::sensor_fusion::{SensorFusion, q_dot};
-use vector_quaternion_matrix::{MathMethods, Quaternion, Vector3d};
+use vector_quaternion_matrix::{Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath};
 
 pub type ComplementaryFilterf32 = ComplementaryFilter<f32>;
 pub type ComplementaryFilterf64 = ComplementaryFilter<f64>;
@@ -17,7 +17,7 @@ pub struct ComplementaryFilter<T> {
 
 impl<T> Default for ComplementaryFilter<T>
 where
-    T: One + Zero,
+    T: One + Zero + TrigonometricMethods + Vector3dMath + QuaternionMath +SqrtMethods,
 {
     fn default() -> Self {
         ComplementaryFilter {
@@ -30,7 +30,7 @@ where
 
 impl<T> ComplementaryFilter<T>
 where
-    T: Copy + One + Zero + Neg<Output = T> + PartialEq + PartialOrd + Sub<Output = T> + Div<Output = T> + MathMethods,
+    T: Copy + One + Zero + Neg<Output = T> + PartialEq + PartialOrd + Sub<Output = T> + Div<Output = T> + TrigonometricMethods + Vector3dMath + QuaternionMath +SqrtMethods,
 {
     /// Calculate roll (theta) from the normalized accelerometer readings
     pub fn roll_radians_from_acc_normalized(acc: Vector3d<T>) -> T {
@@ -47,7 +47,7 @@ where
 
 impl<T> SensorFusion<T> for ComplementaryFilter<T>
 where
-    T: Copy + One + Zero + Neg<Output = T> + PartialOrd + Sub<Output = T> + Div<Output = T> + MathMethods,
+    T: Copy + One + Zero + Neg<Output = T> + PartialOrd + Sub<Output = T> + Div<Output = T> + TrigonometricMethods +SqrtMethods+Vector3dMath+QuaternionMath,
 {
     fn set_free_parameters(&mut self, parameter0: T, _parameter1: T) {
         self.alpha = parameter0;

@@ -1,7 +1,7 @@
 use crate::sensor_fusion::{SensorFusion, q_dot};
 use core::ops::{Div, Neg, Sub};
 use num_traits::{One, Zero};
-use vector_quaternion_matrix::{MathMethods, Quaternion, Vector3d};
+use vector_quaternion_matrix::{Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath};
 
 pub type MadgwickFilterf32 = MadgwickFilter<f32>;
 pub type MadgwickFilterf64 = MadgwickFilter<f64>;
@@ -16,7 +16,7 @@ pub struct MadgwickFilter<T> {
 
 impl<T> Default for MadgwickFilter<T>
 where
-    T: Zero + One + Default,
+    T: Zero + One + Default + TrigonometricMethods+ Vector3dMath + QuaternionMath + SqrtMethods,
 {
     fn default() -> Self {
         MadgwickFilter {
@@ -29,7 +29,7 @@ where
 
 impl<T> MadgwickFilter<T>
 where
-    T: Copy + One + Zero + Neg<Output = T> + PartialOrd + Sub<Output = T> + Div<Output = T> + MathMethods,
+    T: Copy + One + Zero + Neg<Output = T> + PartialOrd + Sub<Output = T> + Div<Output = T> + TrigonometricMethods +Vector3dMath +QuaternionMath + SqrtMethods,
 {
     pub fn set_beta(&mut self, beta: T) {
         self.set_free_parameters(beta, T::zero());
@@ -52,7 +52,7 @@ where
 ///
 impl<T> SensorFusion<T> for MadgwickFilter<T>
 where
-    T: Copy + One + Zero + Neg<Output = T> + PartialOrd + Sub<Output = T> + Div<Output = T> + MathMethods,
+    T: Copy + One + Zero + Neg<Output = T> + PartialOrd + Sub<Output = T> + Div<Output = T> + TrigonometricMethods + Vector3dMath +QuaternionMath + SqrtMethods,
 {
     fn set_free_parameters(&mut self, parameter0: T, _parameter1: T) {
         self.beta = parameter0;
@@ -69,7 +69,7 @@ where
 
         // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
         // so exclude it from the calculation in these cases
-        let acc_magnitude_squared = acc.squared_norm();
+        let acc_magnitude_squared = acc.norm_squared();
         if acc_magnitude_squared <= self.acc_magnitude_squared_max {
             // Normalize acceleration if it is non-zero
             let mut a = acc;
@@ -77,21 +77,18 @@ where
                 a *= acc_magnitude_squared.reciprocal_sqrt();
             }
             // make copies of the components of q to simplify the algebraic expressions
-            let q0 = self.q.w;
-            let q1 = self.q.x;
-            let q2 = self.q.y;
-            let q3 = self.q.z;
+            let q = self.q;
             // Auxiliary variables to avoid repeated arithmetic
             let two = T::one() + T::one();
-            let _2q1q1_plus_2q2q2 = two * (q1 * q1 + q2 * q2);
-            let common = two * (q0 * q0 + q3 * q3 - T::one() + _2q1q1_plus_2q2q2 + a.z);
+            let wz_common = two * (q.x * q.x + q.y * q.y);
+            let xy_common = two * (q.w * q.w + q.z * q.z - T::one() + wz_common + a.z);
 
             // Gradient decent algorithm corrective step
             let step = Quaternion {
-                w: q0 * (_2q1q1_plus_2q2q2) + q2 * a.x - q1 * a.y,
-                x: q1 * common - q3 * a.x - q0 * a.y,
-                y: q2 * common + q0 * a.x - q3 * a.y,
-                z: q3 * (_2q1q1_plus_2q2q2) - q1 * a.x - q2 * a.y,
+                w: wz_common * q.w + a.x * q.y - a.y * q.x,
+                x: xy_common * q.x - a.x * q.z - a.y * q.w,
+                y: xy_common * q.y + a.x * q.w - a.y * q.z,
+                z: wz_common * q.z - a.x * q.x - a.y * q.y,
             }
             .normalized();
 
@@ -115,7 +112,7 @@ where
         delta_t: T,
     ) -> Quaternion<T> {
         let mut a = acc;
-        let acc_magnitude_squared = a.squared_norm();
+        let acc_magnitude_squared = a.norm_squared();
         // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
         // so exclude it from the calculation in these cases
         if acc_magnitude_squared > self.acc_magnitude_squared_max {
