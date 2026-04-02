@@ -3,7 +3,7 @@ use num_traits::{One, Zero};
 
 use crate::sensor_fusion::{SensorFusion, q_dot};
 use vector_quaternion_matrix::{
-    MathConstants, Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3dMath, Vector3d,
+    MathConstants, Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath,
 };
 
 pub type MahonyFilterf32 = MahonyFilter<f32>;
@@ -23,7 +23,7 @@ pub struct MahonyFilter<T> {
 
 impl<T> Default for MahonyFilter<T>
 where
-    T: Zero + One + Default + MathConstants + SqrtMethods + QuaternionMath + Vector3dMath,
+    T: Copy + Zero + One + Default + MathConstants,
 {
     fn default() -> Self {
         MahonyFilter {
@@ -74,7 +74,6 @@ where
         + MathConstants
         + SqrtMethods
         + QuaternionMath
-        + Vector3dMath
         + Vector3dMath,
 {
     fn set_free_parameters(&mut self, parameter0: T, parameter1: T) {

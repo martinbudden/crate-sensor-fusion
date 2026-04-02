@@ -17,7 +17,7 @@ pub struct ComplementaryFilter<T> {
 
 impl<T> Default for ComplementaryFilter<T>
 where
-    T: One + Zero + TrigonometricMethods + Vector3dMath + QuaternionMath +SqrtMethods,
+    T: Copy + One + Zero,
 {
     fn default() -> Self {
         ComplementaryFilter {
@@ -30,7 +30,18 @@ where
 
 impl<T> ComplementaryFilter<T>
 where
-    T: Copy + One + Zero + Neg<Output = T> + PartialEq + PartialOrd + Sub<Output = T> + Div<Output = T> + TrigonometricMethods + Vector3dMath + QuaternionMath +SqrtMethods,
+    T: Copy
+        + One
+        + Zero
+        + Neg<Output = T>
+        + PartialEq
+        + PartialOrd
+        + Sub<Output = T>
+        + Div<Output = T>
+        + TrigonometricMethods
+        + Vector3dMath
+        + QuaternionMath
+        + SqrtMethods,
 {
     /// Calculate roll (theta) from the normalized accelerometer readings
     pub fn roll_radians_from_acc_normalized(acc: Vector3d<T>) -> T {
@@ -47,7 +58,17 @@ where
 
 impl<T> SensorFusion<T> for ComplementaryFilter<T>
 where
-    T: Copy + One + Zero + Neg<Output = T> + PartialOrd + Sub<Output = T> + Div<Output = T> + TrigonometricMethods +SqrtMethods+Vector3dMath+QuaternionMath,
+    T: Copy
+        + One
+        + Zero
+        + Neg<Output = T>
+        + PartialOrd
+        + Sub<Output = T>
+        + Div<Output = T>
+        + TrigonometricMethods
+        + SqrtMethods
+        + Vector3dMath
+        + QuaternionMath,
 {
     fn set_free_parameters(&mut self, parameter0: T, _parameter1: T) {
         self.alpha = parameter0;

@@ -1,7 +1,7 @@
 use crate::sensor_fusion::{SensorFusion, q_dot};
 use core::ops::{Div, Neg, Sub};
 use num_traits::{One, Zero};
-use vector_quaternion_matrix::{Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath};
+use vector_quaternion_matrix::{Quaternion, QuaternionMath, SqrtMethods, Vector3d, Vector3dMath};
 
 pub type MadgwickFilterf32 = MadgwickFilter<f32>;
 pub type MadgwickFilterf64 = MadgwickFilter<f64>;
@@ -16,7 +16,7 @@ pub struct MadgwickFilter<T> {
 
 impl<T> Default for MadgwickFilter<T>
 where
-    T: Zero + One + Default + TrigonometricMethods+ Vector3dMath + QuaternionMath + SqrtMethods,
+    T: Copy + Zero + One + Default,
 {
     fn default() -> Self {
         MadgwickFilter {
@@ -29,7 +29,16 @@ where
 
 impl<T> MadgwickFilter<T>
 where
-    T: Copy + One + Zero + Neg<Output = T> + PartialOrd + Sub<Output = T> + Div<Output = T> + TrigonometricMethods +Vector3dMath +QuaternionMath + SqrtMethods,
+    T: Copy
+        + One
+        + Zero
+        + Neg<Output = T>
+        + PartialOrd
+        + Sub<Output = T>
+        + Div<Output = T>
+        + Vector3dMath
+        + QuaternionMath
+        + SqrtMethods,
 {
     pub fn set_beta(&mut self, beta: T) {
         self.set_free_parameters(beta, T::zero());
@@ -52,7 +61,16 @@ where
 ///
 impl<T> SensorFusion<T> for MadgwickFilter<T>
 where
-    T: Copy + One + Zero + Neg<Output = T> + PartialOrd + Sub<Output = T> + Div<Output = T> + TrigonometricMethods + Vector3dMath +QuaternionMath + SqrtMethods,
+    T: Copy
+        + One
+        + Zero
+        + Neg<Output = T>
+        + PartialOrd
+        + Sub<Output = T>
+        + Div<Output = T>
+        + Vector3dMath
+        + QuaternionMath
+        + SqrtMethods,
 {
     fn set_free_parameters(&mut self, parameter0: T, _parameter1: T) {
         self.beta = parameter0;
