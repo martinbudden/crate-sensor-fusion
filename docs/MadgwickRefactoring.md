@@ -13,18 +13,18 @@ The original code as used in many implementations (Arduino, Adafruit, M5Stack, R
 
 ```cpp
 s0 = _4q0 * q2q2 + _2q2 * ax + _4q0 * q1q1 - _2q1 * ay;
-s1 = _4q1 * q3q3 - _2q3 * ax + 4.0f * q0q0 * q1 - _2q0 * ay - _4q1 + _8q1 * q1q1 + _8q1 * q2q2 + _4q1 * az;
-s2 = 4.0f * q0q0 * q2 + _2q0 * ax + _4q2 * q3q3 - _2q3 * ay - _4q2 + _8q2 * q1q1 + _8q2 * q2q2 + _4q2 * az;
-s3 = 4.0f * q1q1 * q3 - _2q1 * ax + 4.0f * q2q2 * q3 - _2q2 * ay;
+s1 = _4q1 * q3q3 - _2q3 * ax + 4.0 * q0q0 * q1 - _2q0 * ay - _4q1 + _8q1 * q1q1 + _8q1 * q2q2 + _4q1 * az;
+s2 = 4.0 * q0q0 * q2 + _2q0 * ax + _4q2 * q3q3 - _2q3 * ay - _4q2 + _8q2 * q1q1 + _8q2 * q2q2 + _4q2 * az;
+s3 = 4.0 * q1q1 * q3 - _2q1 * ax + 4.0 * q2q2 * q3 - _2q2 * ay;
 ```
 
 Reorder terms:
 
 ```cpp
 s0 = _4q0 * q2q2 + _4q0 * q1q1                                                     + _2q2 * ax - _2q1 * ay;
-s1 = _4q1 * q3q3 + 4.0f * q0q0 * q1 - _4q1 + _8q1 * q1q1 + _8q1 * q2q2 + _4q1 * az - _2q3 * ax - _2q0 * ay;
-s2 = 4.0f * q0q0 * q2 + _4q2 * q3q3 - _4q2 + _8q2 * q1q1 + _8q2 * q2q2 + _4q2 * az + _2q0 * ax - _2q3 * ay;
-s3 = 4.0f * q1q1 * q3  + 4.0f * q2q2 * q3                                          - _2q1 * ax - _2q2 * ay;
+s1 = _4q1 * q3q3 + 4.0 * q0q0 * q1 - _4q1 + _8q1 * q1q1 + _8q1 * q2q2 + _4q1 * az - _2q3 * ax - _2q0 * ay;
+s2 = 4.0 * q0q0 * q2 + _4q2 * q3q3 - _4q2 + _8q2 * q1q1 + _8q2 * q2q2 + _4q2 * az + _2q0 * ax - _2q3 * ay;
+s3 = 4.0 * q1q1 * q3  + 4.0 * q2q2 * q3                                          - _2q1 * ax - _2q2 * ay;
 ```
 
 Factor out `4 * q<n>`:
@@ -46,32 +46,32 @@ s3 = 2 * (q3 * 2 * (q1q1 + q2q2)                            - q1 * ax - q2 * ay)
 ```
 
 Substitute:
-`_2q1q1_plus_2q2q2` = `2.0f * (q1*q1 + q2*q2)`:
+`wz_common` = `2 * (q1*q1 + q2*q2)`:
 
 ```cpp
-s0 = 2 * (q0 * _2q1q1_plus_2q2q2                              + q2 * ax - q1 * ay);
-s1 = 2 * (q1 * 2 * (q3q3 + q0q0 - 1 + _2q1q1_plus_2q2q2 + az) - q3 * ax - q0 * ay);
-s2 = 2 * (q2 * 2 * (q0q0 + q3q3 - 1 + _2q1q1_plus_2q2q2 + az) + q0 * ax - q3 * ay);
-s3 = 2 * (q3 * _2q1q1_plus_2q2q2                              - q1 * ax - q2 * ay);
+s0 = 2 * (q0 * wz_common                              + q2 * ax - q1 * ay);
+s1 = 2 * (q1 * 2 * (q3q3 + q0q0 - 1 + wz_common + az) - q3 * ax - q0 * ay);
+s2 = 2 * (q2 * 2 * (q0q0 + q3q3 - 1 + wz_common + az) + q0 * ax - q3 * ay);
+s3 = 2 * (q3 * wz_common                              - q1 * ax - q2 * ay);
 ```
 
 Substitute:
-`common` = `2.0f * (q0*q0 + q3*q3 - 1.0f + _2q1q1_plus_2q2q2 + az)`:
+`xy_common` = `2 * (q0*q0 + q3*q3 - 1 + wz_common + az)`:
 
 ```cpp
-s0 = 2 * (q0 * _2q1q1_plus_2q2q2 + q2 * ax - q1 * ay);
-s1 = 2 * (q1 * common            - q3 * ax - q0 * ay);
-s2 = 2 * (q2 * common            + q0 * ax - q3 * ay);
-s3 = 2 * (q3 * _2q1q1_plus_2q2q2 - q1 * ax - q2 * ay);
+s0 = 2 * (q0 * wz_common + q2 * ax - q1 * ay);
+s1 = 2 * (q1 * xy_common           - q3 * ax - q0 * ay);
+s2 = 2 * (q2 * xy_common           + q0 * ax - q3 * ay);
+s3 = 2 * (q3 * wz_common - q1 * ax - q2 * ay);
 ```
 
 Instead, calculate half S-values:
 
 ```cpp
-halfS0 = q0 * _2q1q1_plus_2q2q2 + q2 * ax - q1 * ay;
-halfS1 = q1 * common            - q3 * ax - q0 * ay;
-halfS2 = q2 * common            + q0 * ax - q3 * ay;
-halfS3 = q3 * _2q1q1_plus_2q2q2 - q1 * ax - q2 * ay;
+halfS0 = q0 * wz_common + q2 * ax - q1 * ay;
+halfS1 = q1 * xy_common           - q3 * ax - q0 * ay;
+halfS2 = q2 * xy_common           + q0 * ax - q3 * ay;
+halfS3 = q3 * wz_common - q1 * ax - q2 * ay;
 ```
 
 Observe that:
