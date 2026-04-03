@@ -135,9 +135,9 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "cc"
-version = "1.2.58"
+version = "1.2.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1e928d4b69e3077709075a938a05ffbedfa53a84c8f766efbf8220bb1ff60e1"
+checksum = "b7a4d3ec6524d28a329fc53654bbadc9bdd7b0431f5d65f1a56ffb28a1ee5283"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -795,7 +795,7 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 [[package]]
 name = "imu-sensors"
 version = "0.1.0"
-source = "git+https://github.com/martinbudden/Crate-imu_sensors#a7e209a495708bd282edf9599cc7ae42564201e9"
+source = "git+https://github.com/martinbudden/crate-imu-sensors#55d78fa9d1998d516214b05d80d1da056a50159f"
 dependencies = [
  "cfg-if",
  "defmt",
@@ -819,9 +819,9 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.13.0"
+version = "2.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7714e70437a7dc3ac8eb7e6f8df75fd8eb422675fc7678aff7364301092b1017"
+checksum = "45a8a2b9cb3e0b0c1803dbb0758ffac5de2f425b23c28f518faabd9d805342ff"
 dependencies = [
  "equivalent",
  "hashbrown",
@@ -1686,7 +1686,7 @@ checksum = "77439c1b53d2303b20d9459b1ade71a83c716e3f9c34f3228c00e6f185d6c002"
 [[package]]
 name = "vector-quaternion-matrix"
 version = "0.1.0"
-source = "git+https://github.com/martinbudden/Crate-vector_quaternion_matrix#12442e58d095952e84a62c79d41cba7f5900c10b"
+source = "git+https://github.com/martinbudden/crate-vector-quaternion-matrix#d5c20f404d9d74983bacc473bc4bc6e8a6dccfb7"
 dependencies = [
  "approx",
  "bytemuck",
