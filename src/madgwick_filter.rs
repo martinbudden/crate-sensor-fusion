@@ -92,7 +92,7 @@ where
             // Normalize acceleration if it is non-zero
             let mut a = acc;
             if acc_magnitude_squared != T::zero() {
-                a *= acc_magnitude_squared.reciprocal_sqrt();
+                a *= acc_magnitude_squared.sqrt_reciprocal();
             }
             // make copies of the components of q to simplify the algebraic expressions
             let q = self.q;

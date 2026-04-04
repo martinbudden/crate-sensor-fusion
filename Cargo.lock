@@ -795,7 +795,7 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 [[package]]
 name = "imu-sensors"
 version = "0.1.0"
-source = "git+https://github.com/martinbudden/crate-imu-sensors#55d78fa9d1998d516214b05d80d1da056a50159f"
+source = "git+https://github.com/martinbudden/crate-imu-sensors#1bb783d6ae86fab039c96ffe8da065b182ca4bd3"
 dependencies = [
  "cfg-if",
  "defmt",
@@ -1295,7 +1295,7 @@ version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
 dependencies = [
- "semver 1.0.27",
+ "semver 1.0.28",
 ]
 
 [[package]]
@@ -1336,9 +1336,9 @@ dependencies = [
 
 [[package]]
 name = "semver"
-version = "1.0.27"
+version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d767eb0aabc880b29956c35734170f26ed551a859dbd361d140cdbeca61ab1e2"
+checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 
 [[package]]
 name = "semver-parser"
@@ -1686,7 +1686,7 @@ checksum = "77439c1b53d2303b20d9459b1ade71a83c716e3f9c34f3228c00e6f185d6c002"
 [[package]]
 name = "vector-quaternion-matrix"
 version = "0.1.0"
-source = "git+https://github.com/martinbudden/crate-vector-quaternion-matrix#d5c20f404d9d74983bacc473bc4bc6e8a6dccfb7"
+source = "git+https://github.com/martinbudden/crate-vector-quaternion-matrix#a7a903ef666e3b2aef9bbc5b487f9b25e48cfa98"
 dependencies = [
  "approx",
  "bytemuck",
