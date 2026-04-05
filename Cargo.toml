@@ -17,7 +17,6 @@ rustdoc-args = ["--html-in-header", "katex-header.html"]
 vector-quaternion-matrix = { git = "https://github.com/martinbudden/crate-vector-quaternion-matrix" }
 imu-sensors = { git = "https://github.com/martinbudden/crate-imu-sensors" }
 num-traits = "0.2.19"
-cfg-if = "1.0.4"
 
 [dev-dependencies]
 # assert_float_eq = "1.2.0" # used for test

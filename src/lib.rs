@@ -16,5 +16,5 @@ pub use complementary_filter::{ComplementaryFilter, ComplementaryFilterf32, Comp
 pub use madgwick_filter::{MadgwickFilter, MadgwickFilterf32, MadgwickFilterf64};
 pub use mahony_filter::{MahonyFilter, MahonyFilterf32, MahonyFilterf64};
 
-pub use sensor_fusion::{FuseAccGyro, FuseAccGyroMag, SensorFusion, q_dot};
+pub use sensor_fusion::{FuseAccGyro, FuseAccGyroMag, SensorFusion};
 pub use sensor_fusion_math::SensorFusionMath;

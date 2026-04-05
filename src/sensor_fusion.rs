@@ -1,7 +1,5 @@
 //#![allow(unused)]
 
-use core::ops::{Add, Div, Mul, Sub};
-use num_traits::One;
 use vector_quaternion_matrix::{Quaternion, Quaternionf32, Vector3d, Vector3df32};
 
 /// A generic interface for any sensor fusion filter (Madgwick, Mahony, etc.)
@@ -78,19 +76,20 @@ impl<T> FuseAccGyroMag<T> for (Vector3d<T>, Vector3d<T>, Vector3d<T>) {
     }
 }
 
+/*
 /// Calculate quaternion derivative (dq/dt aka q_dot) from angular rate <https://ahrs.readthedocs.io/en/latest/filters/angular.html#quaternion-derivative>
-pub fn q_dot<T>(q: &Quaternion<T>, gyro_rps: Vector3d<T>) -> Quaternion<T>
+pub fn q_dot<T>(q: Quaternion<T>, gyro_rps: Vector3d<T>) -> Quaternion<T>
 where
-    T: Copy + One + Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Div<Output = T>,
+    T: Copy + One + Neg<Output = T> + Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Div<Output = T>,
 {
     let half = T::one() / (T::one() + T::one());
     Quaternion {
-        w: (q.x * gyro_rps.x - q.y * gyro_rps.y - q.z * gyro_rps.z) * half,
+        w: (-q.x * gyro_rps.x - q.y * gyro_rps.y - q.z * gyro_rps.z) * half,
         x: (q.w * gyro_rps.x + q.y * gyro_rps.z - q.z * gyro_rps.y) * half,
         y: (q.w * gyro_rps.y - q.x * gyro_rps.z + q.z * gyro_rps.x) * half,
         z: (q.w * gyro_rps.z + q.x * gyro_rps.y - q.y * gyro_rps.x) * half,
     }
-}
+}*/
 
 #[cfg(any(debug_assertions, test))]
 mod tests {
@@ -118,7 +117,7 @@ mod tests {
         }
     }
 
-    //    #[allow(dead_code)]
+    //#[allow(dead_code)]
     #[test]
     fn sensor_fusion() {
         let mut test_struct: TestStruct = TestStruct {};

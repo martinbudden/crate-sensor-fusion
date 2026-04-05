@@ -60,8 +60,8 @@ Substitute:
 
 ```cpp
 s0 = 2 * (q0 * wz_common + q2 * ax - q1 * ay);
-s1 = 2 * (q1 * xy_common           - q3 * ax - q0 * ay);
-s2 = 2 * (q2 * xy_common           + q0 * ax - q3 * ay);
+s1 = 2 * (q1 * xy_common - q3 * ax - q0 * ay);
+s2 = 2 * (q2 * xy_common + q0 * ax - q3 * ay);
 s3 = 2 * (q3 * wz_common - q1 * ax - q2 * ay);
 ```
 
@@ -69,8 +69,8 @@ Instead, calculate half S-values:
 
 ```cpp
 halfS0 = q0 * wz_common + q2 * ax - q1 * ay;
-halfS1 = q1 * xy_common           - q3 * ax - q0 * ay;
-halfS2 = q2 * xy_common           + q0 * ax - q3 * ay;
+halfS1 = q1 * xy_common - q3 * ax - q0 * ay;
+halfS2 = q2 * xy_common + q0 * ax - q3 * ay;
 halfS3 = q3 * wz_common - q1 * ax - q2 * ay;
 ```
 
@@ -106,33 +106,3 @@ qDot2 -= s2 * betaNormReciprocal;
 qDot3 -= s3 * betaNormReciprocal;
 ```
 
-Substituting `_2betaNormReciprocal` = `2 * beta * reciprocalSqrt(s0*s0 + s1*s1 + s2*s2 + s3*s3)`
-and doubling everything we have:
-
-```cpp
-_2qDot0 -= s0 * betaNormReciprocal;
-_2qDot1 -= s1 * betaNormReciprocal;
-_2qDot2 -= s2 * betaNormReciprocal;
-_2qDot3 -= s3 * betaNormReciprocal;
-```
-
-Add in double the derivative from the gyro:
-
-```cpp
-_2qDot0 = -q1*gyroRPS.x - q2*gyroRPS.y - q3*gyroRPS.z - s0 * _2betaNormReciprocal;
-_2qDot1 =  q0*gyroRPS.x + q2*gyroRPS.z - q3*gyroRPS.y - s1 * _2betaNormReciprocal;
-_2qDot2 =  q0*gyroRPS.y - q1*gyroRPS.z + q3*gyroRPS.x - s2 * _2betaNormReciprocal;
-_2qDot3 =  q0*gyroRPS.z + q1*gyroRPS.y - q2*gyroRPS.x - s3 * _2betaNormReciprocal;
-```
-
-Finally, we update the attitude quaternion using simple Euler integration `qNew = qOld + qDot*deltaT`.
-To improve computation efficiency by avoiding multiplications, we use  `_2qDot` and `deltaT*0.5`,
-ie `qNew = qOld + _2qDot*halfDeltaT`, that is `q += _2qDot*halfDeltaT`:
-
-```cpp
-halfDeltaT = deltaT * 0.5F;
-q0 += _2qDot0 * halfDeltaT;
-q1 += _2qDot1 * halfDeltaT;
-q2 += _2qDot2 * halfDeltaT;
-q3 += _2qDot3 * halfDeltaT;
-```

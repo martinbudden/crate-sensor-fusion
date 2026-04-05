@@ -1,7 +1,7 @@
 use core::ops::{Div, Neg, Sub};
 use num_traits::{One, Zero};
 
-use crate::sensor_fusion::{SensorFusion, q_dot};
+use crate::{SensorFusion, SensorFusionMath};
 use vector_quaternion_matrix::{Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath};
 
 pub type ComplementaryFilterf32 = ComplementaryFilter<f32>;
@@ -41,7 +41,8 @@ where
         + TrigonometricMethods
         + Vector3dMath
         + QuaternionMath
-        + SqrtMethods,
+        + SqrtMethods
+        + SensorFusionMath,
 {
     /// Calculate roll (theta) from the normalized accelerometer readings
     pub fn roll_radians_from_acc_normalized(acc: Vector3d<T>) -> T {
@@ -68,7 +69,8 @@ where
         + TrigonometricMethods
         + SqrtMethods
         + Vector3dMath
-        + QuaternionMath,
+        + QuaternionMath
+        + SensorFusionMath,
 {
     fn set_free_parameters(&mut self, parameter0: T, _parameter1: T) {
         self.alpha = parameter0;
@@ -81,7 +83,7 @@ where
     fn fuse_acc_gyro(&mut self, acc: Vector3d<T>, gyro_rps: Vector3d<T>, delta_t: T) -> Quaternion<T> {
         // Calculate quaternion derivative (qDot) from angular rate https://ahrs.readthedocs.io/en/latest/filters/angular.html#quaternion-derivative
         // Twice the actual value is used to reduce the number of multiplications needed
-        let q_dot = q_dot(&self.q, gyro_rps);
+        let q_dot = SensorFusionMath::derivative(self.q, gyro_rps);
 
         // Update the attitude quaternion using simple Euler integration (qNew = qOld + qDot*deltaT).
         // Note: to reduce the number of multiplications, _2qDot and halfDeltaT are used, ie qNew = qOld +_2qDot*deltaT*0.5.

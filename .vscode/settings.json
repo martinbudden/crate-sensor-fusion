@@ -55,6 +55,9 @@
         "thumbv",
         "typenum",
         "vcell",
+        "VFMA",
+        "VMOV",
+        "VREV",
         "walkdir",
         "winapi",
         "zerocopy"

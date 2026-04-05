@@ -1,4 +1,4 @@
-use crate::sensor_fusion::{SensorFusion, q_dot};
+use crate::{SensorFusion, SensorFusionMath};
 use core::ops::{Div, Neg, Sub};
 use num_traits::{One, Zero};
 use vector_quaternion_matrix::{Quaternion, QuaternionMath, SqrtMethods, Vector3d, Vector3dMath};
@@ -38,7 +38,8 @@ where
         + Div<Output = T>
         + Vector3dMath
         + QuaternionMath
-        + SqrtMethods,
+        + SqrtMethods
+        + SensorFusionMath,
 {
     pub fn set_beta(&mut self, beta: T) {
         self.set_free_parameters(beta, T::zero());
@@ -61,16 +62,7 @@ where
 ///
 impl<T> SensorFusion<T> for MadgwickFilter<T>
 where
-    T: Copy
-        + One
-        + Zero
-        + Neg<Output = T>
-        + PartialOrd
-        + Sub<Output = T>
-        + Div<Output = T>
-        + Vector3dMath
-        + QuaternionMath
-        + SqrtMethods,
+    T: Copy + Zero + PartialOrd + QuaternionMath + SqrtMethods + SensorFusionMath,
 {
     fn set_free_parameters(&mut self, parameter0: T, _parameter1: T) {
         self.beta = parameter0;
@@ -82,37 +74,9 @@ where
 
     /// Fuses accelerometer and gyroscope readings to give the orientation quaternion.
     fn fuse_acc_gyro(&mut self, acc: Vector3d<T>, gyro_rps: Vector3d<T>, delta_t: T) -> Quaternion<T> {
-        // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate
-        let mut q_dot = q_dot(&self.q, gyro_rps);
-
-        // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
-        // so exclude it from the calculation in these cases
-        let acc_magnitude_squared = acc.norm_squared();
-        if acc_magnitude_squared <= self.acc_magnitude_squared_max {
-            // Normalize acceleration if it is non-zero
-            let mut a = acc;
-            if acc_magnitude_squared != T::zero() {
-                a *= acc_magnitude_squared.sqrt_reciprocal();
-            }
-            // make copies of the components of q to simplify the algebraic expressions
-            let q = self.q;
-            // Auxiliary variables to avoid repeated arithmetic
-            let two = T::one() + T::one();
-            let wz_common = two * (q.x * q.x + q.y * q.y);
-            let xy_common = two * (q.w * q.w + q.z * q.z - T::one() + wz_common + a.z);
-
-            // Gradient decent algorithm corrective step
-            let step = Quaternion {
-                w: wz_common * q.w + a.x * q.y - a.y * q.x,
-                x: xy_common * q.x - a.x * q.z - a.y * q.w,
-                y: xy_common * q.y + a.x * q.w - a.y * q.z,
-                z: wz_common * q.z - a.x * q.x - a.y * q.y,
-            }
-            .normalized();
-
-            // Subtract the corrective step from the quaternion derivative
-            q_dot -= step * self.beta;
-        }
+        let step = SensorFusionMath::madgwick_step_acc(self.q, acc);
+        // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate and subtract the corrective step.
+        let q_dot = SensorFusionMath::derivative(self.q, gyro_rps) - step * self.beta;
 
         // Update the orientation quaternion using simple Euler integration
         self.q += q_dot * delta_t;
@@ -129,93 +93,9 @@ where
         mag: Vector3d<T>,
         delta_t: T,
     ) -> Quaternion<T> {
-        let mut a = acc;
-        let acc_magnitude_squared = a.norm_squared();
-        // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
-        // so exclude it from the calculation in these cases
-        if acc_magnitude_squared > self.acc_magnitude_squared_max {
-            a.set_zero();
-        }
-
-        let mut m = mag;
-        m.normalize();
-
-        // make copies of the components of q to simplify the algebraic expressions
-        let q0 = self.q.w;
-        let q1 = self.q.x;
-        let q2 = self.q.y;
-        let q3 = self.q.z;
-        // Auxiliary variables to avoid repeated arithmetic
-        let q0q0 = q0 * q0;
-        let q0q1 = q0 * q1;
-        let q0q2 = q0 * q2;
-        let q0q3 = q0 * q3;
-        let q1q1 = q1 * q1;
-        let q1q2 = q1 * q2;
-        let q1q3 = q1 * q3;
-        let q2q2 = q2 * q2;
-        let q2q3 = q2 * q3;
-        let q3q3 = q3 * q3;
-
-        let q1q1_plus_q2q2 = q1q1 + q2q2;
-        let q2q2_plus_q3q3 = q2q2 + q3q3;
-
-        let two = T::one() + T::one();
-        let half = T::one() / two;
-
-        // Reference direction of Earth's magnetic field
-        let h = Vector3d {
-            x: m.x * (q0q0 + q1q1 - q2q2_plus_q3q3) + two * (m.y * (q1q2 - q0q3) + m.z * (q0q2 + q1q3)),
-            y: two * (m.x * (q0q3 + q1q2) + m.y * (q0q0 - q1q1 + q2q2 - q3q3) + m.z * (q2q3 - q0q1)),
-            z: T::zero(),
-        };
-
-        let bx_bx = h.x * h.x + h.y * h.y;
-        let b = Vector3d {
-            x: bx_bx.sqrt(),
-            y: T::zero(),
-            z: two * (m.x * (q1q3 - q0q2) + m.y * (q0q1 + q2q3)) + m.z * (q0q0 - q1q1_plus_q2q2 + q3q3),
-        };
-
-        let a_dash = Vector3d { x: a.x + m.x * b.z, y: a.y + m.y * b.z, z: T::zero() };
-        let bz_bz = b.z * b.z;
-        let _4bx_bz = two * two * b.x * b.z;
-
-        let m_bx = m * b.x;
-        let mz_bz = m.z * b.z;
-
-        let sum_squares_minus_one = q0q0 + q1q1_plus_q2q2 + q3q3 - T::one();
-        let common = sum_squares_minus_one + q1q1_plus_q2q2 + a.z;
-
-        // Gradient decent algorithm corrective step
-        let step = Quaternion {
-            w: q0 * two * (q1q1_plus_q2q2 * (T::one() + bz_bz) + bx_bx * q2q2_plus_q3q3) - q1 * a_dash.y
-                + q2 * (a_dash.x - m_bx.z)
-                + q3 * (m_bx.y - _4bx_bz * q0q1),
-
-            x: -q0 * a_dash.y
-                + q1 * two
-                    * (common + mz_bz + bx_bx * q2q2_plus_q3q3 + bz_bz * (sum_squares_minus_one + q1q1_plus_q2q2))
-                - q2 * m_bx.y
-                - q3 * (a_dash.x + m_bx.z + _4bx_bz * (half * sum_squares_minus_one + q1q1)),
-
-            y: q0 * (a_dash.x - m_bx.z) - q1 * m_bx.y
-                + q2 * two
-                    * (common
-                        + mz_bz
-                        + m_bx.x
-                        + bx_bx * (sum_squares_minus_one + q2q2_plus_q3q3)
-                        + bz_bz * (sum_squares_minus_one + q1q1_plus_q2q2))
-                - q3 * (a_dash.y + _4bx_bz * q1q2),
-
-            z: q0 * m_bx.y - q1 * (a_dash.x + m_bx.z + _4bx_bz * (half * sum_squares_minus_one + q3q3)) - q2 * a_dash.y
-                + q3 * two
-                    * (q1q1_plus_q2q2 * (T::one() + bz_bz) + m_bx.x + bx_bx * (sum_squares_minus_one + q2q2_plus_q3q3)),
-        }
-        .normalized();
-
+        let step = SensorFusionMath::madgwick_step_acc_mag(self.q, acc, mag, self.acc_magnitude_squared_max);
         // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate and subtract the corrective step.
-        let q_dot = q_dot(&self.q, gyro_rps) - step * self.beta;
+        let q_dot = SensorFusionMath::derivative(self.q, gyro_rps) - step * self.beta;
 
         // Update the orientation quaternion using simple Euler integration
         self.q += q_dot * delta_t;

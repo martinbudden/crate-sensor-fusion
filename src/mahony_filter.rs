@@ -1,7 +1,7 @@
 use core::ops::{Div, Neg, Sub};
 use num_traits::{One, Zero};
 
-use crate::sensor_fusion::{SensorFusion, q_dot};
+use crate::{SensorFusion, SensorFusionMath};
 use vector_quaternion_matrix::{
     MathConstants, Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath,
 };
@@ -54,7 +54,8 @@ where
         + SqrtMethods
         + QuaternionMath
         + Vector3dMath
-        + Vector3dMath,
+        + Vector3dMath
+        + SensorFusionMath,
 {
     pub fn set_proportional_integral(&mut self, kp: T, ki: T) {
         self.set_free_parameters(kp, ki);
@@ -74,7 +75,8 @@ where
         + MathConstants
         + SqrtMethods
         + QuaternionMath
-        + Vector3dMath,
+        + Vector3dMath
+        + SensorFusionMath,
 {
     fn set_free_parameters(&mut self, parameter0: T, parameter1: T) {
         self.kp = parameter0;
@@ -98,12 +100,12 @@ where
         // Quadratic Interpolation (From Attitude Representation and Kinematic Propagation for Low-Cost UAVs by Robert T. Casey, Equation 14)
         // See https://docs.rosflight.org/v1.3/algorithms/estimator/#modifications-to-original-passive-filter for a publicly available explanation
         let mut gyro = gyro_rps;
-        /*if self.use_quadratic_interpolation {
+        if self.use_quadratic_interpolation {
             gyro = gyro_rps * (T::FIVE / T::TWELVE) + self.gyro_rps_1 * (T::EIGHT / T::TWELVE)
                 - self.gyro_rps_2 * (T::one() / T::TWELVE);
             self.gyro_rps_2 = self.gyro_rps_1;
             self.gyro_rps_1 = gyro_rps;
-        }*/
+        }
 
         // Apply proportional feedback
         gyro += error * self.kp;
@@ -114,20 +116,17 @@ where
             gyro += self.error_integral;
         }
 
+        let q_dot = SensorFusionMath::derivative(self.q, gyro);
         if self.use_matrix_exponential_approximation {
             // Matrix Exponential Approximation (From Attitude Representation and Kinematic Propagation for Low-Cost UAVs by Robert T. Casey, Equation 12)
             let gyro_magnitude = gyro.norm();
             let theta = gyro_magnitude * T::HALF * delta_t;
             let (sin, cos) = theta.sin_cos();
             let t1 = cos;
-            let t2 = (T::one() / gyro_magnitude) * sin;
+            let t2 = (T::TWO / gyro_magnitude) * sin;
 
-            self.q.w = t1 * self.q.w + t2 * (-gyro.x * self.q.x - gyro.y * self.q.y - gyro.z * self.q.z);
-            self.q.x = t1 * self.q.x + t2 * (gyro.x * self.q.w + gyro.z * self.q.y - gyro.y * self.q.z);
-            self.q.y = t1 * self.q.y + t2 * (gyro.y * self.q.w - gyro.z * self.q.x + gyro.x * self.q.z);
-            self.q.z = t1 * self.q.z + t2 * (gyro.z * self.q.w + gyro.y * self.q.x - gyro.x * self.q.y);
+            self.q = self.q * t1 + q_dot * t2;
         } else {
-            let q_dot = q_dot(&self.q, gyro);
             // Update the attitude quaternion using simple Euler integration
             self.q += q_dot * delta_t;
         }
