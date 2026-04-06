@@ -112,20 +112,6 @@ name = "bytemuck"
 version = "1.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8efb64bd706a16a1bdde310ae86b351e4d21550d98d056f22f8a7f7a2183fec"
-dependencies = [
- "bytemuck_derive",
-]
-
-[[package]]
-name = "bytemuck_derive"
-version = "1.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9abbd1bc6865053c427f7198e6af43bfdedc55ab791faed4fbd361d789575ff"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
 
 [[package]]
 name = "byteorder"
@@ -795,7 +781,7 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 [[package]]
 name = "imu-sensors"
 version = "0.1.0"
-source = "git+https://github.com/martinbudden/crate-imu-sensors#1bb783d6ae86fab039c96ffe8da065b182ca4bd3"
+source = "git+https://github.com/martinbudden/crate-imu-sensors#a22fb0c2d6b47393626e3e015fe6fdb415ffac7b"
 dependencies = [
  "cfg-if",
  "defmt",
@@ -981,6 +967,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+ "libm",
 ]
 
 [[package]]
@@ -1685,13 +1672,13 @@ checksum = "77439c1b53d2303b20d9459b1ade71a83c716e3f9c34f3228c00e6f185d6c002"
 [[package]]
 name = "vector-quaternion-matrix"
 version = "0.1.0"
-source = "git+https://github.com/martinbudden/crate-vector-quaternion-matrix#2ed324a9de3481efbb05eee4d81e028a490f6f82"
+source = "git+https://github.com/martinbudden/crate-vector-quaternion-matrix#801d250fedcf5c90681697ebfadab28553a94d8d"
 dependencies = [
  "approx",
- "bytemuck",
  "cfg-if",
  "libm",
  "num-traits",
+ "rustc_version 0.4.1",
 ]
 
 [[package]]

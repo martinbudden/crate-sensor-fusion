@@ -94,7 +94,7 @@ impl SensorFusionMath for f32 {
         }
         #[cfg(not(feature = "simd"))]
         {
-            Self {
+            Quaternion {
                 w: (-q.x * gyro.x - q.y * gyro.y - q.z * gyro.z) * 0.5,
                 x: (q.w * gyro.x - q.z * gyro.y + q.y * gyro.z) * 0.5,
                 y: (q.z * gyro.x + q.w * gyro.y - q.x * gyro.z) * 0.5,
@@ -153,7 +153,7 @@ impl SensorFusionMath for f32 {
         {
             let wz_common = 2.0 * (q.x * q.x + q.y * q.y);
             let xy_common = 2.0 * (q.w * q.w + q.z * q.z - 1.0 + 2.0 * wz_common + a.z);
-            Self {
+            Quaternion {
                 w: q.w * wz_common + q.y * a.x - q.x * a.y,
                 x: q.x * xy_common - q.z * a.x - q.w * a.y,
                 y: q.y * xy_common + q.w * a.x - q.z * a.y,

@@ -1,4 +1,4 @@
-#![feature(portable_simd)]
+#![cfg_attr(feature = "simd", feature(portable_simd))]
 #![doc = include_str!("../README.md")]
 #![no_std]
 #![deny(clippy::unwrap_used)]
