@@ -169,6 +169,9 @@ impl SensorFusionMath for f32 {
         mag: Vector3d<Self>,
         max_acc_magnitude_squared: Self,
     ) -> Quaternion<Self> {
+        #[allow(unused)]
+        use vector_quaternion_matrix::SqrtMethods;
+
         let mut a = acc;
         let acc_magnitude_squared = a.norm_squared();
         // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,

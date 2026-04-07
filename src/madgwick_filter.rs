@@ -101,7 +101,8 @@ where
         self.q += q_dot * delta_t;
 
         // Return the normalized orientation quaternion
-        self.q.normalized()
+        self.q.normalize();
+        self.q
     }
 }
 
@@ -111,7 +112,6 @@ mod tests {
     use crate::FuseAccGyro;
 
     use super::*;
-    use imu_sensors::ImuReadingf32;
     use vector_quaternion_matrix::{Quaternionf32, Vector3df32};
 
     fn is_normal<T: Sized + Send + Sync + Unpin>() {}

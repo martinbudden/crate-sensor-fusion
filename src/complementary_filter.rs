@@ -119,7 +119,6 @@ where
 mod tests {
     #![allow(unused)]
     use super::*;
-    use imu_sensors::ImuReadingf32;
     use vector_quaternion_matrix::{Quaternionf32, Vector3df32};
 
     fn is_normal<T: Sized + Send + Sync + Unpin>() {}
