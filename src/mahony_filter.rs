@@ -131,10 +131,8 @@ where
             self.q += q_dot * delta_t;
         }
 
-        // Normalize the orientation quaternion
-        self.q.normalize();
-
-        self.q
+        // normalize the orientation quaternion and return it
+        self.q.normalize()
     }
 
     fn fuse_acc_gyro_mag(

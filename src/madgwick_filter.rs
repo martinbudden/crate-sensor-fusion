@@ -100,9 +100,8 @@ where
         // Update the orientation quaternion using simple Euler integration
         self.q += q_dot * delta_t;
 
-        // Return the normalized orientation quaternion
-        self.q.normalize();
-        self.q
+        // normalize the orientation quaternion and return it
+        self.q.normalize()
     }
 }
 

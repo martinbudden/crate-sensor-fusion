@@ -98,10 +98,8 @@ where
         // use a complementary filter to combine the gyro attitude estimate(q) with the accelerometer attitude estimate(a)
         self.q = (self.q - q) * self.alpha + q; // optimized form of `self.alpha * q + (1.0 - self.alpha) * q` : uses fewer operations and can take advantage of multiply-add instruction
 
-        // normalize the orientation quaternion
-        self.q.normalize();
-
-        self.q
+        // normalize the orientation quaternion and return it
+        self.q.normalize()
     }
 
     fn fuse_acc_gyro_mag(
