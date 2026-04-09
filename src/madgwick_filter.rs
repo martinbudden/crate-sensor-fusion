@@ -10,7 +10,7 @@ pub type MadgwickFilterf64 = MadgwickFilter<f64>;
 pub struct MadgwickFilter<T> {
     // orientation quaternion
     q: Quaternion<T>,
-    acc_magnitude_squared_max: T,
+    max_acc_magnitude_squared: T,
     beta: T,
 }
 
@@ -21,7 +21,7 @@ where
     fn default() -> Self {
         MadgwickFilter {
             q: Quaternion::default(),
-            acc_magnitude_squared_max: T::one() + T::one() + T::one() + T::one(),
+            max_acc_magnitude_squared: T::one() + T::one() + T::one() + T::one(), // 4
             beta: T::one(),
         }
     }
@@ -74,15 +74,17 @@ where
 
     /// Fuses accelerometer and gyroscope readings to give the orientation quaternion.
     fn fuse_acc_gyro(&mut self, acc: Vector3d<T>, gyro_rps: Vector3d<T>, delta_t: T) -> Quaternion<T> {
-        let step = SensorFusionMath::madgwick_step_acc(self.q, acc);
+        // Calculate the corrective step.
+        let step = SensorFusionMath::madgwick_step_acc(self.q, acc, self.max_acc_magnitude_squared);
+
         // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate and subtract the corrective step.
         let q_dot = SensorFusionMath::derivative(self.q, gyro_rps) - step * self.beta;
 
         // Update the orientation quaternion using simple Euler integration
         self.q += q_dot * delta_t;
 
-        // Return the normalized orientation quaternion
-        self.q.normalized()
+        // normalize the orientation quaternion and return it
+        *self.q.normalize()
     }
 
     /// Fuses accelerometer, gyroscope, and magnetometer readings to give the orientation quaternion.
@@ -93,7 +95,9 @@ where
         mag: Vector3d<T>,
         delta_t: T,
     ) -> Quaternion<T> {
-        let step = SensorFusionMath::madgwick_step_acc_mag(self.q, acc, mag, self.acc_magnitude_squared_max);
+        // Calculate the corrective step.
+        let step = SensorFusionMath::madgwick_step_acc_mag(self.q, acc, mag, self.max_acc_magnitude_squared);
+
         // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate and subtract the corrective step.
         let q_dot = SensorFusionMath::derivative(self.q, gyro_rps) - step * self.beta;
 
@@ -101,7 +105,7 @@ where
         self.q += q_dot * delta_t;
 
         // normalize the orientation quaternion and return it
-        self.q.normalize()
+        *self.q.normalize()
     }
 }
 

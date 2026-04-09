@@ -6,11 +6,12 @@ use vector_quaternion_matrix::{Quaternion, Vector3d};
 pub trait SensorFusionMath: Sized {
     fn estimate_gravity(q: Quaternion<Self>) -> Vector3d<Self>;
     fn derivative(q: Quaternion<Self>, gyro: Vector3d<Self>) -> Quaternion<Self>;
-    fn madgwick_step_acc(q: Quaternion<Self>, a: Vector3d<Self>) -> Quaternion<Self>;
+    fn madgwick_step_acc(q: Quaternion<Self>, acc: Vector3d<Self>, max_acc_magnitude_squared: Self)
+    -> Quaternion<Self>;
     fn madgwick_step_acc_mag(
         q: Quaternion<Self>,
-        a: Vector3d<Self>,
-        m: Vector3d<Self>,
+        acc: Vector3d<Self>,
+        mag: Vector3d<Self>,
         max_acc_magnitude_squared: Self,
     ) -> Quaternion<Self>;
 }
@@ -115,7 +116,23 @@ impl SensorFusionMath for f32 {
     ///    meaning this whole function could resolve in under 15 clock cycles.
     ///
     #[inline(always)]
-    fn madgwick_step_acc(q: Quaternion<Self>, a: Vector3d<Self>) -> Quaternion<Self> {
+    fn madgwick_step_acc(
+        q: Quaternion<Self>,
+        acc: Vector3d<Self>,
+        max_acc_magnitude_squared: Self,
+    ) -> Quaternion<Self> {
+        use num_traits::Zero;
+        use vector_quaternion_matrix::SqrtMethods;
+
+        let acc_magnitude_squared = acc.norm_squared();
+        // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
+        // so exclude it from the calculation in these cases
+        let mut a = acc;
+        if acc_magnitude_squared > max_acc_magnitude_squared || acc_magnitude_squared == 0.0 {
+            a = Vector3d::zero();
+        } else {
+            a *= acc_magnitude_squared.sqrt_reciprocal();
+        };
         #[cfg(feature = "simd")]
         {
             let q_v = f32x4::from(q);
@@ -169,18 +186,20 @@ impl SensorFusionMath for f32 {
         mag: Vector3d<Self>,
         max_acc_magnitude_squared: Self,
     ) -> Quaternion<Self> {
-        #[allow(unused)]
+        use num_traits::Zero;
         use vector_quaternion_matrix::SqrtMethods;
 
-        let mut a = acc;
-        let acc_magnitude_squared = a.norm_squared();
+        let acc_magnitude_squared = acc.norm_squared();
         // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
         // so exclude it from the calculation in these cases
-        if acc_magnitude_squared > max_acc_magnitude_squared {
-            a = Vector3d { x: 0.0, y: 0.0, z: 0.0 };
-        }
+        let mut a = acc;
+        if acc_magnitude_squared > max_acc_magnitude_squared || acc_magnitude_squared == 0.0 {
+            a = Vector3d::zero();
+        } else {
+            a *= acc_magnitude_squared.sqrt_reciprocal();
+        };
 
-        let m = mag.normalized();
+        let m = mag.normalized_checked();
 
         // make copies of the components of q to simplify the algebraic expressions
         let q0 = q.w;
@@ -268,7 +287,23 @@ impl SensorFusionMath for f64 {
         }
     }
     #[inline(always)]
-    fn madgwick_step_acc(q: Quaternion<Self>, a: Vector3d<Self>) -> Quaternion<Self> {
+    fn madgwick_step_acc(
+        q: Quaternion<Self>,
+        acc: Vector3d<Self>,
+        max_acc_magnitude_squared: Self,
+    ) -> Quaternion<Self> {
+        use num_traits::Zero;
+        use vector_quaternion_matrix::SqrtMethods;
+
+        let acc_magnitude_squared = acc.norm_squared();
+        // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
+        // so exclude it from the calculation in these cases
+        let mut a = acc;
+        if acc_magnitude_squared > max_acc_magnitude_squared || acc_magnitude_squared == 0.0 {
+            a = Vector3d::zero();
+        } else {
+            a *= acc_magnitude_squared.sqrt_reciprocal();
+        };
         let wz_common = 2.0 * (q.x * q.x + q.y * q.y);
         let xy_common = 2.0 * (q.w * q.w + q.z * q.z - 1.0 + 2.0 * wz_common + a.z);
         Quaternion {
