@@ -90,7 +90,7 @@ where
         self.q += q_dot * delta_t;
 
         // use the normalized accelerometer data to calculate an estimate of the attitude
-        let acc: Vector3d<T> = acc.normalized_checked();
+        let acc: Vector3d<T> = acc.normalized();
         let roll_radians: T = ComplementaryFilter::roll_radians_from_acc_normalized(acc);
         let pitch_radians = ComplementaryFilter::pitch_radians_from_acc_normalized(acc);
         let q: Quaternion<T> = Quaternion::from_roll_pitch_angles_radians(roll_radians, pitch_radians);
@@ -130,7 +130,7 @@ mod tests {
     fn update_orientation() {
         let mut sensor_fusion = ComplementaryFilterf32::default();
         let requires_initialization = ComplementaryFilterf32::requires_initialization();
-        assert_eq!(requires_initialization, false);
+        assert!(!requires_initialization);
 
         sensor_fusion.set_alpha(1.0);
 
@@ -140,6 +140,6 @@ mod tests {
 
         let orientation = sensor_fusion.fuse_acc_gyro(acc, gyro_rps, delta_t);
 
-        assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 })
+        assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
     }
 }

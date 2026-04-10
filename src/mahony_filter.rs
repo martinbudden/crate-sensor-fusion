@@ -89,7 +89,7 @@ where
     /// Fuses accelerometer and gyroscope readings to give the orientation quaternion.
     fn fuse_acc_gyro(&mut self, acc: Vector3d<T>, gyro_rps: Vector3d<T>, delta_t: T) -> Quaternion<T> {
         // Normalize acceleration
-        let acc = acc.normalized_checked();
+        let acc = acc.normalized();
 
         // Calculate estimated direction of gravity in the sensor coordinate frame
         let gravity = self.q.gravity();
@@ -163,7 +163,7 @@ mod tests {
     fn update_orientation() {
         let mut sensor_fusion = MahonyFilterf32::default();
         let requires_initialization = MahonyFilterf32::requires_initialization();
-        assert_eq!(requires_initialization, true);
+        assert!(requires_initialization);
 
         sensor_fusion.set_proportional_integral(10.0, 0.0);
 
@@ -172,6 +172,6 @@ mod tests {
         let gyro_rps = Vector3df32::default();
 
         let orientation = sensor_fusion.fuse_acc_gyro(acc, gyro_rps, delta_t);
-        assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 })
+        assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
     }
 }

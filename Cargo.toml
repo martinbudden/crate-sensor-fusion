@@ -5,6 +5,11 @@ edition = "2024"
 authors = ["Martin Budden"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
+repository = "https://github.com/martinbudden/crate-sensor-fusion"
+description = "Sensor Fusion Filters for Attitude and Heading Reference Systems (AHRS)"
+keywords = ["Sensor Fusion", "Filter", "Mahony", "Madgwick", "IMU", "AHRS", "no-std"]
+categories = ["Embedded development", "No standard library", "Science::Robotics"]
+
 
 [features]
 default = ["libm"]
@@ -21,11 +26,10 @@ rustc_version = "0.4.1"
 
 [dependencies]
 vector-quaternion-matrix = { git = "https://github.com/martinbudden/crate-vector-quaternion-matrix", default-features = false }
-#imu-sensors = { git = "https://github.com/martinbudden/crate-imu-sensors", default-features = false }
 num-traits = { version = "0.2.19", default-features = false }
 
 [dev-dependencies]
-# assert_float_eq = "1.2.0" # used for test
+# approx = { version = "0.5", default-features = false }
 
 # see https://doc.rust-lang.org/cargo/reference/profiles.html
 [profile.dev]

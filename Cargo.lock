@@ -66,7 +66,7 @@ dependencies = [
 [[package]]
 name = "vector-quaternion-matrix"
 version = "0.1.0"
-source = "git+https://github.com/martinbudden/crate-vector-quaternion-matrix#24741e6bb7df50adb8662a5ba3cfa167b14423dd"
+source = "git+https://github.com/martinbudden/crate-vector-quaternion-matrix#85e5ca856ab4f5c52113f71ccdd624e58970af52"
 dependencies = [
  "approx",
  "cfg-if",

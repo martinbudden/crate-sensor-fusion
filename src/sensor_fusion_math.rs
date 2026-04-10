@@ -1,3 +1,5 @@
+#![allow(clippy::many_single_char_names)]
+
 #[cfg(feature = "simd")]
 use core::simd::{f32x4, simd_swizzle};
 
@@ -109,9 +111,9 @@ impl SensorFusionMath for f32 {
     /// 1. Parallel Throughput: Instead of 12 separate floating-point multiplications and 8 additions,
     ///    the SIMD unit performs 3 vector multiplications and 2 vector additions.
     ///
-    /// 2. Instruction Density: The simd_swizzle! maps directly to the VREV or VMOV instructions on the M33.
+    /// 2. Instruction Density: The `simd_swizzle!` maps directly to the VREV or VMOV instructions on the M33.
     ///
-    /// 3. Register Reuse: q_v stays in its SIMD register the entire time.
+    /// 3. Register Reuse: `q_v` stays in its SIMD register the entire time.
     ///    The compiler will likely use VFMA (Vector Fused Multiply-Add) to combine the terms,
     ///    meaning this whole function could resolve in under 15 clock cycles.
     ///
@@ -132,7 +134,7 @@ impl SensorFusionMath for f32 {
             a = Vector3d::zero();
         } else {
             a *= acc_magnitude_squared.sqrt_reciprocal();
-        };
+        }
         #[cfg(feature = "simd")]
         {
             let q_v = f32x4::from(q);
@@ -197,9 +199,9 @@ impl SensorFusionMath for f32 {
             a = Vector3d::zero();
         } else {
             a *= acc_magnitude_squared.sqrt_reciprocal();
-        };
+        }
 
-        let m = mag.normalized_checked();
+        let m = mag.normalized();
 
         // make copies of the components of q to simplify the algebraic expressions
         let q0 = q.w;
@@ -248,6 +250,7 @@ impl SensorFusionMath for f32 {
         let wz_common = q1q1_plus_q2q2 * (1.0 + bz_bz) + bx_bx;
 
         // Gradient decent algorithm corrective step
+        #[allow(clippy::used_underscore_binding)]
         Quaternion {
             w: q0 * 2.0 * (wz_common * q2q2_plus_q3q3) - q1 * a_dash.y
                 + q2 * (a_dash.x - m_bx.z)
@@ -303,7 +306,7 @@ impl SensorFusionMath for f64 {
             a = Vector3d::zero();
         } else {
             a *= acc_magnitude_squared.sqrt_reciprocal();
-        };
+        }
         let wz_common = 2.0 * (q.x * q.x + q.y * q.y);
         let xy_common = 2.0 * (q.w * q.w + q.z * q.z - 1.0 + 2.0 * wz_common + a.z);
         Quaternion {

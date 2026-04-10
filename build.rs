@@ -10,7 +10,10 @@ fn main() {
     if simd_enabled && channel != Channel::Nightly {
         panic!(
             "\n\nError: The 'simd' feature requires a nightly compiler.\n\
-             Please use 'rustup run nightly cargo build --features simd' or set 'rustup default nightly'.\n"
+            Please use\n\
+            \t'rustup run nightly cargo build --features simd'\n\
+            or set\n\
+            \t'rustup default nightly'.\n"
         );
     }
 

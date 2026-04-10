@@ -1,5 +1,5 @@
 [toolchain]
-channel = "nightly"
+#channel = "nightly"
 components = ["rust-src", "llvm-tools"]
-targets = ["thumbv8m.main-none-eabihf"]
+targets = ["thumbv8m.main-none-eabihf","thumbv8m.main-none-eabi"]
 profile = "minimal"

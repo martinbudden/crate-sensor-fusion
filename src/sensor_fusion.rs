@@ -93,6 +93,7 @@ where
 
 #[cfg(any(debug_assertions, test))]
 mod tests {
+    #![allow(clippy::wildcard_imports)]
     use super::*;
     use vector_quaternion_matrix::Vector3df32;
 
@@ -121,7 +122,7 @@ mod tests {
     #[test]
     fn sensor_fusion() {
         let mut test_struct: TestStruct = TestStruct {};
-        TestStruct::requires_initialization();
+        _ = TestStruct::requires_initialization();
         //assert_eq!(TestStruct::requires_initialization(), true);
 
         test_struct.set_free_parameters(0.0, 0.0);
@@ -140,7 +141,7 @@ mod tests {
 
         let mut madgwick_filter = MadgwickFilterf32::default();
         let requires_initialization = MadgwickFilterf32::requires_initialization();
-        assert_eq!(requires_initialization, true);
+        assert!(requires_initialization);
 
         madgwick_filter.set_beta(1.0);
 
@@ -150,6 +151,6 @@ mod tests {
 
         //let orientation = madgwick_filter.fuse_acc_gyro(acc, gyro_rps, delta_t);
         let orientation = (acc, gyro_rps).fuse_acc_gyro_using(&mut madgwick_filter, delta_t);
-        assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 })
+        assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
     }
 }
