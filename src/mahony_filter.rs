@@ -26,6 +26,15 @@ where
     T: Copy + Zero + One + Default + MathConstants,
 {
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> MahonyFilter<T>
+where
+    T: Copy + Zero + One + Default + MathConstants,
+{
+    pub fn new() -> Self {
         MahonyFilter {
             q: Quaternion::default(),
             kp: T::TEN,
@@ -111,10 +120,10 @@ where
         gyro += error * self.kp;
 
         // Apply integral feedback if ki set
-        if self.ki > T::zero() {
+        //if self.ki > T::zero() {
             self.error_integral += error * (self.ki * delta_t); // note brackets to ensure scalar multiplication is performed before vector multiplication
             gyro += self.error_integral;
-        }
+        //}
 
         let q_dot = SensorFusionMath::derivative(self.q, gyro);
         if self.use_matrix_exponential_approximation {

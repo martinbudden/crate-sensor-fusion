@@ -7,8 +7,10 @@
 #![deny(unused_must_use)]
 #![warn(unused_results)]
 #![warn(clippy::pedantic)]
+#![warn(clippy::doc_paragraphs_missing_punctuation)]
 #![allow(clippy::inline_always)]
 #![allow(clippy::return_self_not_must_use)]
+#![allow(clippy::must_use_candidate)]
 
 mod complementary_filter;
 mod madgwick_filter;

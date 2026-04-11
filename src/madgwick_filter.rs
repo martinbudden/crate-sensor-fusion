@@ -19,6 +19,15 @@ where
     T: Copy + Zero + One + Default,
 {
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> MadgwickFilter<T>
+where
+    T: Copy + Zero + One + Default,
+{
+    pub fn new() -> Self {
         MadgwickFilter {
             q: Quaternion::default(),
             max_acc_magnitude_squared: T::one() + T::one() + T::one() + T::one(), // 4
@@ -55,10 +64,10 @@ where
 /// A gain of zero means that orientation is determined by solely by the gyroscope.
 ///
 /// See [Sebastian Madgwick's Phd thesis](https://x-io.co.uk/downloads/madgwick-phd-thesis.pdf)
-/// and also x-io Technologies [sensor fusion library](https://github.com/xioTechnologies/Fusion)
+/// and also x-io Technologies [sensor fusion library](https://github.com/xioTechnologies/Fusion).
 ///
 /// For computation efficiency this code refactors the code used in many implementations (Arduino, Adafruit, M5 Stack, Reefwing-AHRS),
-/// [see Madgwick refactoring](../../../documents/MadgwickRefactoring.md)
+/// [see Madgwick refactoring](../../../documents/MadgwickRefactoring.md).
 ///
 impl<T> SensorFusion<T> for MadgwickFilter<T>
 where

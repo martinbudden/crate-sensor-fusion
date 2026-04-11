@@ -106,7 +106,7 @@ impl SensorFusionMath for f32 {
         }
     }
 
-    /// Features of this implementation
+    /// Features of this implementation:
     ///
     /// 1. Parallel Throughput: Instead of 12 separate floating-point multiplications and 8 additions,
     ///    the SIMD unit performs 3 vector multiplications and 2 vector additions.

@@ -20,6 +20,15 @@ where
     T: Copy + One + Zero,
 {
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> ComplementaryFilter<T>
+where
+    T: Copy + One + Zero,
+{
+    pub fn new() -> Self {
         ComplementaryFilter {
             q: Quaternion::default(),
             acc_magnitude_squared_max: T::one() + T::one() + T::one() + T::one(),
@@ -44,11 +53,11 @@ where
         + SqrtMethods
         + SensorFusionMath,
 {
-    /// Calculate roll (theta) from the normalized accelerometer readings
+    /// Calculate roll (theta) from the normalized accelerometer readings.
     pub fn roll_radians_from_acc_normalized(acc: Vector3d<T>) -> T {
         (acc.y).atan2(acc.z)
     }
-    /// Calculate pitch (phi) from the normalized accelerometer readings
+    /// Calculate pitch (phi) from the normalized accelerometer readings.
     pub fn pitch_radians_from_acc_normalized(acc: Vector3d<T>) -> T {
         (-acc.x).atan2((acc.y * acc.y + acc.z * acc.z).sqrt())
     }

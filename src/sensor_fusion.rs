@@ -40,7 +40,7 @@ pub trait SensorFusionf32 {
     ) -> Quaternionf32;
 }
 
-/// Implements method call syntax for a sensor fusion filter
+/// Implements method call syntax for a sensor fusion filter.
 /// ```
 /// use vector_quaternion_matrix::{Vector3df32,Quaternionf32};
 /// use sensor_fusion::{MadgwickFilterf32,SensorFusion,FuseAccGyro};
