@@ -1,10 +1,10 @@
 //#![allow(unused)]
 
-use vector_quaternion_matrix::{Quaternion, Quaternionf32, Vector3d, Vector3df32};
+use vqm::{Quaternion, Quaternionf32, Vector3d, Vector3df32};
 
 /// A generic interface for any sensor fusion filter (Madgwick, Mahony, etc.)
 /// ```
-/// use vector_quaternion_matrix::{Vector3df32,Quaternionf32};
+/// use vqm::{Vector3df32,Quaternionf32};
 /// use sensor_fusion::{MadgwickFilterf32,SensorFusion};
 ///
 /// let mut madgwick_filter = MadgwickFilterf32::default();
@@ -42,7 +42,7 @@ pub trait SensorFusionf32 {
 
 /// Implements method call syntax for a sensor fusion filter.
 /// ```
-/// use vector_quaternion_matrix::{Vector3df32,Quaternionf32};
+/// use vqm::{Vector3df32,Quaternionf32};
 /// use sensor_fusion::{MadgwickFilterf32,SensorFusion,FuseAccGyro};
 ///
 /// let mut madgwick_filter = MadgwickFilterf32::default();
@@ -95,7 +95,7 @@ where
 mod tests {
     #![allow(clippy::wildcard_imports)]
     use super::*;
-    use vector_quaternion_matrix::Vector3df32;
+    use vqm::Vector3df32;
 
     #[allow(dead_code)]
     pub struct TestStruct;

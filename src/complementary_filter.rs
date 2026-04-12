@@ -2,7 +2,7 @@ use core::ops::{Div, Neg, Sub};
 use num_traits::{One, Zero};
 
 use crate::{SensorFusion, SensorFusionMath};
-use vector_quaternion_matrix::{Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath};
+use vqm::{Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath};
 
 pub type ComplementaryFilterf32 = ComplementaryFilter<f32>;
 pub type ComplementaryFilterf64 = ComplementaryFilter<f64>;
@@ -126,7 +126,7 @@ where
 mod tests {
     #![allow(unused)]
     use super::*;
-    use vector_quaternion_matrix::{Quaternionf32, Vector3df32};
+    use vqm::{Quaternionf32, Vector3df32};
 
     fn is_normal<T: Sized + Send + Sync + Unpin>() {}
     fn is_full<T: Sized + Send + Sync + Unpin + Copy + Clone + Default + PartialEq>() {}

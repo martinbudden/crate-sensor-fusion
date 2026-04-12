@@ -6,7 +6,7 @@ use rand::{RngExt, rng};
 use std::hint::black_box;
 
 use sensor_fusion::{ComplementaryFilterf32, FuseAccGyro, FuseAccGyroMag, MadgwickFilterf32, MahonyFilterf32};
-use vector_quaternion_matrix::Vector3df32;
+use vqm::Vector3df32;
 
 fn bench_filter(c: &mut Criterion) {
     let mut group = c.benchmark_group("filter");
@@ -46,7 +46,8 @@ fn bench_filter(c: &mut Criterion) {
                 (acc, gyro_rps, mag)
             },
             |(acc, gyro_rps, mag)| {
-                black_box((acc, gyro_rps, mag)).fuse_acc_gyro_mag_using(black_box(&mut madgwick_filter), black_box(delta_t))
+                black_box((acc, gyro_rps, mag))
+                    .fuse_acc_gyro_mag_using(black_box(&mut madgwick_filter), black_box(delta_t))
             },
             BatchSize::SmallInput,
         );

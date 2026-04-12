@@ -2,9 +2,7 @@ use core::ops::{Div, Neg, Sub};
 use num_traits::{One, Zero};
 
 use crate::{SensorFusion, SensorFusionMath};
-use vector_quaternion_matrix::{
-    MathConstants, Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath,
-};
+use vqm::{MathConstants, Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath};
 
 pub type MahonyFilterf32 = MahonyFilter<f32>;
 pub type MahonyFilterf64 = MahonyFilter<f64>;
@@ -121,8 +119,8 @@ where
 
         // Apply integral feedback if ki set
         //if self.ki > T::zero() {
-            self.error_integral += error * (self.ki * delta_t); // note brackets to ensure scalar multiplication is performed before vector multiplication
-            gyro += self.error_integral;
+        self.error_integral += error * (self.ki * delta_t); // note brackets to ensure scalar multiplication is performed before vector multiplication
+        gyro += self.error_integral;
         //}
 
         let q_dot = SensorFusionMath::derivative(self.q, gyro);
@@ -159,7 +157,7 @@ where
 mod tests {
     #![allow(unused)]
     use super::*;
-    use vector_quaternion_matrix::Vector3df32;
+    use vqm::Vector3df32;
 
     fn is_normal<T: Sized + Send + Sync + Unpin>() {}
     fn is_full<T: Sized + Send + Sync + Unpin + Copy + Clone + Default + PartialEq>() {}

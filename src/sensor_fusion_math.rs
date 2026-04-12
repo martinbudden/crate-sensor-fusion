@@ -3,7 +3,7 @@
 #[cfg(feature = "simd")]
 use core::simd::{f32x4, simd_swizzle};
 
-use vector_quaternion_matrix::{Quaternion, Vector3d};
+use vqm::{Quaternion, Vector3d};
 
 pub trait SensorFusionMath: Sized {
     fn estimate_gravity(q: Quaternion<Self>) -> Vector3d<Self>;
@@ -124,7 +124,7 @@ impl SensorFusionMath for f32 {
         max_acc_magnitude_squared: Self,
     ) -> Quaternion<Self> {
         use num_traits::Zero;
-        use vector_quaternion_matrix::SqrtMethods;
+        use vqm::SqrtMethods;
 
         let acc_magnitude_squared = acc.norm_squared();
         // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
@@ -189,7 +189,7 @@ impl SensorFusionMath for f32 {
         max_acc_magnitude_squared: Self,
     ) -> Quaternion<Self> {
         use num_traits::Zero;
-        use vector_quaternion_matrix::SqrtMethods;
+        use vqm::SqrtMethods;
 
         let acc_magnitude_squared = acc.norm_squared();
         // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
@@ -296,7 +296,7 @@ impl SensorFusionMath for f64 {
         max_acc_magnitude_squared: Self,
     ) -> Quaternion<Self> {
         use num_traits::Zero;
-        use vector_quaternion_matrix::SqrtMethods;
+        use vqm::SqrtMethods;
 
         let acc_magnitude_squared = acc.norm_squared();
         // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,

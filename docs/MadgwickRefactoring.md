@@ -105,4 +105,3 @@ qDot1 -= s1 * betaNormReciprocal;
 qDot2 -= s2 * betaNormReciprocal;
 qDot3 -= s3 * betaNormReciprocal;
 ```
-

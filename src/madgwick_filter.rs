@@ -1,7 +1,7 @@
 use crate::{SensorFusion, SensorFusionMath};
 use core::ops::{Div, Neg, Sub};
 use num_traits::{One, Zero};
-use vector_quaternion_matrix::{Quaternion, QuaternionMath, SqrtMethods, Vector3d, Vector3dMath};
+use vqm::{Quaternion, QuaternionMath, SqrtMethods, Vector3d, Vector3dMath};
 
 pub type MadgwickFilterf32 = MadgwickFilter<f32>;
 pub type MadgwickFilterf64 = MadgwickFilter<f64>;
@@ -124,7 +124,7 @@ mod tests {
     use crate::FuseAccGyro;
 
     use super::*;
-    use vector_quaternion_matrix::{Quaternionf32, Vector3df32};
+    use vqm::{Quaternionf32, Vector3df32};
 
     fn is_normal<T: Sized + Send + Sync + Unpin>() {}
     fn is_full<T: Sized + Send + Sync + Unpin + Copy + Clone + Default + PartialEq>() {}
