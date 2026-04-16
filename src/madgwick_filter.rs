@@ -51,7 +51,7 @@ where
         + SensorFusionMath,
 {
     pub fn set_beta(&mut self, beta: T) {
-        self.set_free_parameters(beta, T::zero());
+        self.set_gains(beta, T::zero());
     }
 }
 
@@ -73,8 +73,8 @@ impl<T> SensorFusion<T> for MadgwickFilter<T>
 where
     T: Copy + Zero + PartialOrd + QuaternionMath + SqrtMethods + SensorFusionMath,
 {
-    fn set_free_parameters(&mut self, parameter0: T, _parameter1: T) {
-        self.beta = parameter0;
+    fn set_gains(&mut self, gain0: T, _gain1: T) {
+        self.beta = gain0;
     }
 
     fn requires_initialization() -> bool {

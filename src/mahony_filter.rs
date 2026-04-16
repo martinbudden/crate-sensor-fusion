@@ -65,7 +65,7 @@ where
         + SensorFusionMath,
 {
     pub fn set_proportional_integral(&mut self, kp: T, ki: T) {
-        self.set_free_parameters(kp, ki);
+        self.set_gains(kp, ki);
     }
 }
 
@@ -85,9 +85,9 @@ where
         + Vector3dMath
         + SensorFusionMath,
 {
-    fn set_free_parameters(&mut self, parameter0: T, parameter1: T) {
-        self.kp = parameter0;
-        self.ki = parameter1;
+    fn set_gains(&mut self, gain0: T, gain1: T) {
+        self.kp = gain0;
+        self.ki = gain1;
     }
     fn requires_initialization() -> bool {
         true

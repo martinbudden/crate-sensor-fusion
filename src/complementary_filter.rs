@@ -62,7 +62,7 @@ where
         (-acc.x).atan2((acc.y * acc.y + acc.z * acc.z).sqrt())
     }
     pub fn set_alpha(&mut self, alpha: T) {
-        self.set_free_parameters(alpha, T::zero());
+        self.set_gains(alpha, T::zero());
     }
 }
 
@@ -81,8 +81,8 @@ where
         + QuaternionMath
         + SensorFusionMath,
 {
-    fn set_free_parameters(&mut self, parameter0: T, _parameter1: T) {
-        self.alpha = parameter0;
+    fn set_gains(&mut self, gain0: T, _gain1: T) {
+        self.alpha = gain0;
     }
     fn requires_initialization() -> bool {
         false

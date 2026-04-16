@@ -17,7 +17,7 @@ use vqm::{Quaternion, Quaternionf32, Vector3d, Vector3df32};
 /// assert_eq!(orientation, Quaternionf32 { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
 /// ```
 pub trait SensorFusion<T> {
-    fn set_free_parameters(&mut self, parameter0: T, parameter1: T);
+    fn set_gains(&mut self, gain0: T, gain1: T);
     fn requires_initialization() -> bool;
 
     fn fuse_acc_gyro(&mut self, acc: Vector3d<T>, gyro_rps: Vector3d<T>, delta_t: T) -> Quaternion<T>;
@@ -27,7 +27,7 @@ pub trait SensorFusion<T> {
 
 #[allow(unused)]
 pub trait SensorFusionf32 {
-    fn set_free_parameters(&mut self, parameter0: f32, parameter1: f32);
+    fn set_gains(&mut self, gain0: f32, gain1: f32);
     fn requires_initialization() -> bool;
 
     fn fuse_acc_gyro(&mut self, acc: Vector3df32, gyro_rps: Vector3df32, delta_t: f32) -> Quaternionf32;
@@ -100,7 +100,7 @@ mod tests {
     #[allow(dead_code)]
     pub struct TestStruct;
     impl SensorFusion<f32> for TestStruct {
-        fn set_free_parameters(&mut self, _parameter0: f32, _parameter1: f32) {}
+        fn set_gains(&mut self, _gain0: f32, _gain1: f32) {}
         fn requires_initialization() -> bool {
             true
         }
@@ -125,7 +125,7 @@ mod tests {
         _ = TestStruct::requires_initialization();
         //assert_eq!(TestStruct::requires_initialization(), true);
 
-        test_struct.set_free_parameters(0.0, 0.0);
+        test_struct.set_gains(0.0, 0.0);
 
         let delta_t: f32 = 0.0;
         let acc = Vector3df32::default();
