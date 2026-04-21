@@ -99,7 +99,7 @@ where
         self.q += q_dot * delta_t;
 
         // use the normalized accelerometer data to calculate an estimate of the attitude
-        let acc: Vector3d<T> = acc.normalized();
+        let acc: Vector3d<T> = acc.normalize();
         let roll_radians: T = ComplementaryFilter::roll_radians_from_acc_normalized(acc);
         let pitch_radians = ComplementaryFilter::pitch_radians_from_acc_normalized(acc);
         let q: Quaternion<T> = Quaternion::from_roll_pitch_angles_radians(roll_radians, pitch_radians);
@@ -108,7 +108,8 @@ where
         self.q = (self.q - q) * self.alpha + q; // optimized form of `self.alpha * q + (1.0 - self.alpha) * q` : uses fewer operations and can take advantage of multiply-add instruction
 
         // normalize the orientation quaternion and return it
-        *self.q.normalize()
+        self.q = self.q.normalize();
+        self.q
     }
 
     fn fuse_acc_gyro_mag(

@@ -96,7 +96,7 @@ where
     /// Fuses accelerometer and gyroscope readings to give the orientation quaternion.
     fn fuse_acc_gyro(&mut self, acc: Vector3d<T>, gyro_rps: Vector3d<T>, delta_t: T) -> Quaternion<T> {
         // Normalize acceleration
-        let acc = acc.normalized();
+        let acc = acc.normalize();
 
         // Calculate estimated direction of gravity in the sensor coordinate frame
         let gravity = self.q.gravity();
@@ -139,7 +139,8 @@ where
         }
 
         // normalize the orientation quaternion and return it
-        *self.q.normalize()
+        self.q = self.q.normalize();
+        self.q
     }
 
     fn fuse_acc_gyro_mag(

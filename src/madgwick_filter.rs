@@ -93,7 +93,8 @@ where
         self.q += q_dot * delta_t;
 
         // normalize the orientation quaternion and return it
-        *self.q.normalize()
+        self.q = self.q.normalize();
+        self.q
     }
 
     /// Fuses accelerometer, gyroscope, and magnetometer readings to give the orientation quaternion.
@@ -114,7 +115,8 @@ where
         self.q += q_dot * delta_t;
 
         // normalize the orientation quaternion and return it
-        *self.q.normalize()
+        self.q = self.q.normalize();
+        self.q
     }
 }
 

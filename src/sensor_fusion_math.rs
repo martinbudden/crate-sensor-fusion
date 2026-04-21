@@ -201,7 +201,7 @@ impl SensorFusionMath for f32 {
             a *= acc_magnitude_squared.sqrt_reciprocal();
         }
 
-        let m = mag.normalized();
+        let m = mag.normalize();
 
         // make copies of the components of q to simplify the algebraic expressions
         let q0 = q.w;
@@ -267,7 +267,7 @@ impl SensorFusionMath for f32 {
             z: q0 * m_bx.y - q1 * (a_dash.x + m_bx.z + _4bx_bz * (0.5 * sum_squares_minus_one + q3q3)) - q2 * a_dash.y
                 + q3 * 2.0 * (wz_common + m_bx.x * yz_common),
         }
-        .normalized()
+        .normalize()
     }
 }
 
