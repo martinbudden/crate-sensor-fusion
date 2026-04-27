@@ -2,7 +2,7 @@
 
 use vqm::{Quaternion, Quaternionf32, Vector3d, Vector3df32};
 
-/// A generic interface for any sensor fusion filter (Madgwick, Mahony, etc.)
+/// Common interface for the sensor fusion filters (Madgwick, Mahony, complementary).
 /// ```
 /// use vqm::{Vector3df32,Quaternionf32};
 /// use sensor_fusion::{MadgwickFilterf32,SensorFusion};
@@ -40,7 +40,9 @@ pub trait SensorFusionf32 {
     ) -> Quaternionf32;
 }
 
-/// Implements method call syntax for a sensor fusion filter.
+#[allow(clippy::doc_paragraphs_missing_punctuation)]
+/// Trait to allow sensor fusion filters to be used with method-call syntax, ie:<br>
+/// `let orientation = (acc, gyro_rps).fuse_acc_gyro_using(&mut madgwick, dt);`
 /// ```
 /// use vqm::{Vector3df32,Quaternionf32};
 /// use sensor_fusion::{MadgwickFilterf32,SensorFusion,FuseAccGyro};
@@ -65,6 +67,23 @@ impl<T> FuseAccGyro<T> for (Vector3d<T>, Vector3d<T>) {
     }
 }
 
+#[allow(clippy::doc_paragraphs_missing_punctuation)]
+/// Trait to allow sensor fusion filters to be used with method-call syntax, ie:<br>
+/// `let orientation = (acc, gyro_rps).fuse_acc_gyro_using(&mut madgwick, dt);`
+/// ```
+/// use vqm::{Vector3df32,Quaternionf32};
+/// use sensor_fusion::{MadgwickFilterf32,SensorFusion,FuseAccGyroMag};
+///
+/// let mut madgwick_filter = MadgwickFilterf32::default();
+///
+/// let delta_t: f32 = 0.0;
+/// let acc = Vector3df32::default();
+/// let gyro_rps = Vector3df32::default();
+/// let mag = Vector3df32::default();
+///
+/// let orientation = (acc, gyro_rps, mag).fuse_acc_gyro_mag_using(&mut madgwick_filter, delta_t);
+/// assert_eq!(orientation, Quaternionf32 { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
+/// ```
 pub trait FuseAccGyroMag<T> {
     fn fuse_acc_gyro_mag_using<F: SensorFusion<T>>(self, sensor_fusion_filter: &mut F, delta_t: T) -> Quaternion<T>;
 }

@@ -3,9 +3,12 @@ use core::ops::{Div, Neg, Sub};
 use num_traits::{One, Zero};
 use vqm::{Quaternion, QuaternionMath, SqrtMethods, Vector3d, Vector3dMath};
 
+/// Madgwick filter for `f32`<br>
 pub type MadgwickFilterf32 = MadgwickFilter<f32>;
+/// Madgwick filter for `f64`<br><br>
 pub type MadgwickFilterf64 = MadgwickFilter<f64>;
 
+/// [Madgwick filter](https://ahrs.readthedocs.io/en/latest/filters/madgwick.html).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MadgwickFilter<T> {
     // orientation quaternion
@@ -134,6 +137,17 @@ mod tests {
     #[test]
     fn normal_types() {
         is_full::<MadgwickFilter<f32>>();
+    }
+    #[test]
+    fn readme() {
+        let mut madgwick_filter = MadgwickFilterf32::default();
+
+        let dt: f32 = 0.001;
+        let acc = Vector3df32::default();
+        let gyro_rps = Vector3df32::default();
+
+        let orientation = madgwick_filter.fuse_acc_gyro(acc, gyro_rps, dt);
+        assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
     }
     #[test]
     fn update_orientation() {

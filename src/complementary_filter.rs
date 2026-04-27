@@ -4,9 +4,12 @@ use num_traits::{One, Zero};
 use crate::{SensorFusion, SensorFusionMath};
 use vqm::{Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath};
 
+/// Complementary filter for `f32`<br>
 pub type ComplementaryFilterf32 = ComplementaryFilter<f32>;
+/// Complementary filter for `f64`<br><br>
 pub type ComplementaryFilterf64 = ComplementaryFilter<f64>;
 
+/// [Complementary filter](https://ahrs.readthedocs.io/en/latest/filters/complementary.html).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ComplementaryFilter<T> {
     // orientation quaternion

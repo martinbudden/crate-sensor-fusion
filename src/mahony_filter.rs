@@ -4,9 +4,12 @@ use num_traits::{One, Zero};
 use crate::{SensorFusion, SensorFusionMath};
 use vqm::{MathConstants, Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath};
 
+/// Mahony filter for `f32`<br>
 pub type MahonyFilterf32 = MahonyFilter<f32>;
+/// Mahony filter for `f64`<br><br>
 pub type MahonyFilterf64 = MahonyFilter<f64>;
 
+/// [Mahony filter](https://ahrs.readthedocs.io/en/latest/filters/mahony.html).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MahonyFilter<T> {
     q: Quaternion<T>, // orientation quaternion

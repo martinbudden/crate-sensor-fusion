@@ -1,3 +1,4 @@
+#![allow(clippy::inline_always)]
 #![allow(clippy::many_single_char_names)]
 
 #[cfg(feature = "simd")]
@@ -5,6 +6,7 @@ use core::simd::{f32x4, simd_swizzle};
 
 use vqm::{Quaternion, Vector3d};
 
+/// Math functions for `SensorFusion`, using **SIMD** accelerations for `f32`.
 pub trait SensorFusionMath: Sized {
     fn estimate_gravity(q: Quaternion<Self>) -> Vector3d<Self>;
     fn derivative(q: Quaternion<Self>, gyro: Vector3d<Self>) -> Quaternion<Self>;
