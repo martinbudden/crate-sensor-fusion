@@ -25,16 +25,14 @@ fn main() {
     let mut madgwick = MadgwickFilterf32::new();
     let dt = 0.001; // 1 millisecond
 
-    // Mock sensor values, normally read from IMU
-    let gyro_dps = Vector3df32::new(100.0, 20.0, 10.0);
+    // Mock sensor values, gyro converted to rps (values normally read from IMU).
+    let gyro_rps = Vector3df32::new(90.0, 8.0, 10.0).to_radians();
     let acc = Vector3df32::new(0.1, 0.2, 0.9);
 
-    // Fuse acc and gyro values, after converting gyro to radians/s
-    let orientation = madgwick.fuse_acc_gyro(acc, gyro_dps.to_radians(), dt);
+    // Fuse acc and gyro values
+    let orientation = madgwick.fuse_acc_gyro(acc, gyro_rps, dt);
 
-    let roll = orientation.calculate_roll_degrees();
-    let pitch = orientation.calculate_pitch_degrees();
-    let yaw = orientation.calculate_yaw_degrees();
+    let (roll, pitch, yaw) = orientation.calculate_euler_angles_degrees();
 
     // Print out the Euler angles.
     println!("pitch={}, roll={}, yaw={}", pitch, roll, yaw);
@@ -43,14 +41,7 @@ fn main() {
 
 The Madgwick filter also supports three-way fusing of accelerometer, gyroscope, and magnetometer readings:
 
-```rust
-# use vqm::{Quaternionf32, Vector3df32};
-# use crate::sensor_fusion::{MadgwickFilterf32,SensorFusion};
-# let mut madgwick = MadgwickFilterf32::default();
-# let dt: f32 = 0.001;
-# let acc = Vector3df32::default();
-# let gyro_rps = Vector3df32::default();
-# let mag = Vector3df32::default();
+```text
 let orientation = madgwick.fuse_acc_gyro_mag(acc, gyro_rps, mag, dt);
 ```
 
@@ -58,14 +49,10 @@ let orientation = madgwick.fuse_acc_gyro_mag(acc, gyro_rps, mag, dt);
 
 The Mahony filter has the same interface as the Madgwick filter:
 
-```rust
-# use vqm::{Quaternionf32, Vector3df32};
+```text
 use crate::sensor_fusion::{MahonyFilterf32,SensorFusion};
 
 let mut mahony = MahonyFilterf32::default();
-# let dt: f32 = 0.001;
-# let acc = Vector3df32::default();
-# let gyro_rps = Vector3df32::default();
 
 let orientation = mahony.fuse_acc_gyro(acc, gyro_rps, dt);
 ```
@@ -76,15 +63,10 @@ The Mahony filter does not support 3-way fusion using a magnetometer.
 
 The `FuseAccGyro` and `FuseAccGyroMag` traits allow method-call syntax to be used:
 
-```rust
-# use vqm::{Quaternionf32, Vector3df32};
+```text
 use crate::sensor_fusion::{FuseAccGyro,FuseAccGyroMag,MadgwickFilterf32};
 
 let mut madgwick = MadgwickFilterf32::default();
-# let dt: f32 = 0.001;
-# let acc = Vector3df32::default();
-# let gyro_rps = Vector3df32::default();
-# let mag = Vector3df32::default();
 
 let orientation = (acc, gyro_rps).fuse_acc_gyro_using(&mut madgwick, dt);
 // or
@@ -116,9 +98,15 @@ However, because both the matrix and vector contain zero elements, and because t
 the calculation can be refactored to use fewer arithmetic operations.
 
 Indeed it can be reduced to a total of 31 arithmetic operations.
-By using SIMD this can be further reduced to 16 operations (11 scalar and 5 SIMD operations).
+By using SIMD this can be further reduced to 16 operations (11 scalar and 5 SIMD operations). See below.
 
-See below:
+I haven't yet benchmarked this Rust implementation,
+but the original C++ version of `MadgwickFilter::update_orientation` (equivalent to `madgwick.fuse_acc_gyro`)
+took or under 20 microseconds on a 240 MHz ESP32 S3.
+
+The aim is to be able to run sensor fusion a part of a Gyro/PID loop running at 8kHz. That means everything
+(including reading the IMU, filtering the output, performing sensor fusion and calculation the motor outputs
+using a PID controller) needs to run in 125 microseconds. This is currently looking achievable.
 
 ```text
 // Classic version

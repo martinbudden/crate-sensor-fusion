@@ -9,13 +9,34 @@ that is each release may contain incompatible API changes.
 
 Once the API has stabilized this project will adopt semantic versioning, the first release to do so will be `0.2.0`.
 
-## [Possible future]
+## [Possible_future]
 
 ### Added
 
 - May port  **VQF** (Versatile Quaternion Filter) from my C++ library [Library-SensorFusion](https://github.com/martinbudden/Library-SensorFusion).
 
 ## [Unreleased]
+
+### Added
+
+### Changed
+
+### Removed
+
+### Deprecated
+
+### Fixed
+
+### Security
+
+## [0.1.2] - 2023-05-02
+
+### Changed
+
+- Improved README.md.
+- Use vqm version 0.1.2.
+
+## [0.1.1] - 2023-04-27
 
 ### Added
 
@@ -27,14 +48,7 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 - Improved README.md.
 - Improved documentation.
-
-### Removed
-
-### Deprecated
-
-### Fixed
-
-### Security
+- Use vqm version 0.1.2.
 
 ## [0.1.0] - 2023-04-12
 

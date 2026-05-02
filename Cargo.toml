@@ -30,7 +30,7 @@ rustdoc-args = ["--html-in-header", "katex-header.html"]
 rustc_version = "0.4.1"
 
 [dependencies]
-vqm = { version = "0.1.1", default-features = false }
+vqm = { version = "0.1.2", default-features = false }
 #vqm = { git = "https://github.com/martinbudden/crate-vector-quaternion-matrix" }
 #vqm = { path = "../vector-quaternion-matrix" }
 num-traits = { version = "0.2.19", default-features = false }
