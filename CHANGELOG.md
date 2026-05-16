@@ -29,6 +29,18 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 ### Security
 
+## [0.1.4] - 2023-05-16
+
+### Changed
+
+- Use vqm version 0.1.5.
+
+## [0.1.3] - 2023-05-06
+
+### Changed
+
+- Use vqm version 0.1.3.
+
 ## [0.1.2] - 2023-05-02
 
 ### Changed
@@ -48,7 +60,7 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 - Improved README.md.
 - Improved documentation.
-- Use vqm version 0.1.2.
+- Use vqm version 0.1.1.
 
 ## [0.1.0] - 2023-04-12
 
