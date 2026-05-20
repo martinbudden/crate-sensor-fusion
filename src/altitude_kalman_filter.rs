@@ -24,9 +24,9 @@ m = 2 (altitude, acceleration)
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AltitudeKalmanFilter {
     /// States are a 3d vector with components: velocity, altitude, and bias.
-    /// predicted state.
+    /// Time-propagated prediction state vector.
     predicted: Vector3df32,
-    /// estimated state.
+    /// Current best estimation state vector.
     estimated: Vector3df32,
     /// Bias.
     beta: f32,

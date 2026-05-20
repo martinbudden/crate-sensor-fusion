@@ -25,14 +25,21 @@ pub struct PositionKalmanFilter {
 
     // Covariance blocks can be kept as a flat array, or partitioned
     // For simplicity, we use a 9x9 flat layout.
+    /// 9x9 Predicted System Uncertainty Covariance Matrix (P).
     pub P: Matrix9x9f32,
+    /// 9x9 Estimated Post-Correction Error Covariance Matrix (E).
     pub E: Matrix9x9f32,
 
-    // Hyperparameters
+    // --- Hyperparameters & Tuning Constants ---
+    /// Process Noise spectral density mapping to Velocity variance.
     pub q_velocity: f32,
+    /// Process Noise spectral density mapping to Sensor Drift variance.
     pub q_bias: f32,
+    /// Absolute Measurement Noise variance for horizontal GPS channels.
     pub r_gps_horiz: f32,
+    /// Absolute Measurement Noise variance for vertical GPS channels.
     pub r_gps_vert: f32,
+    /// Absolute Measurement Noise variance for barometric pressure altimeter.
     pub r_baro: f32,
 }
 
@@ -87,6 +94,14 @@ impl PositionKalmanFilter {
 
     /// Executes an asynchronous measurement update when a new Barometer reading arrives.
     /// Updates only the vertical Z axis components across all tracking states.
+    /// Updates vertical axis tracking components `(z, v_z, b_z)` when a Barometer altitude drop occurs.
+    ///
+    /// Demonstrates cross-covariance correction propagation via a single measurement scalar.
+    ///
+    /// ### Core Operations
+    /// *  `S = P₂₂ + R_baro` (Innovation Variance calculation)
+    /// *  `K = P_column_2 * (1.0 / S)` (Kalman Gain column selection extraction)
+    /// *  `E = P - K * H * P` (Covariance correction step)
     #[allow(non_snake_case)]
     pub fn update_barometer(&mut self, baro_altitude: f32) {
         // Calculate the scalar innovation covariance: S = P_zz + R
