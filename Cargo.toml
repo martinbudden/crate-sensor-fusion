@@ -7,35 +7,40 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/martinbudden/crate-sensor-fusion"
 description = "Sensor Fusion Filters for Attitude and Heading Reference Systems (AHRS)"
-keywords = ["sensor-fusion", "Mahony", "Madgwick", "AHRS", "no-std"]
+keywords = ["sensor-fusion", "Mahony", "Madgwick", "AHRS", "no-std", "Kalman"]
 categories = [
     "embedded",
     "mathematics",
-    "no-std::no-alloc",
+    "no-std",
     "science::robotics",
+    "aerospace::drones",
 ]
 
 [package.metadata.docs.rs]
-rustdoc-args = ["--html-in-header", "katex-header.html"]
+all-features = true
 
 [build-dependencies]
 rustc_version = "0.4.1"
 
 [features]
 default = ["libm"]
-std = ["vqm/std"]
-libm = ["num-traits/libm", "vqm/libm"]
+std = ["vqm/std", "num-traits/std"] # Propagates std upwards properly
+libm = ["dep:libm", "num-traits/libm", "vqm/libm"]
 no_align = ["vqm/no_align"]
 simd = ["vqm/simd"]
 
 [dependencies]
-vqm = "0.1.5"
+# Set default-features = false to prevent host target leakage
+#vqm = { version = "0.1.7", default-features = false }
+#vqm = { git = "https://github.com/martinbudden/crate-vector-quaternion-matrix" }
+vqm = { path = "../vqm"  }
 num-traits = { version = "0.2.19", default-features = false }
+libm = { version = "0.2.16", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
 rand = "0.10.1" 
-# approx = { version = "0.5", default-features = false }
+approx = { version = "0.5.1", default-features = false }
 
 # see https://doc.rust-lang.org/cargo/reference/profiles.html
 [profile.dev]

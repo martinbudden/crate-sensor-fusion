@@ -4,11 +4,13 @@ This crate contains [sensor fusion](https://en.wikipedia.org/wiki/Sensor_fusion)
 output from a gyroscope, accelerometer, and optionally a magnetometer to give output that has less uncertainty
 than the output of the individual sensors.
 
-Three sensor fusion implementations are available:
+Five sensor fusion implementations are available:
 
 1. Complementary Filter
 2. Mahony Filter
 3. Madgwick Filter
+4. Altitude Kalman Filter
+5. Position Kalman Filter.
 
 The Madgwick filter has been refactored to be more computationally efficient (and so faster) than
 the standard version used in many implementations, see [Optimization](#opt) below.
