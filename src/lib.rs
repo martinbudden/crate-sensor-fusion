@@ -11,19 +11,19 @@
 #![allow(clippy::return_self_not_must_use)]
 #![allow(clippy::must_use_candidate)]
 
+mod altitude_kalman_filter;
 mod complementary_filter;
 mod madgwick_filter;
 mod mahony_filter;
+mod position_kalman_filter;
 mod sensor_fusion;
 mod sensor_fusion_math;
-mod altitude_kalman_filter;
-mod position_kalman_filter;
 
+pub use altitude_kalman_filter::AltitudeKalmanFilterf32;
 pub use complementary_filter::{ComplementaryFilter, ComplementaryFilterf32, ComplementaryFilterf64};
 pub use madgwick_filter::{MadgwickFilter, MadgwickFilterf32, MadgwickFilterf64};
 pub use mahony_filter::{MahonyFilter, MahonyFilterf32, MahonyFilterf64};
-pub use position_kalman_filter::PositionKalmanFilter;
-pub use altitude_kalman_filter::AltitudeKalmanFilter;
+pub use position_kalman_filter::{PositionKalmanFilterf32,PositionKalmanFilter};
 
 pub use sensor_fusion::{FuseAccGyro, FuseAccGyroMag, SensorFusion};
 pub use sensor_fusion_math::SensorFusionMath;

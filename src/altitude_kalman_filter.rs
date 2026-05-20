@@ -1,25 +1,8 @@
 #![allow(unused)]
-use num_traits::{One,Float};
+use num_traits::{Float, One};
 use vqm::{Matrix3x3f32, Vector3df32};
-/*
-<https://thekalmanfilter.com/kalman-filter-explained-simply/>
+pub type AltitudeKalmanFilterf32 = AltitudeKalmanFilter;
 
-| S | description                     | type                | usage        |
-| - | ------------------------------- | ------------------- | ------------ |
-| x | state variable                  | n x 1 column vector | Output       |
-| P | state covariance matrix         | n x n matrix        | Output       |
-| z | measurement                     | m x 1 column vector | Input        |
-| A | state transition matrix         | n x n matrix        | System Model |
-| H | state-to-measurement matrix     | m x n matrix        | System Model |
-| R | measurement covariance matrix   | m x m matrix        | Input        |
-| Q | process noise covariance matrix | n x n matrix        | System Model |
-| K | Kalman Gain                     | n x m               | Internal     |
-
-In our case
-n = 3 (velocity, altitude, and bias)
-m = 2 (altitude, acceleration)
-
-*/
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AltitudeKalmanFilter {
@@ -212,6 +195,7 @@ mod tests {
 
         // Extract altitude row from the flat P matrix
         let altitude_row = p.row(AltitudeKalmanFilter::ALTITUDE_ROW);
+        assert_eq!(Vector3df32 { x: 2.0, y: 5.0, z: 11.0 }, altitude_row);
 
         // Compute the updated Covariance Matrix (E).
         let kh_p = Matrix3x3f32::outer_product(k, altitude_row);

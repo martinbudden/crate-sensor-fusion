@@ -70,3 +70,23 @@ To achieve maximum speed on microcontrollers, this crate enforces four software 
 LLVM auto-vectorization emits single-cycle parallel vector hardware instructions (`vmul.f32`).
 3. **Analytic Inversion:** Multi-dimensional GPS steps leverage a zero-loop 3x3 determinant inverse (Cramer's Rule).
 4. **Static Non-Snake Casing:** Methods leverage `#[allow(non_snake_case)]` to match textbook terminology.
+
+## See also
+
+<https://thekalmanfilter.com/kalman-filter-explained-simply/>
+
+| S | description                     | type                | usage        |
+| - | ------------------------------- | ------------------- | ------------ |
+| x | state variable                  | n x 1 column vector | Output       |
+| P | state covariance matrix         | n x n matrix        | Output       |
+| z | measurement                     | m x 1 column vector | Input        |
+| A | state transition matrix         | n x n matrix        | System Model |
+| H | state-to-measurement matrix     | m x n matrix        | System Model |
+| R | measurement covariance matrix   | m x m matrix        | Input        |
+| Q | process noise covariance matrix | n x n matrix        | System Model |
+| K | Kalman Gain                     | n x m               | Internal     |
+
+For `AltitudeKalmanFilter`
+
+n = 3 (velocity, altitude, and bias)
+m = 1 (altitude)
