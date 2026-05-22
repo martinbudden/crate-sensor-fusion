@@ -1,5 +1,5 @@
 use core::ops::{Div, Neg, Sub};
-use num_traits::{One, Zero};
+use num_traits::{ConstOne, ConstZero, One, Zero};
 
 use crate::{SensorFusion, SensorFusionMath};
 use vqm::{MathConstants, Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath};
@@ -24,7 +24,7 @@ pub struct MahonyFilter<T> {
 
 impl<T> Default for MahonyFilter<T>
 where
-    T: Copy + Zero + One + Default + MathConstants,
+    T: Copy + ConstZero + ConstOne + Zero + One + Default + MathConstants + PartialEq,
 {
     fn default() -> Self {
         Self::new()
@@ -33,16 +33,16 @@ where
 
 impl<T> MahonyFilter<T>
 where
-    T: Copy + Zero + One + Default + MathConstants,
+    T: Copy + ConstZero + ConstOne + Zero + One + Default + MathConstants + PartialEq,
 {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         MahonyFilter {
-            q: Quaternion::default(),
+            q: Quaternion { w: T::ONE, x: T::ZERO, y: T::ZERO, z: T::ZERO },
             kp: T::TEN,
-            ki: T::zero(),
-            error_integral: Vector3d::default(),
-            gyro_rps_1: Vector3d::default(),
-            gyro_rps_2: Vector3d::default(),
+            ki: T::ZERO,
+            error_integral: Vector3d { x: T::ZERO, y: T::ZERO, z: T::ZERO },
+            gyro_rps_1: Vector3d { x: T::ZERO, y: T::ZERO, z: T::ZERO },
+            gyro_rps_2: Vector3d { x: T::ZERO, y: T::ZERO, z: T::ZERO },
             use_quadratic_interpolation: false,
             use_matrix_exponential_approximation: false,
         }

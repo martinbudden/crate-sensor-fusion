@@ -1,5 +1,5 @@
 #![allow(unused)]
-use num_traits::{Float, One};
+use num_traits::{ConstZero, Float, One};
 use vqm::{Matrix3x3f32, Vector3df32};
 pub type AltitudeKalmanFilterf32 = AltitudeKalmanFilter;
 
@@ -44,16 +44,16 @@ impl AltitudeKalmanFilter {
     const ALTITUDE_ROW: usize = 1;
     const BIAS_ROW: usize = 2;
 
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            predicted: Vector3df32::default(),
-            estimated: Vector3df32::default(),
+            predicted: Vector3df32::ZERO,
+            estimated: Vector3df32::ZERO,
             beta: 0.0,
             R: Self::R,
             q_velocity: Self::Q1,
             q_bias: Self::Q3,
-            E: Matrix3x3f32::default(),
-            P: Matrix3x3f32::default(),
+            E: Matrix3x3f32::ZERO,
+            P: Matrix3x3f32::ZERO,
         }
     }
 }
@@ -101,6 +101,11 @@ impl AltitudeKalmanFilter {
         self.E = Matrix3x3f32::one() * 100.0;
     }
 
+    /// Returns doublet `(estimated velocity, estimated altitude)`.
+    pub fn state(&self) -> (f32, f32) {
+        (self.estimated.x, self.estimated.y)
+    }
+
     pub fn update(&mut self, altitude_measurement: f32, acceleration_measurement: f32, delta_t: f32) -> Vector3df32 {
         // States are a 3d vector with components: velocity, altitude, and bias.
         // Destructure the state vectors as references with meaningful names, for code legibility.
@@ -119,9 +124,9 @@ impl AltitudeKalmanFilter {
         self.P = Self::predict_covariance(self.E, delta_t, self.beta, self.q_velocity, self.q_bias);
 
         // update the Kalman gain, k
-        // H_transposed selects the second column of P during multiplication
+        // h_transposed selects the second column of P during multiplication
         let h_transposed = Vector3df32 { x: 0.0, y: 1.0, z: 0.0 };
-        // S is the scalar p22 + r
+        // s is the scalar P22 + r
         let s = self.P[Matrix3x3f32::M22] + self.R;
         // K = (P * H^T) / S
         let k = (self.P * h_transposed) * (1.0 / s);
@@ -130,12 +135,11 @@ impl AltitudeKalmanFilter {
         let error = altitude_measurement - *predicted_altitude;
         self.estimated = self.predicted + k * error;
 
-        // update estimated P using outer product of K and altitude row
-        // Extract the altitude row of the P matrix as a 3d vector
+        // Extract the altitude row of the P matrix as a 3d vector.
         let altitude_row = self.P.row(Self::ALTITUDE_ROW);
 
-        // K is a 3d vector.
-        // Matrix::outer_product(k, altitude_row) creates a 3x3 matrix
+        // update estimated P using outer product of k and the altitude row.
+        // outer_product(k, altitude_row) creates a 3x3 matrix, since both k and altitude_row are 3d vectors.
         self.E = self.P - Matrix3x3f32::outer_product(k, altitude_row);
 
         self.estimated

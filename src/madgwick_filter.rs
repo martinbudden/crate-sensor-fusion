@@ -1,12 +1,22 @@
 use crate::{SensorFusion, SensorFusionMath};
 use core::ops::{Div, Neg, Sub};
-use num_traits::{One, Zero};
+use num_traits::{ConstOne, ConstZero, One, Zero};
 use vqm::{Quaternion, QuaternionMath, SqrtMethods, Vector3d, Vector3dMath};
 
 /// Madgwick filter for `f32`<br>
 pub type MadgwickFilterf32 = MadgwickFilter<f32>;
 /// Madgwick filter for `f64`<br><br>
 pub type MadgwickFilterf64 = MadgwickFilter<f64>;
+
+pub trait ConstFour {
+    const FOUR: Self;
+}
+impl ConstFour for f32 {
+    const FOUR: Self = 4.0;
+}
+impl ConstFour for f64 {
+    const FOUR: Self = 4.0;
+}
 
 /// [Madgwick filter](https://ahrs.readthedocs.io/en/latest/filters/madgwick.html).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -19,7 +29,7 @@ pub struct MadgwickFilter<T> {
 
 impl<T> Default for MadgwickFilter<T>
 where
-    T: Copy + Zero + One + Default,
+    T: Copy + ConstZero + ConstOne + ConstFour,
 {
     fn default() -> Self {
         Self::new()
@@ -28,13 +38,13 @@ where
 
 impl<T> MadgwickFilter<T>
 where
-    T: Copy + Zero + One + Default,
+    T: Copy + ConstZero + ConstOne + ConstFour,
 {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         MadgwickFilter {
-            q: Quaternion::default(),
-            max_acc_magnitude_squared: T::one() + T::one() + T::one() + T::one(), // 4
-            beta: T::one(),
+            q: Quaternion { w: T::ONE, x: T::ZERO, y: T::ZERO, z: T::ZERO },
+            max_acc_magnitude_squared: T::FOUR,
+            beta: T::ONE,
         }
     }
 }

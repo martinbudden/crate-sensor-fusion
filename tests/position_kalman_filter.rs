@@ -1,5 +1,5 @@
-use sensor_fusion::{PositionKalmanFilter};
-use vqm::{Vector3df32, Matrix9x9f32,StateVector9f32};
+use sensor_fusion::PositionKalmanFilter;
+use vqm::{Matrix9x9f32, StateVector9f32, Vector3df32};
 
 #[cfg(test)]
 mod position_filter_tests {
@@ -31,22 +31,22 @@ mod position_filter_tests {
             P: Matrix9x9f32::new({
                 let mut d = [0.0; 81];
                 // Fill indices corresponding to x, y, z variances
-                d[Matrix9x9f32::index(1, 1)] = 2.0; // X position variance
-                d[Matrix9x9f32::index(2, 2)] = 2.0; // Y position variance
-                d[Matrix9x9f32::index(3, 3)] = 4.0; // Z position variance (P_zz)
+                d[Matrix9x9f32::index1(1, 1)] = 2.0; // X position variance
+                d[Matrix9x9f32::index1(2, 2)] = 2.0; // Y position variance
+                d[Matrix9x9f32::index1(3, 3)] = 4.0; // Z position variance (P_zz)
 
-                d[Matrix9x9f32::index(4, 4)] = 1.0; // X velocity variance
-                d[Matrix9x9f32::index(5, 5)] = 1.0; // Y velocity variance
-                d[Matrix9x9f32::index(6, 6)] = 2.0; // Z velocity variance
+                d[Matrix9x9f32::index1(4, 4)] = 1.0; // X velocity variance
+                d[Matrix9x9f32::index1(5, 5)] = 1.0; // Y velocity variance
+                d[Matrix9x9f32::index1(6, 6)] = 2.0; // Z velocity variance
 
-                d[Matrix9x9f32::index(7, 7)] = 0.1; // X bias variance
-                d[Matrix9x9f32::index(8, 8)] = 0.1; // Y bias variance
-                d[Matrix9x9f32::index(9, 9)] = 0.5; // Z bias variance
+                d[Matrix9x9f32::index1(7, 7)] = 0.1; // X bias variance
+                d[Matrix9x9f32::index1(8, 8)] = 0.1; // Y bias variance
+                d[Matrix9x9f32::index1(9, 9)] = 0.5; // Z bias variance
 
                 // Inject a cross-covariance between Z-position (3) and Z-velocity (6)
                 // and Z-position (3) and Z-bias (9) to prove the matrix update paths works!
-                d[Matrix9x9f32::index(6, 3)] = 1.0; // Column 3, Row 6 (cross term)
-                d[Matrix9x9f32::index(9, 3)] = -0.5; // Column 3, Row 9 (cross term)
+                d[Matrix9x9f32::index1(6, 3)] = 1.0; // Column 3, Row 6 (cross term)
+                d[Matrix9x9f32::index1(9, 3)] = -0.5; // Column 3, Row 9 (cross term)
                 d
             }),
             E: Matrix9x9f32::default(),
@@ -84,7 +84,7 @@ mod position_filter_tests {
 
         // 6. Verify Covariance Matrix Extraction Reduction (E = P - K * H * P)
         // New P_zz (index 3,3) = 4.0 - (0.5 * 4.0) = 2.0
-        let flat_z_idx = Matrix9x9f32::index(PositionKalmanFilter::Z_POS_INDEX, PositionKalmanFilter::Z_POS_INDEX);
+        let flat_z_idx = Matrix9x9f32::index1(PositionKalmanFilter::Z_POS_INDEX, PositionKalmanFilter::Z_POS_INDEX);
         assert_abs_diff_eq!(filter.E[flat_z_idx], 2.0, epsilon = 1e-5);
     }
 }
@@ -107,25 +107,25 @@ mod gps_filter_tests {
             P: Matrix9x9f32::new({
                 let mut d = [0.0; 81];
                 // Fill the diagonal variances for Position (Rows 1-3)
-                d[Matrix9x9f32::index(1, 1)] = 2.0; // X variance
-                d[Matrix9x9f32::index(2, 2)] = 2.0; // Y variance
-                d[Matrix9x9f32::index(3, 3)] = 3.0; // Z variance
+                d[Matrix9x9f32::index1(1, 1)] = 2.0; // X variance
+                d[Matrix9x9f32::index1(2, 2)] = 2.0; // Y variance
+                d[Matrix9x9f32::index1(3, 3)] = 3.0; // Z variance
 
                 // Fill diagonal variances for Velocity (Rows 4-6)
-                d[Matrix9x9f32::index(4, 4)] = 1.0;
-                d[Matrix9x9f32::index(5, 5)] = 1.0;
-                d[Matrix9x9f32::index(6, 6)] = 1.0;
+                d[Matrix9x9f32::index1(4, 4)] = 1.0;
+                d[Matrix9x9f32::index1(5, 5)] = 1.0;
+                d[Matrix9x9f32::index1(6, 6)] = 1.0;
 
                 // Fill diagonal variances for Bias (Rows 7-9)
-                d[Matrix9x9f32::index(7, 7)] = 0.1;
-                d[Matrix9x9f32::index(8, 8)] = 0.1;
-                d[Matrix9x9f32::index(9, 9)] = 0.1;
+                d[Matrix9x9f32::index1(7, 7)] = 0.1;
+                d[Matrix9x9f32::index1(8, 8)] = 0.1;
+                d[Matrix9x9f32::index1(9, 9)] = 0.1;
 
                 // Inject cross-covariances to test the multidimensional gain path:
                 // Here, we simulate that an error in X-position correlates with X-velocity,
                 // and an error in Z-position correlates with Z-bias.
-                d[Matrix9x9f32::index(4, 1)] = 0.5; // Row 4, Col 1 (X-vel vs X-pos)
-                d[Matrix9x9f32::index(9, 3)] = -0.2; // Row 9, Col 3 (Z-bias vs Z-pos)
+                d[Matrix9x9f32::index1(4, 1)] = 0.5; // Row 4, Col 1 (X-vel vs X-pos)
+                d[Matrix9x9f32::index1(9, 3)] = -0.2; // Row 9, Col 3 (Z-bias vs Z-pos)
                 d
             }),
             E: Matrix9x9f32::default(),
@@ -171,7 +171,7 @@ mod gps_filter_tests {
 
         // 6. Verify Post-Correction Covariance Matrix Changes (E = P - K * H * P)
         // New P_xx = 2.0 - (K_pos_xx * P_xx) = 2.0 - (0.5 * 2.0) = 1.0
-        let flat_x_idx = Matrix9x9f32::index(1, 1);
+        let flat_x_idx = Matrix9x9f32::index1(1, 1);
         assert_abs_diff_eq!(filter.E[flat_x_idx], 1.0, epsilon = 1e-5);
     }
     #[test]
@@ -186,25 +186,25 @@ mod gps_filter_tests {
             P: Matrix9x9f32::new({
                 let mut d = [0.0; 81];
                 // Fill the diagonal variances for Position (Rows 1-3)
-                d[Matrix9x9f32::index(1, 1)] = 2.0; // X variance
-                d[Matrix9x9f32::index(2, 2)] = 2.0; // Y variance
-                d[Matrix9x9f32::index(3, 3)] = 3.0; // Z variance
+                d[Matrix9x9f32::index1(1, 1)] = 2.0; // X variance
+                d[Matrix9x9f32::index1(2, 2)] = 2.0; // Y variance
+                d[Matrix9x9f32::index1(3, 3)] = 3.0; // Z variance
 
                 // Fill diagonal variances for Velocity (Rows 4-6)
-                d[Matrix9x9f32::index(4, 4)] = 1.0;
-                d[Matrix9x9f32::index(5, 5)] = 1.0;
-                d[Matrix9x9f32::index(6, 6)] = 1.0;
+                d[Matrix9x9f32::index1(4, 4)] = 1.0;
+                d[Matrix9x9f32::index1(5, 5)] = 1.0;
+                d[Matrix9x9f32::index1(6, 6)] = 1.0;
 
                 // Fill diagonal variances for Bias (Rows 7-9)
-                d[Matrix9x9f32::index(7, 7)] = 0.1;
-                d[Matrix9x9f32::index(8, 8)] = 0.1;
-                d[Matrix9x9f32::index(9, 9)] = 0.1;
+                d[Matrix9x9f32::index1(7, 7)] = 0.1;
+                d[Matrix9x9f32::index1(8, 8)] = 0.1;
+                d[Matrix9x9f32::index1(9, 9)] = 0.1;
 
                 // Inject cross-covariances to test the multidimensional gain path:
                 // Correlation 1: X-position vs X-velocity
-                d[Matrix9x9f32::index(4, 1)] = 0.5; // Row 4, Col 1 
+                d[Matrix9x9f32::index1(4, 1)] = 0.5; // Row 4, Col 1 
                 // Correlation 2: Z-position vs Z-bias
-                d[Matrix9x9f32::index(9, 3)] = -0.2; // Row 9, Col 3 
+                d[Matrix9x9f32::index1(9, 3)] = -0.2; // Row 9, Col 3 
                 d
             }),
             E: Matrix9x9f32::default(),
@@ -242,7 +242,7 @@ mod gps_filter_tests {
 
         // 6. Verify Post-Correction Covariance Matrix Changes (E = P - KH_P)
         // New P_xx = 2.0 - 1.0 = 1.0
-        let flat_x_idx = Matrix9x9f32::index(1, 1);
+        let flat_x_idx = Matrix9x9f32::index1(1, 1);
         assert_abs_diff_eq!(filter.E[flat_x_idx], 1.0, epsilon = 1e-5);
     }
 }
@@ -263,7 +263,7 @@ mod covariance_prediction_tests {
             // Give velocity a starting uncertainty of 4.0
             E: Matrix9x9f32::new({
                 let mut d = [0.0; 81];
-                d[Matrix9x9f32::index(4, 4)] = 4.0; // X velocity variance
+                d[Matrix9x9f32::index1(4, 4)] = 4.0; // X velocity variance
                 d
             }),
             q_velocity: 1.0, // Q_vel noise = 1.0
@@ -281,13 +281,13 @@ mod covariance_prediction_tests {
         // Position uncertainty expands because moving with uncertain velocity blurs position knowledge.
         // Expected P_pos_x = E_pos_x + (2 * dt * E_pos_vel) + (dt² * E_vel_x)
         //                  = 0.0 + 0.0 + (0.5² * 4.0) = 1.0
-        let p_pos_x_idx = Matrix9x9f32::index(1, 1);
+        let p_pos_x_idx = Matrix9x9f32::index1(1, 1);
         assert_abs_diff_eq!(filter.P[p_pos_x_idx], 1.0, epsilon = 1e-5);
 
         // Velocity uncertainty grows by the accumulated process noise Q
         // Expected P_vel_x = E_vel_x + (dt² * q_velocity)
         //                  = 4.0 + (0.5² * 1.0) = 4.25
-        let p_vel_x_idx = Matrix9x9f32::index(4, 4);
+        let p_vel_x_idx = Matrix9x9f32::index1(4, 4);
         assert_abs_diff_eq!(filter.P[p_vel_x_idx], 4.25, epsilon = 1e-5);
     }
 }
@@ -310,7 +310,7 @@ mod matrix_9x9_validation_tests {
 
         // 2. Verify Row Vector Extraction Block Layout (1-Indexed)
         // Row 1 elements should match flat indices 0, 1, 2 for position parts, etc.
-        let row1_vector = StateVector9f32::from(mat.row_tuple3d(1));
+        let row1_vector = StateVector9f32::from(mat.row_tuple3d(0));
         assert_abs_diff_eq!(row1_vector.pos.x, 1.0, epsilon = 1e-5);
         assert_abs_diff_eq!(row1_vector.pos.y, 2.0, epsilon = 1e-5);
         assert_abs_diff_eq!(row1_vector.pos.z, 3.0, epsilon = 1e-5);
@@ -319,7 +319,7 @@ mod matrix_9x9_validation_tests {
 
         // 3. Verify Column Vector Extraction Block Layout (1-Indexed)
         // Column 1 crosses array boundaries at increments of 9.
-        let col1_vector = StateVector9f32::from(mat.column_tuple3d(1));
+        let col1_vector = StateVector9f32::from(mat.column_tuple3d(0));
         assert_abs_diff_eq!(col1_vector.pos.x, 1.0, epsilon = 1e-5); // Index 0
         assert_abs_diff_eq!(col1_vector.pos.y, 10.0, epsilon = 1e-5); // Index 9
         assert_abs_diff_eq!(col1_vector.pos.z, 19.0, epsilon = 1e-5); // Index 18
