@@ -19,20 +19,26 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 ### Added
 
-- `AltitudeKalmanFilter`
-- `PositionKalmanFilter`
-
 ### Changed
 
 ### Removed
-
-- `katex-header.html`
 
 ### Deprecated
 
 ### Fixed
 
 ### Security
+
+## [0.1.5] - 2023-05-16
+
+### Added
+
+- `AltitudeKalmanFilter`
+- `PositionKalmanFilter`
+
+### Removed
+
+- `katex-header.html`
 
 ## [0.1.4] - 2023-05-16
 
