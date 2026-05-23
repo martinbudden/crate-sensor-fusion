@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/martinbudden/crate-sensor-fusion"
 description = "Sensor Fusion Filters for Attitude and Heading Reference Systems (AHRS)"
-keywords = ["sensor-fusion", "Mahony", "Madgwick", "AHRS", "no-std", "Kalman"]
+keywords = ["sensor-fusion", "no-std", "Madgwick", "Mahony", "Kalman", "AHRS"]
 categories = [
     "embedded",
     "mathematics",
@@ -31,8 +31,8 @@ simd = ["vqm/simd"]
 
 [dependencies]
 # Set default-features = false to prevent host target leakage
-#vqm = { version = "0.1.7", default-features = false }
-vqm = { git = "https://github.com/martinbudden/crate-vector-quaternion-matrix" }
+vqm = { version = "0.1.8" }
+#vqm = { git = "https://github.com/martinbudden/crate-vector-quaternion-matrix" }
 #vqm = { path = "../vqm"  }
 num-traits = { version = "0.2.19", default-features = false }
 libm = { version = "0.2.16", optional = true }

@@ -1,9 +1,9 @@
 #![allow(unused)]
 use num_traits::One;
-use vqm::{Matrix3x3f32, Matrix9x9f32, StateVector9, Vector3df32};
+use vqm::{KalmanStateVector9, Matrix3x3f32, Matrix9x9f32, Vector3df32};
 
-pub type StateVector9f32 = StateVector9<f32>;
-pub type StateVector9f64 = StateVector9<f64>;
+pub type KalmanStateVector9f32 = KalmanStateVector9<f32>;
+pub type KalmanStateVector9f64 = KalmanStateVector9<f64>;
 pub type PositionKalmanFilterf32 = PositionKalmanFilter;
 /*
 The system is traditionally split into two cleanly decoupled steps to avoid managing a massive 15-state matrix:
@@ -53,7 +53,7 @@ impl Default for PositionKalmanFilter {
 }
 
 impl PositionKalmanFilter {
-    // 1-indexed constants to map sensor states for students
+    // 1-indexed constants to map sensor states
     pub const Z_POS_INDEX: usize = 3; // Row 3 / Col 3 corresponds to Z position (Altitude)
     pub const Z_POS_ROW: usize = 3; // H vector selects the 3rd row of P
     pub const S_XX: usize = Matrix3x3f32::M11;
@@ -96,7 +96,7 @@ impl PositionKalmanFilter {
         // 2. High-level vector physics integration
         self.pos += self.vel * dt + acc_true * (0.5 * dt * dt);
         self.vel += acc_true * dt;
-        // Bias remains constant during prediction, modeled as a random walk in covariance
+        // Bias remains constant during prediction, it is modeled as a random walk in covariance.
     }
 
     /// Propagates the 9x9 covariance matrix forward in time.
@@ -104,14 +104,17 @@ impl PositionKalmanFilter {
     /// A full 9x9 matrix multiplication involves 729 individual matrix multiplications,
     /// The matrix is sparsely populated and so is divided 9 separate 3x3 sub-matrices (blocks),
     /// allowing us to skip the zero-multiplications altogether.
-    /// an analytically expanded kinematic sparse row-block sequence.
     ///
     /// ### Formula
     /// *  `P_k = A * E_k₋₁ * Aᵀ + Q`
     #[allow(non_snake_case)]
     pub fn predict_covariance(&mut self, dt: f32) {
         let dt2 = dt * dt;
-        let mut P_new = Matrix9x9f32::default();
+        let mut P = Matrix9x9f32::default();
+
+        // Calculate
+        //    P = A * E * A^T + Q
+        // avoiding expensive 9x9 matrix multiplication by splitting the 9x9 matrices into sub-matrices (blocks).
 
         // =====================================================================
         // BLOCK 1: POSITION STATES (Rows r = 1..=3)
@@ -119,28 +122,28 @@ impl PositionKalmanFilter {
         for r in 1..=3 {
             let r_plus_3 = r + 3;
 
-            // Columns 1..=3: Position / Position Block
+            // Columns 1..=3: PositionPosition Block
             for c in 1..=3 {
                 let idx = Matrix9x9f32::index1(r, c);
                 let c_plus_3 = c + 3;
-                P_new[idx] = self.E[idx]
+                P[idx] = self.E[idx]
                     + dt * (self.E[Matrix9x9f32::index1(r_plus_3, c)] + self.E[Matrix9x9f32::index1(r, c_plus_3)])
                     + dt2 * self.E[Matrix9x9f32::index1(r_plus_3, c_plus_3)];
             }
 
-            // Columns 4..=6: Position / Velocity Block
+            // Columns 4..=6: PositionVelocity Block
             for c in 4..=6 {
                 let idx = Matrix9x9f32::index1(r, c);
                 let c_plus_3 = c + 3;
-                P_new[idx] = self.E[idx] + dt * self.E[Matrix9x9f32::index1(r_plus_3, c)]
+                P[idx] = self.E[idx] + dt * self.E[Matrix9x9f32::index1(r_plus_3, c)]
                     - dt * self.E[Matrix9x9f32::index1(r, c_plus_3)]
                     - dt2 * self.E[Matrix9x9f32::index1(r_plus_3, c_plus_3)];
             }
 
-            // Columns 7..=9: Position / Bias Block
+            // Columns 7..=9: PositionBias Block
             for c in 7..=9 {
                 let idx = Matrix9x9f32::index1(r, c);
-                P_new[idx] = self.E[idx] + dt * self.E[Matrix9x9f32::index1(r_plus_3, c)];
+                P[idx] = self.E[idx] + dt * self.E[Matrix9x9f32::index1(r_plus_3, c)];
             }
         }
 
@@ -150,28 +153,28 @@ impl PositionKalmanFilter {
         for r in 4..=6 {
             let r_plus_3 = r + 3;
 
-            // Columns 1..=3: Velocity / Position Block
+            // Columns 1..=3: VelocityPosition Block
             for c in 1..=3 {
                 let idx = Matrix9x9f32::index1(r, c);
                 let c_plus_3 = c + 3;
-                P_new[idx] = self.E[idx] + dt * self.E[Matrix9x9f32::index1(r, c_plus_3)]
+                P[idx] = self.E[idx] + dt * self.E[Matrix9x9f32::index1(r, c_plus_3)]
                     - dt * self.E[Matrix9x9f32::index1(r_plus_3, c)]
                     - dt2 * self.E[Matrix9x9f32::index1(r_plus_3, c_plus_3)];
             }
 
-            // Columns 4..=6: Velocity / Velocity Block
+            // Columns 4..=6: VelocityVelocity Block
             for c in 4..=6 {
                 let idx = Matrix9x9f32::index1(r, c);
                 let c_plus_3 = c + 3;
-                P_new[idx] = self.E[idx]
+                P[idx] = self.E[idx]
                     - dt * (self.E[Matrix9x9f32::index1(r_plus_3, c)] + self.E[Matrix9x9f32::index1(r, c_plus_3)])
                     - dt2 * self.E[Matrix9x9f32::index1(r_plus_3, c_plus_3)];
             }
 
-            // Columns 7..=9: Velocity / Bias Block (Static transition)
+            // Columns 7..=9: VelocityBias Block (Static transition)
             for c in 7..=9 {
                 let idx = Matrix9x9f32::index1(r, c);
-                P_new[idx] = self.E[idx];
+                P[idx] = self.E[idx];
             }
         }
 
@@ -182,7 +185,7 @@ impl PositionKalmanFilter {
         for r in 7..=9 {
             for c in 1..=9 {
                 let idx = Matrix9x9f32::index1(r, c);
-                P_new[idx] = self.E[idx];
+                P[idx] = self.E[idx];
             }
         }
 
@@ -190,26 +193,23 @@ impl PositionKalmanFilter {
         // PROCESS NOISE INJECTION (Additive Q terms on the active diagonals)
         // =====================================================================
         // Velocity random walk noise maps to diagonal states 4, 5, and 6
-        P_new[Matrix9x9f32::M44] += dt2 * self.q_velocity;
-        P_new[Matrix9x9f32::M55] += dt2 * self.q_velocity;
-        P_new[Matrix9x9f32::M66] += dt2 * self.q_velocity;
+        P[Matrix9x9f32::M44] += dt2 * self.q_velocity;
+        P[Matrix9x9f32::M55] += dt2 * self.q_velocity;
+        P[Matrix9x9f32::M66] += dt2 * self.q_velocity;
 
         // Accelerometer bias random walk noise maps to diagonal states 7, 8, and 9
-        P_new[Matrix9x9f32::M77] += dt2 * self.q_bias;
-        P_new[Matrix9x9f32::M88] += dt2 * self.q_bias;
-        P_new[Matrix9x9f32::M99] += dt2 * self.q_bias;
+        P[Matrix9x9f32::M77] += dt2 * self.q_bias;
+        P[Matrix9x9f32::M88] += dt2 * self.q_bias;
+        P[Matrix9x9f32::M99] += dt2 * self.q_bias;
 
-        // Save directly back to the active tracking state in-place
-        self.P = P_new;
+        // Save directly back to the active tracking state
+        self.P = P;
     }
 }
 
 impl PositionKalmanFilter {
     /// Executes an asynchronous measurement update when a new Barometer reading arrives.
     /// Updates only the vertical Z axis components across all tracking states.
-    /// Updates vertical axis tracking components `(z, v_z, b_z)` when a Barometer altitude drop occurs.
-    ///
-    /// Demonstrates cross-covariance correction propagation via a single measurement scalar.
     ///
     /// ### Core Operations
     /// *  `S = P₂₂ + R_barometer` (Innovation Variance calculation)
@@ -224,7 +224,7 @@ impl PositionKalmanFilter {
 
         // 2. Compute the 9-element Kalman Gain vector: K = (P * H^T) / S
         // Multiplying P by H^T is mathematically identical to extracting the 3rd column of P
-        let K = StateVector9f32::from(self.P.column_tuple3d(Self::Z_POS_INDEX - 1)) * (1.0 / S);
+        let K = KalmanStateVector9f32::from(self.P.column_tuple3d(Self::Z_POS_INDEX - 1)) * (1.0 / S);
 
         // 3. Compute the scalar innovation error
         let error = barometer_altitude - self.pos.z;
@@ -235,31 +235,24 @@ impl PositionKalmanFilter {
         self.acc_bias += K.bias * error;
 
         // 5. Extract the altitude row of P to compute the error covariance: E = P - K * H * P
-        let altitude_row = StateVector9f32::from(self.P.row_tuple3d(Self::Z_POS_ROW - 1));
+        let altitude_row = KalmanStateVector9f32::from(self.P.row_tuple3d(Self::Z_POS_ROW - 1));
 
         // Matrix9x9f32::outer_product(K, altitude_row) generates an 9x9 correction matrix
         self.E = self.P - Matrix9x9f32::outer_product(K, altitude_row);
     }
 
-    /// When a GPS packet arrives (typically at a slower 1Hz to 10Hz rate), it updates x, y, z all at once.
-    /// The error becomes a 3D vector, and the update updates the whole kinematic tree.
-    /// Executes an asynchronous measurement update when a new 3D GPS reading arrives.
-    /// Corrects 3D Position, Velocity, and Accelerometer Bias states simultaneously.
-    /// Processes slow-rate, multi-dimensional coordinate packets arriving from a GPS module.
-    ///
-    /// Processes slow-rate, multi-dimensional coordinate packets arriving from a GPS module.
-    ///
-    /// Evaluates concurrent corrections across the whole position, velocity, and bias system tree.
+    /// Executes an asynchronous measurement update when a new 3D GPS reading arrives
+    /// (typically at a slower 1Hz to 10Hz rate).
+    /// The error becomes a 3D vector, and the 3D Position, Velocity, and Accelerometer Bias states.
     ///
     /// ### Core Operations
-    /// *  Extracts top-left 3x3 position sub-block from P.
-    /// *  `S = H * P * Hᵀ + R_gps` (Yields a 3x3 Innovation Matrix)
+    /// *  Extracts `PositionPosition` sub-block from P (top left 3x3 matrix).
+    /// *  `S = H * P * Hᵀ + R_gps` (yields a 3x3 innovation matrix)
     /// *  `S_inv = try_inverse(S)`
-    /// *  `K = (P * Hᵀ) * S_inv` (Yields a 9x3 block matrix representation)
+    /// *  `K = (P * Hᵀ) * S_inv` (yields a 9x3 block matrix representation)
     #[allow(non_snake_case)]
     pub fn update_gps(&mut self, gps_position: Vector3df32) {
-        // 1. Extract the 3x3 Position sub-matrix from the top-left of the 9x9 P matrix.
-        // This corresponds to rows 1-3, columns 1-3.
+        // 1. Extract the PositionPosition 3x3 sub-matrix from the top-left of the 9x9 P matrix.
         let mut P_pos = Matrix3x3f32::from(self.P);
 
         // 2. Compute the 3x3 Innovation Covariance matrix: S = H * P * H^T + R
@@ -281,7 +274,7 @@ impl PositionKalmanFilter {
         // 5. Compute the Kalman Gain: K = (P * H^T) * S_inv, and split it into 3 separate 3x3 matrices.
         let (K_pos, K_vel, K_acc_bias) = Matrix9x9f32::multiply_9x3_by_3x3(P_HT, S_inv);
 
-        // 6. Compute the 3D Innovation Error vector
+        // 6. Compute the error vector.
         let error = gps_position - self.pos;
 
         // 7. Update the state vectors across all three physical domains.

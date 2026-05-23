@@ -635,9 +635,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.149"
+version = "1.0.150"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83fc039473c5595ace860d8c4fafa220ff474b3fc6bfdb4293327f1a37e94d86"
+checksum = "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9"
 dependencies = [
  "itoa",
  "memchr",
@@ -693,8 +693,9 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "vqm"
-version = "0.1.7"
-source = "git+https://github.com/martinbudden/crate-vector-quaternion-matrix#69d8ae26080c1eedcdc17138826c7337606674d9"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79965ae39cdc8ff5248f49a3c41d1b8c81397c31d1d670296b0b9b9dee65edee"
 dependencies = [
  "cfg-if",
  "libm",

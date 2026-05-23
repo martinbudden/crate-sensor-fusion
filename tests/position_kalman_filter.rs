@@ -1,5 +1,5 @@
 use sensor_fusion::PositionKalmanFilter;
-use vqm::{Matrix9x9f32, StateVector9f32, Vector3df32};
+use vqm::{KalmanStateVector9f32, Matrix9x9f32, Vector3df32};
 
 #[cfg(test)]
 mod position_filter_tests {
@@ -310,7 +310,7 @@ mod matrix_9x9_validation_tests {
 
         // 2. Verify Row Vector Extraction Block Layout (1-Indexed)
         // Row 1 elements should match flat indices 0, 1, 2 for position parts, etc.
-        let row1_vector = StateVector9f32::from(mat.row_tuple3d(0));
+        let row1_vector = KalmanStateVector9f32::from(mat.row_tuple3d(0));
         assert_abs_diff_eq!(row1_vector.pos.x, 1.0, epsilon = 1e-5);
         assert_abs_diff_eq!(row1_vector.pos.y, 2.0, epsilon = 1e-5);
         assert_abs_diff_eq!(row1_vector.pos.z, 3.0, epsilon = 1e-5);
@@ -319,7 +319,7 @@ mod matrix_9x9_validation_tests {
 
         // 3. Verify Column Vector Extraction Block Layout (1-Indexed)
         // Column 1 crosses array boundaries at increments of 9.
-        let col1_vector = StateVector9f32::from(mat.column_tuple3d(0));
+        let col1_vector = KalmanStateVector9f32::from(mat.column_tuple3d(0));
         assert_abs_diff_eq!(col1_vector.pos.x, 1.0, epsilon = 1e-5); // Index 0
         assert_abs_diff_eq!(col1_vector.pos.y, 10.0, epsilon = 1e-5); // Index 9
         assert_abs_diff_eq!(col1_vector.pos.z, 19.0, epsilon = 1e-5); // Index 18
@@ -356,7 +356,7 @@ mod matrix_9x9_validation_tests {
         // Run the unrolled row-block prediction method
         filter.predict_covariance(dt);
 
-        // --- Analytical Check for Students ---
+        // --- Analytical Check ---
         // Let's check element P_11 (M11, Top Left Position Uncertainty cell).
         // From our unrolled loop formula for Row 1, Col 1:
         // P_new = E_11 + dt * (E_41 + E_14) + dt² * E_44

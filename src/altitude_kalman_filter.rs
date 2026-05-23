@@ -13,7 +13,7 @@ pub struct AltitudeKalmanFilter {
     estimated: Vector3df32,
     /// Bias.
     beta: f32,
-    //. R, measurement covariance matrix.
+    /// R, measurement covariance matrix.
     R: f32,
     q_velocity: f32,
     // note q_altitude is assumed zero and so omitted.
@@ -33,17 +33,18 @@ impl Default for AltitudeKalmanFilter {
 }
 
 impl AltitudeKalmanFilter {
-    // Q, process noise covariance matrix
+    /// Q, process noise covariance matrix.
     const Q1: f32 = 0.01;
     const Q3: f32 = 1.0;
 
-    // R, measurement covariance matrix
+    /// R, measurement covariance matrix.
     const R: f32 = 0.004 * 0.004;
-    // indices to access matrix rows.
+    /// indices to access matrix rows.
     const VELOCITY_ROW: usize = 0;
     const ALTITUDE_ROW: usize = 1;
     const BIAS_ROW: usize = 2;
 
+    /// Constructor.
     pub const fn new() -> Self {
         Self {
             predicted: Vector3df32::ZERO,
@@ -106,6 +107,8 @@ impl AltitudeKalmanFilter {
         (self.estimated.x, self.estimated.y)
     }
 
+    #[allow(non_snake_case)]
+    #[rustfmt::skip]
     pub fn update(&mut self, altitude_measurement: f32, acceleration_measurement: f32, delta_t: f32) -> Vector3df32 {
         // States are a 3d vector with components: velocity, altitude, and bias.
         // Destructure the state vectors as references with meaningful names, for code legibility.
@@ -120,52 +123,45 @@ impl AltitudeKalmanFilter {
         *predicted_altitude = estimated_altitude + estimated_velocity * delta_t;
         *predicted_bias = estimated_bias * (1.0 + self.beta * delta_t);
 
-        // updated predicted P
-        self.P = Self::predict_covariance(self.E, delta_t, self.beta, self.q_velocity, self.q_bias);
+        // Updated predicted P.
+        // Define the State Transition Matrix (A) based on system physics.
+        let A = Matrix3x3f32::new([
+            1.0,     0.0, -delta_t,
+            delta_t, 1.0, 0.0,
+            0.0,     0.0, 1.0 + self.beta * delta_t,
+        ]);
 
-        // update the Kalman gain, k
-        // h_transposed selects the second column of P during multiplication
-        let h_transposed = Vector3df32 { x: 0.0, y: 1.0, z: 0.0 };
-        // s is the scalar P22 + r
+        // Define the Process Noise Matrix (Q).
+        let dt2 = delta_t * delta_t;
+        let Q = Matrix3x3f32::new([
+            -dt2 * self.q_velocity, 0.0, 0.0,
+            0.0,                    0.0, 0.0,
+            0.0,                    0.0, dt2 * self.q_bias,
+        ]);
+
+        // Textbook Kalman prediction: P = A * E * A^T + Q.
+        self.P = (A * self.E * A.transpose()) + Q;
+
+        // Update the Kalman gain, k.
+        // h_transpose selects the second column of P during multiplication.
+        let h_transpose = Vector3df32 { x: 0.0, y: 1.0, z: 0.0 };
         let s = self.P[Matrix3x3f32::M22] + self.R;
         // K = (P * H^T) / S
-        let k = (self.P * h_transposed) * (1.0 / s);
+        let k = (self.P * h_transpose) * (1.0 / s);
 
-        // update estimate
+        // Update estimate.
         let error = altitude_measurement - *predicted_altitude;
         self.estimated = self.predicted + k * error;
 
         // Extract the altitude row of the P matrix as a 3d vector.
         let altitude_row = self.P.row(Self::ALTITUDE_ROW);
 
-        // update estimated P using outer product of k and the altitude row.
+        // Update estimated P using outer product of k and the altitude row.
         // outer_product(k, altitude_row) creates a 3x3 matrix, since both k and altitude_row are 3d vectors.
         self.E = self.P - Matrix3x3f32::outer_product(k, altitude_row);
 
         self.estimated
     }
-
-    #[allow(non_snake_case)]
-    #[rustfmt::skip]
-    pub fn predict_covariance(E: Matrix3x3f32, dt: f32, beta: f32, q_velocity: f32, q_bias: f32) -> Matrix3x3f32 {
-        // Define the State Transition Matrix (A) based on system physics
-        let A = Matrix3x3f32::new([
-            1.0, 0.0, -dt,
-            dt,  1.0, 0.0,
-            0.0, 0.0, 1.0 + beta * dt,
-        ]);
-
-        // Define the Process Noise Matrix (Q)
-        let dt2 = dt * dt;
-        let Q = Matrix3x3f32::new([
-            -dt2 * q_velocity, 0.0, 0.0,
-            0.0,               0.0, 0.0,
-            0.0,               0.0, dt2 * q_bias,
-        ]);
-
-    // 3. Textbook Kalman prediction: P = A * E * A^T + Q
-    (A * E * A.transpose()) + Q
-}
 }
 
 #[cfg(test)]

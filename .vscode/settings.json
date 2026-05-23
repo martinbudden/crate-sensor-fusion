@@ -44,6 +44,7 @@
         "itertools",
         "itoa",
         "Kalman",
+        "katex",
         "lalrpop",
         "libc",
         "libm",
