@@ -102,12 +102,29 @@ impl PositionKalmanFilter {
     /// Propagates the 9x9 covariance matrix forward in time.
     ///
     /// A full 9x9 matrix multiplication involves 729 individual matrix multiplications,
-    /// The matrix is sparsely populated and so is divided 9 separate 3x3 sub-matrices (blocks),
+    /// The matrix is sparsely populated and so is divided 9 separate 3x3 sub-matrices (blocks):
+    /// ```text
+    /// ┌                 9x9                  ┐
+    /// │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
+    /// │ │ Position ││ Position ││ Position │ │
+    /// │ │ Position ││ Velocity ││ Bias     │ │
+    /// │ └          ┘└          ┘└          ┘ │
+    /// │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
+    /// │ │ Velocity ││ Velocity ││ Velocity │ │
+    /// │ │ Position ││ Velocity ││ Bias     │ │
+    /// │ └          ┘└          ┘└          ┘ │
+    /// │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
+    /// │ │ Bias     ││ Bias     ││ Bias     │ │
+    /// │ │ Position ││ Velocity ││ Bias     │ │
+    /// │ └          ┘└          ┘└          ┘ │
+    /// └                                      ┘
+    /// ```
     /// allowing us to skip the zero-multiplications altogether.
     ///
     /// ### Formula
     /// *  `P_k = A * E_k₋₁ * Aᵀ + Q`
     #[allow(non_snake_case)]
+    #[rustfmt::skip]
     pub fn predict_covariance(&mut self, dt: f32) {
         let dt2 = dt * dt;
         let mut P = Matrix9x9f32::default();
@@ -135,8 +152,8 @@ impl PositionKalmanFilter {
             for c in 4..=6 {
                 let idx = Matrix9x9f32::index1(r, c);
                 let c_plus_3 = c + 3;
-                P[idx] = self.E[idx] + dt * self.E[Matrix9x9f32::index1(r_plus_3, c)]
-                    - dt * self.E[Matrix9x9f32::index1(r, c_plus_3)]
+                P[idx] = self.E[idx] 
+                    + dt * (self.E[Matrix9x9f32::index1(r_plus_3, c)] - self.E[Matrix9x9f32::index1(r, c_plus_3)])
                     - dt2 * self.E[Matrix9x9f32::index1(r_plus_3, c_plus_3)];
             }
 
@@ -157,8 +174,8 @@ impl PositionKalmanFilter {
             for c in 1..=3 {
                 let idx = Matrix9x9f32::index1(r, c);
                 let c_plus_3 = c + 3;
-                P[idx] = self.E[idx] + dt * self.E[Matrix9x9f32::index1(r, c_plus_3)]
-                    - dt * self.E[Matrix9x9f32::index1(r_plus_3, c)]
+                P[idx] = self.E[idx] 
+                    + dt * (self.E[Matrix9x9f32::index1(r, c_plus_3)] - self.E[Matrix9x9f32::index1(r_plus_3, c)])
                     - dt2 * self.E[Matrix9x9f32::index1(r_plus_3, c_plus_3)];
             }
 
