@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/martinbudden/crate-sensor-fusion"
 description = "Sensor Fusion Filters for Attitude and Heading Reference Systems (AHRS)"
-keywords = ["sensor fusion", "no-std", "Madgwick", "Mahony", "Kalman"]
+keywords = ["sensor-fusion", "no-std", "Madgwick", "Mahony", "Kalman"]
 categories = [
     "embedded",
     "mathematics",
