@@ -48,6 +48,7 @@
         "lalrpop",
         "libc",
         "libm",
+        "linearizes",
         "litrs",
         "madgwick",
         "mahony",
