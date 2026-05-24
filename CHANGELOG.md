@@ -29,6 +29,14 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 ### Security
 
+## [0.1.6] - 2023-05-24
+
+### Changed
+
+- Use vqm version 0.1.9.
+- Improved efficiency of Kalman filters.
+- Improved Kalman documentation.
+
 ## [0.1.5] - 2023-05-16
 
 ### Added
