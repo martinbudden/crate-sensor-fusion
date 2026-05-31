@@ -47,6 +47,10 @@ pub struct PositionKalmanFilter {
     pub r_gps_vertical: f32,
     /// Absolute Measurement Noise variance for barometric pressure altimeter.
     pub r_barometer: f32,
+    /// Absolute Measurement Noise variance for rangefinder.
+    pub r_rangefinder: f32,
+    /// Absolute Measurement Noise variance for optical flow.
+    pub r_optical_flow: Vector3df32,
 }
 
 impl Default for PositionKalmanFilter {
@@ -72,6 +76,8 @@ impl PositionKalmanFilter {
             r_gps_horizontal: 0.0,
             r_gps_vertical: 0.0,
             r_barometer: 0.0,
+            r_rangefinder: 0.0,
+            r_optical_flow: Vector3df32 { x: 0.0, y: 0.0, z: 0.0 },
             E: Matrix9x9f32::new([0.0; 81]),
             P: Matrix9x9f32::new([0.0; 81]),
         }
@@ -100,7 +106,15 @@ impl PositionKalmanFilter {
         self.vel += acc_true * dt;
         // Bias remains constant during prediction, it is modeled as a random walk in covariance.
     }
-
+    /*
+    Our state vector is organized as [{p}, {v}, {b}]^T.
+    The kinematic transition equations using simple Euler integration are:
+    {p}_k = {p}_{k-1} + {v}_{k-1}Delta T
+    {v}_k = {v}_{k-1} - vec{b}_{k-1}Delta T (assuming acceleration is updated via the control loop)
+    {b}_k = {b}_{k-1}
+    This means our 9x9 matrix **A** is incredibly sparse, containing only a few *dt* terms on the off-diagonals.
+     If we write out the math for \(AEA^{T}\) manually using 3x3 blocks, the matrix operations simplify into a clean sequence of 3x3 array updates.
+    */
     /// Propagates the 9x9 covariance matrix forward in time.
     ///
     /// A full 9x9 matrix multiplication involves 729 individual matrix multiplications.
@@ -194,6 +208,8 @@ impl PositionKalmanFilter {
         // PROCESS NOISE INJECTION (Additive Q terms on the active diagonals)
         // =====================================================================
 
+        // Add Q.
+
         // Velocity random walk noise maps to diagonal states 4, 5, and 6
         let q_velocity_dt2 = self.q_velocity * dt * dt;
         P[Matrix9x9f32::M44] += q_velocity_dt2;
@@ -219,16 +235,16 @@ impl PositionKalmanFilter {
     /// *  `K = P_column_2 * (1.0 / S)` (Kalman Gain column selection extraction)
     /// *  `E = P - K * H * P` (Covariance correction step)
     #[allow(non_snake_case)]
-    pub fn update_barometer(&mut self, barometer_altitude: f32) {
+    pub fn correct_altitude(&mut self, altitude: f32, R: f32) {
         // Calculate the scalar innovation covariance: S = P_zz + R
-        let S = self.P[Matrix9x9f32::M33] + self.r_barometer;
+        let S = self.P[Matrix9x9f32::M33] + R;
 
         // Calculate the 9-element Kalman Gain vector: K = (P * H^T) / S
         // Multiplying P by H^T is mathematically identical to extracting the 3rd column of P
         let K = KalmanStateVector9f32::from(self.P.column_tuple3d(Self::Z_POS_COL)) * (1.0 / S);
 
         // Calculate the scalar innovation error
-        let error = barometer_altitude - self.pos.z;
+        let error = altitude - self.pos.z;
 
         // Update the state vectors
         self.pos += K.pos * error;
@@ -242,6 +258,18 @@ impl PositionKalmanFilter {
         self.E = self.P - Matrix9x9f32::outer_product(K, altitude_row);
     }
 
+    /// Phase 2: Correction using the barometer measurement.
+    #[inline]
+    pub fn correct_altitude_using_barometer(&mut self, altitude: f32) {
+        self.correct_altitude(altitude, self.r_barometer);
+    }
+
+    /// Phase 2: Correction using the rangefinder measurement.
+    #[inline]
+    pub fn correct_altitude_using_rangefinder(&mut self, altitude: f32) {
+        self.correct_altitude(altitude, self.r_rangefinder);
+    }
+
     /// Executes an asynchronous measurement update when a new 3D GPS reading arrives
     /// (typically at a slower 1Hz to 10Hz rate).
     /// The error becomes a 3D vector, and the 3D Position, Velocity, and Accelerometer Bias states.
@@ -252,15 +280,15 @@ impl PositionKalmanFilter {
     /// *  `S_inv = try_inverse(S)`
     /// *  `K = (P * Hᵀ) * S_inv` (yields a 9x3 block matrix representation)
     #[allow(non_snake_case)]
-    pub fn update_gps(&mut self, gps_position: Vector3df32) {
+    pub fn correct_position(&mut self, position: Vector3df32, R: Vector3df32) {
         // 1. Extract the PositionPosition 3x3 sub-matrix from the top-left of the 9x9 P matrix.
         let mut P_pos = Matrix3x3f32::from(self.P);
 
         // Calculate the 3x3 Innovation Covariance matrix: S = H * P * H^T + R
         // In our model, R is a diagonal matrix containing horizontal and vertical GPS noise.
-        P_pos[Self::S_XX] += self.r_gps_horizontal;
-        P_pos[Self::S_YY] += self.r_gps_horizontal;
-        P_pos[Self::S_ZZ] += self.r_gps_vertical;
+        P_pos[Self::S_XX] += R.x;
+        P_pos[Self::S_YY] += R.y;
+        P_pos[Self::S_ZZ] += R.z;
 
         // Calculate inverse of S.
         // If S is singular (eg sensor fault), we safely return to prevent system crash.
@@ -274,7 +302,7 @@ impl PositionKalmanFilter {
         let (K_pos, K_vel, K_acc_bias) = Matrix9x9f32::multiply_9x3_by_3x3(&self.P, S_inv);
 
         // Calculate the error vector.
-        let error = gps_position - self.pos;
+        let error = position - self.pos;
 
         // Update the state vectors across all three physical domains.
         self.pos += K_pos * error;
@@ -286,6 +314,15 @@ impl PositionKalmanFilter {
 
         // Update Covariance Matrix: E = P - K * (H * P)
         self.E = self.P - KH_P;
+    }
+
+    pub fn correct_position_using_gps(&mut self, position: Vector3df32) {
+        let r_gps = Vector3df32 { x: self.r_gps_horizontal, y: self.r_gps_horizontal, z: self.r_gps_vertical };
+        self.correct_position(position, r_gps);
+    }
+
+    pub fn correct_position_using_optical_flow(&mut self, position: Vector3df32) {
+        self.correct_position(position, self.r_optical_flow);
     }
 
     #[allow(non_snake_case)]

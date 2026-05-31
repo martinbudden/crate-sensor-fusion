@@ -31,7 +31,7 @@ simd = ["vqm/simd"]
 
 [dependencies]
 # Set default-features = false to prevent host target leakage
-vqm = { version = "0.1.9" }
+vqm = { version = "0.1.10" }
 #vqm = { git = "https://github.com/martinbudden/crate-vector-quaternion-matrix" }
 #vqm = { path = "../vqm"  }
 num-traits = { version = "0.2.19", default-features = false }
@@ -39,7 +39,7 @@ libm = { version = "0.2.16", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
-rand = "0.10.1" 
+rand = "0.10.1"
 approx = { version = "0.5.1", default-features = false }
 
 # see https://doc.rust-lang.org/cargo/reference/profiles.html

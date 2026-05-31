@@ -319,6 +319,7 @@ impl SensorFusionMath for f64 {
         }
     }
 
+    /// Not implemented for `f64`.
     #[inline(always)]
     fn madgwick_step_acc_mag(
         q: Quaternion<Self>,

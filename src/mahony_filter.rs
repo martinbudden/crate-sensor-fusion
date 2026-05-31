@@ -1,5 +1,4 @@
-use core::ops::{Div, Neg, Sub};
-use num_traits::{ConstOne, ConstZero, One, Zero};
+use num_traits::{ConstOne, ConstZero, float::FloatCore};
 
 use crate::{SensorFusion, SensorFusionMath};
 use vqm::{MathConstants, Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath};
@@ -12,7 +11,8 @@ pub type MahonyFilterf64 = MahonyFilter<f64>;
 /// [Mahony filter](https://ahrs.readthedocs.io/en/latest/filters/mahony.html).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MahonyFilter<T> {
-    q: Quaternion<T>, // orientation quaternion
+    /// orientation quaternion.
+    q: Quaternion<T>,
     kp: T,
     ki: T,
     error_integral: Vector3d<T>,
@@ -24,7 +24,7 @@ pub struct MahonyFilter<T> {
 
 impl<T> Default for MahonyFilter<T>
 where
-    T: Copy + ConstZero + ConstOne + Zero + One + Default + MathConstants + PartialEq,
+    T: Copy + ConstZero + ConstOne + MathConstants,
 {
     fn default() -> Self {
         Self::new()
@@ -33,7 +33,7 @@ where
 
 impl<T> MahonyFilter<T>
 where
-    T: Copy + ConstZero + ConstOne + Zero + One + Default + MathConstants + PartialEq,
+    T: Copy + ConstZero + ConstOne + MathConstants,
 {
     pub const fn new() -> Self {
         MahonyFilter {
@@ -52,18 +52,11 @@ where
 impl<T> MahonyFilter<T>
 where
     T: Copy
-        + One
-        + Zero
-        + Neg<Output = T>
-        + PartialEq
-        + PartialOrd
-        + Sub<Output = T>
-        + Div<Output = T>
+        + FloatCore
         + TrigonometricMethods
         + MathConstants
         + SqrtMethods
         + QuaternionMath
-        + Vector3dMath
         + Vector3dMath
         + SensorFusionMath,
 {
@@ -75,12 +68,7 @@ where
 impl<T> SensorFusion<T> for MahonyFilter<T>
 where
     T: Copy
-        + One
-        + Zero
-        + Neg<Output = T>
-        + PartialOrd
-        + Sub<Output = T>
-        + Div<Output = T>
+        + FloatCore
         + TrigonometricMethods
         + MathConstants
         + SqrtMethods
@@ -91,6 +79,9 @@ where
     fn set_gains(&mut self, gain0: T, gain1: T) {
         self.kp = gain0;
         self.ki = gain1;
+    }
+    fn gains(&self) -> (T, T) {
+        (self.kp, self.ki)
     }
     fn requires_initialization() -> bool {
         true
@@ -154,6 +145,10 @@ where
         delta_t: T,
     ) -> Quaternion<T> {
         self.fuse_acc_gyro(acc, gyro_rps, delta_t)
+    }
+
+    fn correct_yaw_with_gain(&mut self, _yaw_radians: T, _gain: T, _delta_t: T) -> Quaternion<T> {
+        self.q
     }
 }
 

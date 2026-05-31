@@ -18,11 +18,14 @@ use vqm::{Quaternion, Quaternionf32, Vector3d, Vector3df32};
 /// ```
 pub trait SensorFusion<T> {
     fn set_gains(&mut self, gain0: T, gain1: T);
+    fn gains(&self) -> (T, T);
+
     fn requires_initialization() -> bool;
 
     fn fuse_acc_gyro(&mut self, acc: Vector3d<T>, gyro_rps: Vector3d<T>, delta_t: T) -> Quaternion<T>;
     fn fuse_acc_gyro_mag(&mut self, acc: Vector3d<T>, gyro: Vector3d<T>, mag: Vector3d<T>, delta_t: T)
     -> Quaternion<T>;
+    fn correct_yaw_with_gain(&mut self, yaw_radians: T, gain: T, delta_t: T) -> Quaternion<T>;
 }
 
 #[allow(unused)]
@@ -38,6 +41,7 @@ pub trait SensorFusionf32 {
         mag: Vector3df32,
         delta_t: f32,
     ) -> Quaternionf32;
+    fn correct_yaw(&mut self, yaw_radians: f32, gain: f32, delta_t: f32) -> Quaternionf32;
 }
 
 #[allow(clippy::doc_paragraphs_missing_punctuation)]
@@ -73,15 +77,12 @@ impl<T> FuseAccGyro<T> for (Vector3d<T>, Vector3d<T>) {
 /// ```
 /// use vqm::{Vector3df32,Quaternionf32};
 /// use sensor_fusion::{MadgwickFilterf32,SensorFusion,FuseAccGyroMag};
-///
 /// let mut madgwick_filter = MadgwickFilterf32::default();
-///
-/// let delta_t: f32 = 0.0;
+/// let dt: f32 = 0.0;
 /// let acc = Vector3df32::default();
 /// let gyro_rps = Vector3df32::default();
 /// let mag = Vector3df32::default();
-///
-/// let orientation = (acc, gyro_rps, mag).fuse_acc_gyro_mag_using(&mut madgwick_filter, delta_t);
+/// let orientation = (acc, gyro_rps, mag).fuse_acc_gyro_mag_using(&mut madgwick_filter, dt);
 /// assert_eq!(orientation, Quaternionf32 { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
 /// ```
 pub trait FuseAccGyroMag<T> {
@@ -120,6 +121,10 @@ mod tests {
     pub struct TestStruct;
     impl SensorFusion<f32> for TestStruct {
         fn set_gains(&mut self, _gain0: f32, _gain1: f32) {}
+        fn gains(&self) -> (f32, f32) {
+            (0.0, 0.0)
+        }
+
         fn requires_initialization() -> bool {
             true
         }
@@ -134,6 +139,9 @@ mod tests {
             delta_t: f32,
         ) -> Quaternionf32 {
             self.fuse_acc_gyro(acc, gyro_rps, delta_t)
+        }
+        fn correct_yaw_with_gain(&mut self, _yaw_radians: f32, _gain: f32, _delta_t: f32) -> Quaternionf32 {
+            Quaternionf32::default()
         }
     }
 

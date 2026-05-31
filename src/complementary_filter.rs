@@ -1,5 +1,5 @@
-use core::ops::{Div, Neg, Sub};
-use num_traits::{One, Zero};
+use core::ops::Neg;
+use num_traits::{One, Zero, float::FloatCore};
 
 use crate::{SensorFusion, SensorFusionMath};
 use vqm::{Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath};
@@ -12,7 +12,7 @@ pub type ComplementaryFilterf64 = ComplementaryFilter<f64>;
 /// [Complementary filter](https://ahrs.readthedocs.io/en/latest/filters/complementary.html).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ComplementaryFilter<T> {
-    // orientation quaternion
+    /// orientation quaternion.
     q: Quaternion<T>,
     acc_magnitude_squared_max: T,
     alpha: T,
@@ -42,19 +42,7 @@ where
 
 impl<T> ComplementaryFilter<T>
 where
-    T: Copy
-        + One
-        + Zero
-        + Neg<Output = T>
-        + PartialEq
-        + PartialOrd
-        + Sub<Output = T>
-        + Div<Output = T>
-        + TrigonometricMethods
-        + Vector3dMath
-        + QuaternionMath
-        + SqrtMethods
-        + SensorFusionMath,
+    T: Copy + One + Zero + Neg<Output = T> + TrigonometricMethods + SqrtMethods,
 {
     /// Calculate roll (theta) from the normalized accelerometer readings.
     pub fn roll_radians_from_acc_normalized(acc: Vector3d<T>) -> T {
@@ -65,28 +53,21 @@ where
         (-acc.x).atan2((acc.y * acc.y + acc.z * acc.z).sqrt())
     }
     pub fn set_alpha(&mut self, alpha: T) {
-        self.set_gains(alpha, T::zero());
+        self.alpha = alpha;
     }
 }
 
 impl<T> SensorFusion<T> for ComplementaryFilter<T>
 where
-    T: Copy
-        + One
-        + Zero
-        + Neg<Output = T>
-        + PartialOrd
-        + Sub<Output = T>
-        + Div<Output = T>
-        + TrigonometricMethods
-        + SqrtMethods
-        + Vector3dMath
-        + QuaternionMath
-        + SensorFusionMath,
+    T: Copy + FloatCore + TrigonometricMethods + SqrtMethods + Vector3dMath + QuaternionMath + SensorFusionMath,
 {
     fn set_gains(&mut self, gain0: T, _gain1: T) {
         self.alpha = gain0;
     }
+    fn gains(&self) -> (T, T) {
+        (self.alpha, T::zero())
+    }
+
     fn requires_initialization() -> bool {
         false
     }
@@ -105,7 +86,7 @@ where
         let acc: Vector3d<T> = acc.normalize();
         let roll_radians: T = ComplementaryFilter::roll_radians_from_acc_normalized(acc);
         let pitch_radians = ComplementaryFilter::pitch_radians_from_acc_normalized(acc);
-        let q: Quaternion<T> = Quaternion::from_roll_pitch_angles_radians(roll_radians, pitch_radians);
+        let q: Quaternion<T> = Quaternion::from_roll_pitch_radians(roll_radians, pitch_radians);
 
         // use a complementary filter to combine the gyro attitude estimate(q) with the accelerometer attitude estimate(a)
         self.q = (self.q - q) * self.alpha + q; // optimized form of `self.alpha * q + (1.0 - self.alpha) * q` : uses fewer operations and can take advantage of multiply-add instruction
@@ -123,6 +104,10 @@ where
         delta_t: T,
     ) -> Quaternion<T> {
         self.fuse_acc_gyro(acc, gyro_rps, delta_t)
+    }
+
+    fn correct_yaw_with_gain(&mut self, _yaw_radians: T, _gain: T, _delta_t: T) -> Quaternion<T> {
+        self.q
     }
 }
 
