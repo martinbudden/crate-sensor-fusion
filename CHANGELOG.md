@@ -29,6 +29,21 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 ### Security
 
+## [0.1.7] - 2023-06-08
+
+### Added
+
+- correct using rangefinder and using barometer functions to `AltitudeKalmanFilter`.
+- correct using barometer and using gps to `PositionKalmanFilter`.
+- `correct_yaw` to Madgwick filter.
+
+### Changed
+
+- Use vqm version 0.1.12.
+- Changed AltitudeKalman filter to have predict and correct functions.
+- Renamed update to correct for `PositionKalmanFilter`.
+- Code tidy.
+
 ## [0.1.6] - 2023-05-24
 
 ### Changed
