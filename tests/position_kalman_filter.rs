@@ -1,5 +1,5 @@
 use sensor_fusion::PositionKalmanFilter;
-use vqm::{KalmanStateVector9f32, Matrix9x9f32, Vector3df32};
+use vqm::{Matrix9x9f32, Vector3df32};
 
 #[cfg(test)]
 mod position_filter_tests {
@@ -299,6 +299,7 @@ mod covariance_prediction_tests {
 mod matrix_9x9_validation_tests {
     use super::*;
     use approx::assert_abs_diff_eq;
+    use sensor_fusion::KalmanStateVector9f32;
 
     #[test]
     fn test_matrix_9x9_full_index_and_trait_mapping() {

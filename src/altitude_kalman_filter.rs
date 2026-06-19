@@ -9,16 +9,20 @@ pub struct AltitudeKalmanFilter {
     predicted: Vector3df32,
     estimated: Vector3df32,
     beta: f32,
+    /// Predicted System Uncertainty Covariance Matrix (P).
+    P: Matrix3x3f32,
+    /// Estimated Post-Correction Error Covariance Matrix (E).
+    E: Matrix3x3f32,
+
+    // --- Hyperparameters & Tuning Constants ---
+    q_velocity: f32,
+    q_bias: f32,
     /// Barometer measurement variance.
     r_barometer: f32,
     /// Rangefinder measurement variance.
     r_rangefinder: f32,
     /// GPS measurement variance.
     r_gps: f32,
-    q_velocity: f32,
-    q_bias: f32,
-    E: Matrix3x3f32,
-    P: Matrix3x3f32,
 }
 
 impl Default for AltitudeKalmanFilter {
@@ -45,11 +49,11 @@ impl AltitudeKalmanFilter {
             predicted: Vector3df32::ZERO,
             estimated: Vector3df32::ZERO,
             beta: 0.0,
+            q_velocity: Self::Q1,
+            q_bias: Self::Q3,
             r_barometer: 0.0,
             r_rangefinder: 0.0,
             r_gps: 0.0,
-            q_velocity: Self::Q1,
-            q_bias: Self::Q3,
             E: Matrix3x3f32::ZERO,
             P: Matrix3x3f32::ZERO,
         }
@@ -60,11 +64,11 @@ impl AltitudeKalmanFilter {
     /// Initializer targeting steady-state baseline parameters.
     pub fn new_steady_state(
         initial_altitude: f32,
+        q_velocity: f32,
+        q_bias: f32,
         r_barometer: f32,
         r_rangefinder: f32,
         r_gps: f32,
-        q_velocity: f32,
-        q_bias: f32,
     ) -> Self {
         // 1. Calculate analytical steady-state variance bounds.
         // Higher sensor noise (R) increases state uncertainty boundaries.
@@ -86,12 +90,12 @@ impl AltitudeKalmanFilter {
             predicted: Vector3df32 { x: 0.0, y: initial_altitude, z: 0.0 },
             P: initial_covariance,
             E: initial_covariance,
+            beta: 0.1, // Damping factor configuration baseline
+            q_velocity,
+            q_bias,
             r_barometer,
             r_rangefinder,
             r_gps,
-            q_velocity,
-            q_bias,
-            beta: 0.1, // Damping factor configuration baseline
         }
     }
 
@@ -108,6 +112,8 @@ impl AltitudeKalmanFilter {
         (self.estimated.x, self.estimated.y)
     }
 }
+
+// **** Predict ****
 
 impl AltitudeKalmanFilter {
     /// Phase 1: Predict state forward using IMU/Physics
@@ -150,8 +156,12 @@ impl AltitudeKalmanFilter {
 
         self.predicted
     }
+}
 
-    /// Phase 2 Altitude Correction.
+// **** Correct ***
+
+impl AltitudeKalmanFilter {
+    /// Phase 2 Altitude Correction using new measurement.
     #[allow(non_snake_case)]
     pub fn correct_altitude(&mut self, altitude: f32, R: f32) {
         // H vector for altitude: [0, 1, 0]
@@ -170,25 +180,25 @@ impl AltitudeKalmanFilter {
         self.estimated = self.predicted + K * error;
 
         // Update error covariance: E = (I - KH)P
-        self.E = self.P - Matrix3x3f32::outer_product(K, self.P.row(Self::ALTITUDE_ROW));
+        self.E = self.P - K.outer_product(self.P.row(Self::ALTITUDE_ROW));
 
         // Prepare for next cycle if multiple corrections happen sequentially
         self.predicted = self.estimated;
         self.P = self.E;
     }
 
-    /// Phase 2: Measurement Correction using the Barometer.
+    /// Phase 2: Correct altitude using the barometer measurement.
     #[inline]
     pub fn correct_altitude_using_barometer(&mut self, altitude: f32) {
         self.correct_altitude(altitude, self.r_barometer);
     }
 
-    /// Phase 2: Measurement Correction using the Rangefinder.
+    /// Phase 2: Correct altitude using the rangefinder measurement.
     #[inline]
     pub fn correct_altitude_using_rangefinder(&mut self, altitude: f32) {
         self.correct_altitude(altitude, self.r_barometer);
     }
-    /// Phase 2: Measurement Correction using GPS.
+    /// Phase 2: Correct altitude using GPS vertical measurement.
     #[inline]
     pub fn correct_altitude_using_gps(&mut self, altitude: f32) {
         self.correct_altitude(altitude, self.r_gps);
@@ -220,16 +230,16 @@ mod tests {
         // We set the 2nd row to [2.0, 5.0, 11.0] to match our proven outer product values
         let p = Matrix3x3f32::new([
             10.0, 20.0, 30.0, // Row 1
-            2.0, 5.0, 11.0, // Row 2 (Matched to our row vector)
+            2.0, 5.0, 11.0, // Row 2 (altitude row)
             50.0, 60.0, 70.0, // Row 3
         ]);
 
-        // Extract altitude row from the flat P matrix
+        // Extract altitude row from the P matrix
         let altitude_row = p.row(AltitudeKalmanFilter::ALTITUDE_ROW);
         assert_eq!(Vector3df32 { x: 2.0, y: 5.0, z: 11.0 }, altitude_row);
 
         // Compute the updated Covariance Matrix (E).
-        let kh_p = Matrix3x3f32::outer_product(k, altitude_row);
+        let kh_p = k.outer_product(altitude_row);
 
         let e = p - kh_p;
 

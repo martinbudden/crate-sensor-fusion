@@ -2,7 +2,7 @@ use core::ops::Neg;
 use num_traits::{One, Zero, float::FloatCore};
 
 use crate::{SensorFusion, SensorFusionMath};
-use vqm::{Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath};
+use vqm::{Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d};
 
 /// Complementary filter for `f32`<br>
 pub type ComplementaryFilterf32 = ComplementaryFilter<f32>;
@@ -59,7 +59,7 @@ where
 
 impl<T> SensorFusion<T> for ComplementaryFilter<T>
 where
-    T: Copy + FloatCore + TrigonometricMethods + SqrtMethods + Vector3dMath + QuaternionMath + SensorFusionMath,
+    T: Copy + FloatCore + TrigonometricMethods + SqrtMethods + QuaternionMath + SensorFusionMath,
 {
     fn set_gains(&mut self, gain0: T, _gain1: T) {
         self.alpha = gain0;

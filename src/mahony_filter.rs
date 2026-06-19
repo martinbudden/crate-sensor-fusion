@@ -1,7 +1,7 @@
 use num_traits::{ConstOne, ConstZero, float::FloatCore};
 
 use crate::{SensorFusion, SensorFusionMath};
-use vqm::{MathConstants, Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d, Vector3dMath};
+use vqm::{MathConstants, Quaternion, QuaternionMath, SqrtMethods, TrigonometricMethods, Vector3d};
 
 /// Mahony filter for `f32`<br>
 pub type MahonyFilterf32 = MahonyFilter<f32>;
@@ -51,14 +51,7 @@ where
 
 impl<T> MahonyFilter<T>
 where
-    T: Copy
-        + FloatCore
-        + TrigonometricMethods
-        + MathConstants
-        + SqrtMethods
-        + QuaternionMath
-        + Vector3dMath
-        + SensorFusionMath,
+    T: Copy + FloatCore + TrigonometricMethods + MathConstants + SqrtMethods + QuaternionMath + SensorFusionMath,
 {
     pub fn set_proportional_integral(&mut self, kp: T, ki: T) {
         self.set_gains(kp, ki);
@@ -67,14 +60,7 @@ where
 
 impl<T> SensorFusion<T> for MahonyFilter<T>
 where
-    T: Copy
-        + FloatCore
-        + TrigonometricMethods
-        + MathConstants
-        + SqrtMethods
-        + QuaternionMath
-        + Vector3dMath
-        + SensorFusionMath,
+    T: Copy + FloatCore + TrigonometricMethods + MathConstants + SqrtMethods + QuaternionMath + SensorFusionMath,
 {
     fn set_gains(&mut self, gain0: T, gain1: T) {
         self.kp = gain0;

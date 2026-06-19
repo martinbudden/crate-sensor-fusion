@@ -1,9 +1,9 @@
 #![allow(unused)]
 use num_traits::One;
-use vqm::{KalmanStateVector9, Matrix3x3f32, Matrix9x9f32, Vector3df32};
+use vqm::{Matrix3x3f32, Matrix9x9f32, Vector3df32};
 
-pub type KalmanStateVector9f32 = KalmanStateVector9<f32>;
-pub type KalmanStateVector9f64 = KalmanStateVector9<f64>;
+use crate::KalmanStateVector9f32;
+
 pub type PositionKalmanFilterf32 = PositionKalmanFilter;
 
 /// The system is split into two cleanly decoupled steps. This:
@@ -31,9 +31,9 @@ pub struct PositionKalmanFilter {
     /// Accelerometer Bias (x, y, z).
     pub acc_bias: Vector3df32,
 
-    /// 9x9 Predicted System Uncertainty Covariance Matrix (P).
+    /// Predicted System Uncertainty Covariance Matrix (P).
     pub P: Matrix9x9f32,
-    /// 9x9 Estimated Post-Correction Error Covariance Matrix (E).
+    /// Estimated Post-Correction Error Covariance Matrix (E).
     pub E: Matrix9x9f32,
 
     // --- Hyperparameters & Tuning Constants ---
@@ -66,6 +66,7 @@ impl PositionKalmanFilter {
     pub const S_YY: usize = Matrix3x3f32::M22;
     pub const S_ZZ: usize = Matrix3x3f32::M33;
 
+    /// Constructor.
     pub const fn new() -> Self {
         Self {
             pos: Vector3df32 { x: 0.0, y: 0.0, z: 0.0 },
@@ -83,6 +84,8 @@ impl PositionKalmanFilter {
         }
     }
 }
+
+// **** Predict ****
 
 impl PositionKalmanFilter {
     // Propagates the state vector forward using IMU acceleration inputs.
@@ -226,12 +229,14 @@ impl PositionKalmanFilter {
     }
 }
 
+// **** Correct ***
+
 impl PositionKalmanFilter {
-    /// Executes an asynchronous measurement update when a new Barometer reading arrives.
+    /// Phase 2 Altitude Correction using new measurement.
     /// Updates only the vertical Z axis components across all tracking states.
     ///
     /// ### Core Operations
-    /// *  `S = P₂₂ + R_barometer` (Innovation Variance calculation)
+    /// *  `S = P₂₂ + R` (Innovation Variance calculation)
     /// *  `K = P_column_2 * (1.0 / S)` (Kalman Gain column selection extraction)
     /// *  `E = P - K * H * P` (Covariance correction step)
     #[allow(non_snake_case)]
@@ -254,20 +259,26 @@ impl PositionKalmanFilter {
         // Extract the altitude row of P to compute the error covariance: E = P - K * H * P
         let altitude_row = KalmanStateVector9f32::from(self.P.row_tuple3d(Self::Z_POS_ROW));
 
-        // Matrix9x9f32::outer_product(K, altitude_row) generates the 9x9 correction matrix
-        self.E = self.P - Matrix9x9f32::outer_product(K, altitude_row);
+        // K.outer_product(altitude_row) generates the 9x9 correction matrix
+        self.E = self.P - K.outer_product(altitude_row);
     }
 
-    /// Phase 2: Correction using the barometer measurement.
+    /// Phase 2: Correct altitude using the barometer measurement.
     #[inline]
     pub fn correct_altitude_using_barometer(&mut self, altitude: f32) {
         self.correct_altitude(altitude, self.r_barometer);
     }
 
-    /// Phase 2: Correction using the rangefinder measurement.
+    /// Phase 2: Correct altitude using the rangefinder measurement.
     #[inline]
     pub fn correct_altitude_using_rangefinder(&mut self, altitude: f32) {
         self.correct_altitude(altitude, self.r_rangefinder);
+    }
+
+    /// Phase 2: Correct altitude using GPS vertical measurement.
+    #[inline]
+    pub fn correct_altitude_using_gps(&mut self, altitude: f32) {
+        self.correct_altitude(altitude, self.r_gps_vertical);
     }
 
     /// Executes an asynchronous measurement update when a new 3D GPS reading arrives
@@ -372,5 +383,18 @@ impl PositionKalmanFilter {
             }
         }
         Matrix9x9f32::from(KH_P)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn _is_normal<T: Sized + Send + Sync + Unpin>() {}
+    fn is_full<T: Sized + Send + Sync + Unpin + Copy + Clone + Default + PartialEq>() {}
+
+    #[test]
+    fn normal_types() {
+        is_full::<PositionKalmanFilter>();
     }
 }
