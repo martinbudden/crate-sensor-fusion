@@ -8,8 +8,6 @@
 #![warn(unused_results)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::doc_paragraphs_missing_punctuation)]
-#![allow(clippy::return_self_not_must_use)]
-#![allow(clippy::must_use_candidate)]
 
 mod altitude_kalman_filter;
 mod complementary_filter;

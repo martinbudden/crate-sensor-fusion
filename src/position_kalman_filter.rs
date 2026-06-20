@@ -67,6 +67,7 @@ impl PositionKalmanFilter {
     pub const S_ZZ: usize = Matrix3x3f32::M33;
 
     /// Constructor.
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             pos: Vector3df32 { x: 0.0, y: 0.0, z: 0.0 },

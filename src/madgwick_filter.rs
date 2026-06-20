@@ -46,9 +46,12 @@ where
     pub const fn with_orientation_and_beta(orientation: Quaternion<T>, beta: T) -> Self {
         MadgwickFilter { q: orientation, max_acc_magnitude_squared: T::FOUR, beta, beta_yaw: T::ZERO }
     }
+
     pub const fn with_orientation(orientation: Quaternion<T>) -> Self {
         MadgwickFilter { q: orientation, max_acc_magnitude_squared: T::FOUR, beta: T::ONE, beta_yaw: T::ZERO }
     }
+
+    #[must_use]
     pub const fn new() -> Self {
         MadgwickFilter {
             q: Quaternion { w: T::ONE, x: T::ZERO, y: T::ZERO, z: T::ZERO },

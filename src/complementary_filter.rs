@@ -31,6 +31,7 @@ impl<T> ComplementaryFilter<T>
 where
     T: Copy + One + Zero,
 {
+    #[must_use]
     pub fn new() -> Self {
         ComplementaryFilter {
             q: Quaternion::default(),

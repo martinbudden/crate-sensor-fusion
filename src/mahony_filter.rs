@@ -35,6 +35,7 @@ impl<T> MahonyFilter<T>
 where
     T: Copy + ConstZero + ConstOne + MathConstants,
 {
+    #[must_use]
     pub const fn new() -> Self {
         MahonyFilter {
             q: Quaternion { w: T::ONE, x: T::ZERO, y: T::ZERO, z: T::ZERO },
