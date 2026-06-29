@@ -12,6 +12,7 @@ pub type KalmanStateVector9f64 = KalmanStateVector9<f64>;
 /// Flattened representation of a 9-element state vector for Kalman filter matrix math.<br><br>
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 #[repr(C, align(64))]
+#[allow(missing_docs)]
 pub struct KalmanStateVector9<T> {
     pub pos: Vector3d<T>,
     pub vel: Vector3d<T>,
@@ -22,6 +23,7 @@ impl<T> KalmanStateVector9<T>
 where
     T: Copy,
 {
+    /// Constructor.
     #[inline]
     pub const fn new(v: (Vector3d<T>, Vector3d<T>, Vector3d<T>)) -> Self {
         Self { pos: v.0, vel: v.1, bias: v.2 }

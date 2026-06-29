@@ -4,6 +4,7 @@ use vqm::{Matrix3x3f32, Matrix9x9f32, Vector3df32};
 
 use crate::KalmanStateVector9f32;
 
+/// `f32` variant of `PositionKalmanFilter`.
 pub type PositionKalmanFilterf32 = PositionKalmanFilter;
 
 /// The system is split into two cleanly decoupled steps. This:
@@ -24,7 +25,7 @@ pub type PositionKalmanFilterf32 = PositionKalmanFilter;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PositionKalmanFilter {
     // 3D Kinematic State Vectors
-    //// Position (x, y, z).
+    /// Position (x, y, z).
     pub pos: Vector3df32,
     /// Velocity (x, y, z).
     pub vel: Vector3df32,
@@ -59,13 +60,16 @@ impl Default for PositionKalmanFilter {
     }
 }
 
+#[allow(missing_docs)]
 impl PositionKalmanFilter {
     pub const Z_POS_ROW: usize = 2; // H vector selects the 3rd row of P
     pub const Z_POS_COL: usize = 2; // 3rd column corresponds to Z position (Altitude)
     pub const S_XX: usize = Matrix3x3f32::M11;
     pub const S_YY: usize = Matrix3x3f32::M22;
     pub const S_ZZ: usize = Matrix3x3f32::M33;
+}
 
+impl PositionKalmanFilter {
     /// Constructor.
     #[must_use]
     pub const fn new() -> Self {
@@ -328,11 +332,13 @@ impl PositionKalmanFilter {
         self.E = self.P - KH_P;
     }
 
+    /// Phase 2: Correct altitude using GPS position measurement.
     pub fn correct_position_using_gps(&mut self, position: Vector3df32) {
         let r_gps = Vector3df32 { x: self.r_gps_horizontal, y: self.r_gps_horizontal, z: self.r_gps_vertical };
         self.correct_position(position, r_gps);
     }
 
+    /// Phase 2: Correct altitude using optical flow position measurement.
     pub fn correct_position_using_optical_flow(&mut self, position: Vector3df32) {
         self.correct_position(position, self.r_optical_flow);
     }

@@ -43,14 +43,17 @@ impl<T> MadgwickFilter<T>
 where
     T: Copy + ConstZero + ConstOne + ConstFour,
 {
+    /// Constructor.
     pub const fn with_orientation_and_beta(orientation: Quaternion<T>, beta: T) -> Self {
         MadgwickFilter { q: orientation, max_acc_magnitude_squared: T::FOUR, beta, beta_yaw: T::ZERO }
     }
 
+    /// Constructor.
     pub const fn with_orientation(orientation: Quaternion<T>) -> Self {
         MadgwickFilter { q: orientation, max_acc_magnitude_squared: T::FOUR, beta: T::ONE, beta_yaw: T::ZERO }
     }
 
+    /// Constructor.
     #[must_use]
     pub const fn new() -> Self {
         MadgwickFilter {

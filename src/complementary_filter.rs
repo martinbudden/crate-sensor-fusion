@@ -31,6 +31,7 @@ impl<T> ComplementaryFilter<T>
 where
     T: Copy + One + Zero,
 {
+    /// Constructor.
     #[must_use]
     pub fn new() -> Self {
         ComplementaryFilter {

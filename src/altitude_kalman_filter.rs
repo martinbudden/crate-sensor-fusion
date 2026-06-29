@@ -1,6 +1,8 @@
 #![allow(unused)]
 use num_traits::{ConstZero, Float, One};
 use vqm::{Matrix3x3f32, Vector3df32};
+
+/// `f32` variant of `AltitudeKalmanFilter`.
 pub type AltitudeKalmanFilterf32 = AltitudeKalmanFilter;
 
 #[allow(non_snake_case)]

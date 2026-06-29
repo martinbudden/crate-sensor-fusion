@@ -35,6 +35,7 @@ impl<T> MahonyFilter<T>
 where
     T: Copy + ConstZero + ConstOne + MathConstants,
 {
+    /// Constructor.
     #[must_use]
     pub const fn new() -> Self {
         MahonyFilter {
