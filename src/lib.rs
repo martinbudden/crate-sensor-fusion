@@ -28,6 +28,8 @@ mod mahony_filter;
 mod position_kalman_filter;
 mod sensor_fusion;
 mod sensor_fusion_math;
+mod trilaterate_2d;
+mod trilaterate_3d;
 
 pub use altitude_kalman_filter::AltitudeKalmanFilterf32;
 pub use complementary_filter::{ComplementaryFilter, ComplementaryFilterf32, ComplementaryFilterf64};
@@ -38,3 +40,6 @@ pub use position_kalman_filter::{PositionKalmanFilter, PositionKalmanFilterf32};
 
 pub use sensor_fusion::{FuseAccGyro, FuseAccGyroMag, SensorFusion};
 pub use sensor_fusion_math::SensorFusionMath;
+
+pub use trilaterate_2d::{Anchor2d, Anchor2df32, Anchor2df64, trilaterate_2d};
+pub use trilaterate_3d::{Anchor3d, Anchor3df32, Anchor3df64, trilaterate_3d_weighted};

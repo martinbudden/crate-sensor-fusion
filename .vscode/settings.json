@@ -1,6 +1,7 @@
 {
     "cSpell.words": [
         "Adafruit",
+        "adjugate",
         "AHRS",
         "alloca",
         "anes",
@@ -8,6 +9,8 @@
         "Ardu",
         "arrayvec",
         "astextplain",
+        "atwa",
+        "atwb",
         "autocfg",
         "Baro",
         "bindgen",
@@ -80,6 +83,8 @@
         "thumbv",
         "TIMELOOP",
         "tinytemplate",
+        "trilaterate",
+        "trilaterates",
         "typenum",
         "UART",
         "vcell",
