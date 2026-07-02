@@ -29,6 +29,19 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 ### Security
 
+## [0.1.8] - 2023-06-xx
+
+### Added
+
+- `KalmanStateVector9`.
+- `trilaterate_2d` and `trilaterate_3d_weighted` functions.
+- `#[must_use] attributes where appropriate.
+- `deny`s in `lib.rs`.
+
+### Changed
+
+- Use vqm version 0.1.xx.
+
 ## [0.1.7] - 2023-06-08
 
 ### Added
