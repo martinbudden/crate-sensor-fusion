@@ -1,5 +1,4 @@
-#![allow(unused)]
-use num_traits::{ConstZero, Float, One};
+use num_traits::{ConstZero, One};
 use vqm::{Matrix3x3f32, Vector3df32};
 
 /// `f32` variant of `AltitudeKalmanFilter`.
@@ -39,11 +38,11 @@ impl AltitudeKalmanFilter {
     const Q3: f32 = 1.0;
 
     /// R, measurement covariance matrix.
-    const R: f32 = 0.004 * 0.004;
+    const _R: f32 = 0.004 * 0.004;
     /// indices to access matrix rows.
-    const VELOCITY_ROW: usize = 0;
+    const _VELOCITY_ROW: usize = 0;
     const ALTITUDE_ROW: usize = 1;
-    const BIAS_ROW: usize = 2;
+    const _BIAS_ROW: usize = 2;
 
     /// Constructor.
     pub const fn new() -> Self {
@@ -218,6 +217,7 @@ mod tests {
     fn normal_types() {
         is_full::<AltitudeKalmanFilter>();
     }
+
     #[test]
     fn test_new() {
         let _kalman_filter = AltitudeKalmanFilter::new();

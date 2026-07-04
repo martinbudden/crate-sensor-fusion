@@ -1,5 +1,3 @@
-#![allow(unused)]
-use num_traits::One;
 use vqm::{Matrix3x3f32, Matrix9x9f32, Vector3df32};
 
 use crate::KalmanStateVector9f32;

@@ -145,6 +145,7 @@ mod tests {
     fn normal_types() {
         is_full::<Anchor3df32>();
     }
+
     #[test]
     fn test_perfect_geometric_data() {
         // Position of the tracked object

@@ -176,6 +176,7 @@ mod gps_filter_tests {
         // New P_xx = 2.0 - (K_pos_xx * P_xx) = 2.0 - (0.5 * 2.0) = 1.0
         assert_abs_diff_eq!(filter.E[Matrix9x9f32::M11], 1.0, epsilon = 1e-5);
     }
+
     #[test]
     fn test_gps_3d_measurement_update_with_tuple_blocks() {
         // 1. Initialize a baseline filter instance with predictable state variances

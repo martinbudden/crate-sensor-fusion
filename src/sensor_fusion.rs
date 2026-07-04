@@ -1,5 +1,3 @@
-//#![allow(unused)]
-
 use vqm::{Quaternion, Quaternionf32, Vector3d, Vector3df32};
 
 /// Common interface for the sensor fusion filters (Madgwick, Mahony, complementary).

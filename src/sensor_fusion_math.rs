@@ -29,6 +29,7 @@ impl SensorFusionMath for f32 {
             z: q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z,
         }
     }
+
     #[inline(always)]
     fn derivative(q: Quaternion<Self>, gyro: Vector3d<Self>) -> Quaternion<Self> {
         #[cfg(feature = "simd")]
@@ -282,6 +283,7 @@ impl SensorFusionMath for f64 {
             z: q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z,
         }
     }
+
     #[inline(always)]
     fn derivative(q: Quaternion<Self>, gyro_rps: Vector3d<Self>) -> Quaternion<Self> {
         Quaternion {
@@ -291,6 +293,7 @@ impl SensorFusionMath for f64 {
             z: (q.w * gyro_rps.z + q.x * gyro_rps.y - q.y * gyro_rps.x) * 0.5,
         }
     }
+
     #[inline(always)]
     fn madgwick_step_acc(
         q: Quaternion<Self>,

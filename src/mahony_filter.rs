@@ -146,13 +146,14 @@ mod tests {
     use super::*;
     use vqm::Vector3df32;
 
-    fn is_normal<T: Sized + Send + Sync + Unpin>() {}
+    fn _is_normal<T: Sized + Send + Sync + Unpin>() {}
     fn is_full<T: Sized + Send + Sync + Unpin + Copy + Clone + Default + PartialEq>() {}
 
     #[test]
     fn normal_types() {
         is_full::<MahonyFilter<f32>>();
     }
+
     #[test]
     fn update_orientation() {
         let mut sensor_fusion = MahonyFilterf32::default();
