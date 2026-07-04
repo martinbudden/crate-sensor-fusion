@@ -31,7 +31,7 @@ mod sensor_fusion_math;
 mod trilaterate_2d;
 mod trilaterate_3d;
 
-pub use altitude_kalman_filter::AltitudeKalmanFilterf32;
+pub use altitude_kalman_filter::{AltitudeKalmanFilter, AltitudeKalmanFilterf32, AltitudeKalmanFilterf64};
 pub use complementary_filter::{ComplementaryFilter, ComplementaryFilterf32, ComplementaryFilterf64};
 pub use kalman_state_vector9::{KalmanStateVector9, KalmanStateVector9f32, KalmanStateVector9f64};
 pub use madgwick_filter::{MadgwickFilter, MadgwickFilterf32, MadgwickFilterf64};

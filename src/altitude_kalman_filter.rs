@@ -1,41 +1,67 @@
-use num_traits::{ConstZero, One};
-use vqm::{Matrix3x3f32, Vector3df32};
+use num_traits::{ConstOne, ConstZero, float::FloatCore};
+use vqm::{Matrix3x3, Matrix3x3Math, SqrtMethods, Vector3d};
 
 /// `f32` variant of `AltitudeKalmanFilter`.
-pub type AltitudeKalmanFilterf32 = AltitudeKalmanFilter;
+pub type AltitudeKalmanFilterf32 = AltitudeKalmanFilter<f32>;
+/// `f64` variant of `AltitudeKalmanFilter`.
+pub type AltitudeKalmanFilterf64 = AltitudeKalmanFilter<f64>;
+
+pub trait AltitudeKalmanFilterConstants {
+    const ONE_HUNDRED: Self;
+    const ONE_TENTH: Self;
+    const ONE_HUNDREDTH: Self;
+}
+
+impl AltitudeKalmanFilterConstants for f32 {
+    const ONE_HUNDRED: Self = 100.0;
+    const ONE_TENTH: Self = 0.1;
+    const ONE_HUNDREDTH: Self = 0.01;
+}
+
+impl AltitudeKalmanFilterConstants for f64 {
+    const ONE_HUNDRED: Self = 100.0;
+    const ONE_TENTH: Self = 0.1;
+    const ONE_HUNDREDTH: Self = 0.01;
+}
 
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct AltitudeKalmanFilter {
-    predicted: Vector3df32,
-    estimated: Vector3df32,
-    beta: f32,
+pub struct AltitudeKalmanFilter<T> {
+    predicted: Vector3d<T>,
+    estimated: Vector3d<T>,
+    beta: T,
     /// Predicted System Uncertainty Covariance Matrix (P).
-    P: Matrix3x3f32,
+    P: Matrix3x3<T>,
     /// Estimated Post-Correction Error Covariance Matrix (E).
-    E: Matrix3x3f32,
+    E: Matrix3x3<T>,
 
     // --- Hyperparameters & Tuning Constants ---
-    q_velocity: f32,
-    q_bias: f32,
+    q_velocity: T,
+    q_bias: T,
     /// Barometer measurement variance.
-    r_barometer: f32,
+    r_barometer: T,
     /// Rangefinder measurement variance.
-    r_rangefinder: f32,
+    r_rangefinder: T,
     /// GPS measurement variance.
-    r_gps: f32,
+    r_gps: T,
 }
 
-impl Default for AltitudeKalmanFilter {
+impl<T> Default for AltitudeKalmanFilter<T>
+where
+    T: Copy + ConstZero + ConstOne + FloatCore + Matrix3x3Math + AltitudeKalmanFilterConstants,
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AltitudeKalmanFilter {
+impl<T> AltitudeKalmanFilter<T>
+where
+    T: Copy + ConstOne + AltitudeKalmanFilterConstants,
+{
     /// Q, process noise covariance matrix.
-    const Q1: f32 = 0.01;
-    const Q3: f32 = 1.0;
+    const Q1: T = T::ONE_HUNDREDTH;
+    const Q3: T = T::ONE;
 
     /// R, measurement covariance matrix.
     const _R: f32 = 0.004 * 0.004;
@@ -43,33 +69,42 @@ impl AltitudeKalmanFilter {
     const _VELOCITY_ROW: usize = 0;
     const ALTITUDE_ROW: usize = 1;
     const _BIAS_ROW: usize = 2;
+}
 
+impl<T> AltitudeKalmanFilter<T>
+where
+    T: Copy + ConstZero + ConstOne + FloatCore + Matrix3x3Math + AltitudeKalmanFilterConstants,
+{
     /// Constructor.
+    #[must_use]
     pub const fn new() -> Self {
         Self {
-            predicted: Vector3df32::ZERO,
-            estimated: Vector3df32::ZERO,
-            beta: 0.0,
+            predicted: Vector3d::ZERO,
+            estimated: Vector3d::ZERO,
+            beta: T::ZERO,
             q_velocity: Self::Q1,
             q_bias: Self::Q3,
-            r_barometer: 0.0,
-            r_rangefinder: 0.0,
-            r_gps: 0.0,
-            E: Matrix3x3f32::ZERO,
-            P: Matrix3x3f32::ZERO,
+            r_barometer: T::ZERO,
+            r_rangefinder: T::ZERO,
+            r_gps: T::ZERO,
+            E: Matrix3x3::ZERO,
+            P: Matrix3x3::ZERO,
         }
     }
 }
 
-impl AltitudeKalmanFilter {
+impl<T> AltitudeKalmanFilter<T>
+where
+    T: Copy + ConstZero + ConstOne + FloatCore + SqrtMethods + Matrix3x3Math + AltitudeKalmanFilterConstants,
+{
     /// Initializer targeting steady-state baseline parameters.
     pub fn new_steady_state(
-        initial_altitude: f32,
-        q_velocity: f32,
-        q_bias: f32,
-        r_barometer: f32,
-        r_rangefinder: f32,
-        r_gps: f32,
+        initial_altitude: T,
+        q_velocity: T,
+        q_bias: T,
+        r_barometer: T,
+        r_rangefinder: T,
+        r_gps: T,
     ) -> Self {
         // 1. Calculate analytical steady-state variance bounds.
         // Higher sensor noise (R) increases state uncertainty boundaries.
@@ -80,18 +115,18 @@ impl AltitudeKalmanFilter {
 
         // 2. Map variances to the diagonal elements of the Covariance Matrices
         #[rustfmt::skip]
-        let initial_covariance = Matrix3x3f32::new([
-            steady_state_vel_variance, 0.0,                       0.0,
-            0.0,                       steady_state_alt_variance, 0.0,
-            0.0,                       0.0,                       steady_state_bias_variance,
+        let initial_covariance = Matrix3x3::new([
+            steady_state_vel_variance, T::ZERO,                   T::ZERO,
+            T::ZERO,                   steady_state_alt_variance, T::ZERO,
+            T::ZERO,                   T::ZERO,                   steady_state_bias_variance,
         ]);
 
         Self {
-            estimated: Vector3df32 { x: 0.0, y: initial_altitude, z: 0.0 },
-            predicted: Vector3df32 { x: 0.0, y: initial_altitude, z: 0.0 },
+            estimated: Vector3d { x: T::ZERO, y: initial_altitude, z: T::ZERO },
+            predicted: Vector3d { x: T::ZERO, y: initial_altitude, z: T::ZERO },
             P: initial_covariance,
             E: initial_covariance,
-            beta: 0.1, // Damping factor configuration baseline
+            beta: T::ONE_TENTH, // Damping factor configuration baseline
             q_velocity,
             q_bias,
             r_barometer,
@@ -100,52 +135,55 @@ impl AltitudeKalmanFilter {
         }
     }
 
-    pub fn set_velocity(&mut self, velocity: f32) {
+    pub fn set_velocity(&mut self, velocity: T) {
         self.estimated.x = velocity;
     }
 
     pub fn reset(&mut self) {
-        self.E = Matrix3x3f32::one() * 100.0;
+        self.E = Matrix3x3::ONE * T::ONE_HUNDRED;
     }
 
     /// Returns doublet `(estimated velocity, estimated altitude)`.
-    pub fn state(&self) -> (f32, f32) {
+    pub fn state(&self) -> (T, T) {
         (self.estimated.x, self.estimated.y)
     }
 }
 
 // **** Predict ****
 
-impl AltitudeKalmanFilter {
+impl<T> AltitudeKalmanFilter<T>
+where
+    T: Copy + ConstZero + ConstOne + FloatCore + SqrtMethods + Matrix3x3Math,
+{
     /// Phase 1: Predict state forward using IMU/Physics
     /// Call this at your IMU frequency or fixed control loop rate.
     #[allow(non_snake_case)]
     #[rustfmt::skip]
-    pub fn predict(&mut self, acceleration_measurement: f32, delta_t: f32) -> Vector3df32 {
+    pub fn predict(&mut self, acceleration_measurement: T, delta_t: T) -> Vector3d<T> {
         // States are a 3d vector with components: velocity, altitude, and bias.
         // Destructure the state vectors as references with meaningful names, for code legibility (Zero cost abstraction).
-        let Vector3df32 { x: estimated_velocity, y: estimated_altitude, z: estimated_bias } = self.estimated;
-        let Vector3df32 { x: ref mut predicted_velocity, y: ref mut predicted_altitude, z: ref mut predicted_bias } =
+        let Vector3d { x: estimated_velocity, y: estimated_altitude, z: estimated_bias } = self.estimated;
+        let Vector3d { x: ref mut predicted_velocity, y: ref mut predicted_altitude, z: ref mut predicted_bias } =
             self.predicted;
 
         // Kinematic Euler integration for velocity and altitude.
         *predicted_velocity = estimated_velocity + (acceleration_measurement - estimated_bias) * delta_t;
         *predicted_altitude = estimated_altitude + estimated_velocity * delta_t;
-        *predicted_bias = estimated_bias * (1.0 + self.beta * delta_t);
+        *predicted_bias = estimated_bias * (T::ONE + self.beta * delta_t);
 
         // State Transition Matrix (A)
-        let A = Matrix3x3f32::new([
-            1.0,     0.0, -delta_t,
-            delta_t, 1.0, 0.0,
-            0.0,     0.0, 1.0 + self.beta * delta_t,
+        let A = Matrix3x3::new([
+            T::ONE,  T::ZERO, -delta_t,
+            delta_t, T::ONE,  T::ZERO,
+            T::ZERO, T::ZERO, T::ONE + self.beta * delta_t,
         ]);
 
         // Process Noise Matrix (Q)
         let dt2 = delta_t * delta_t;
-        let Q = Matrix3x3f32::new([
-            dt2 * self.q_velocity, 0.0, 0.0, // Fixed negative sign from original code if standard variance
-            0.0,                   0.0, 0.0,
-            0.0,                   0.0, dt2 * self.q_bias,
+        let Q = Matrix3x3::new([
+            dt2 * self.q_velocity, T::ZERO, T::ZERO, // Fixed negative sign from original code if standard variance
+            T::ZERO,               T::ZERO, T::ZERO,
+            T::ZERO,               T::ZERO, dt2 * self.q_bias,
         ]);
 
         // Project error covariance: P = A * E * A^T + Q
@@ -161,18 +199,22 @@ impl AltitudeKalmanFilter {
 
 // **** Correct ***
 
-impl AltitudeKalmanFilter {
+impl<T> AltitudeKalmanFilter<T>
+where
+    T: Copy + ConstZero + ConstOne + FloatCore + Matrix3x3Math + AltitudeKalmanFilterConstants,
+{
     /// Phase 2 Altitude Correction using new measurement.
     #[allow(non_snake_case)]
-    pub fn correct_altitude(&mut self, altitude: f32, R: f32) {
+    pub fn correct_altitude(&mut self, altitude: T, R: T) {
+        const M22: usize = 4;
         // H vector for altitude: [0, 1, 0]
-        let H_transpose = Vector3df32 { x: 0.0, y: 1.0, z: 0.0 };
+        let H_transpose = Vector3d { x: T::ZERO, y: T::ONE, z: T::ZERO };
 
         // Innovation covariance: S = H * P * H^T + R
-        let S = self.P[Matrix3x3f32::M22] + R;
+        let S = self.P[M22] + R;
 
         // Kalman Gain: K = P * H^T / S
-        let K = (self.P * H_transpose) * (1.0 / S);
+        let K = (self.P * H_transpose) * (T::ONE / S);
 
         // Update state estimate
         let predicted_altitude = self.predicted.y;
@@ -190,18 +232,18 @@ impl AltitudeKalmanFilter {
 
     /// Phase 2: Correct altitude using the barometer measurement.
     #[inline]
-    pub fn correct_altitude_using_barometer(&mut self, altitude: f32) {
+    pub fn correct_altitude_using_barometer(&mut self, altitude: T) {
         self.correct_altitude(altitude, self.r_barometer);
     }
 
     /// Phase 2: Correct altitude using the rangefinder measurement.
     #[inline]
-    pub fn correct_altitude_using_rangefinder(&mut self, altitude: f32) {
+    pub fn correct_altitude_using_rangefinder(&mut self, altitude: T) {
         self.correct_altitude(altitude, self.r_barometer);
     }
     /// Phase 2: Correct altitude using GPS vertical measurement.
     #[inline]
-    pub fn correct_altitude_using_gps(&mut self, altitude: f32) {
+    pub fn correct_altitude_using_gps(&mut self, altitude: T) {
         self.correct_altitude(altitude, self.r_gps);
     }
 }
@@ -209,18 +251,19 @@ impl AltitudeKalmanFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use vqm::{Matrix3x3f32, Vector3df32};
 
     fn _is_normal<T: Sized + Send + Sync + Unpin>() {}
     fn is_full<T: Sized + Send + Sync + Unpin + Copy + Clone + Default + PartialEq>() {}
 
     #[test]
     fn normal_types() {
-        is_full::<AltitudeKalmanFilter>();
+        is_full::<AltitudeKalmanFilterf32>();
     }
 
     #[test]
     fn test_new() {
-        let _kalman_filter = AltitudeKalmanFilter::new();
+        let _kalman_filter = AltitudeKalmanFilterf32::new();
     }
 
     #[test]
@@ -237,7 +280,7 @@ mod tests {
         ]);
 
         // Extract altitude row from the P matrix
-        let altitude_row = p.row(AltitudeKalmanFilter::ALTITUDE_ROW);
+        let altitude_row = p.row(AltitudeKalmanFilterf32::ALTITUDE_ROW);
         assert_eq!(Vector3df32 { x: 2.0, y: 5.0, z: 11.0 }, altitude_row);
 
         // Compute the updated Covariance Matrix (E).

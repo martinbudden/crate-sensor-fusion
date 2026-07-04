@@ -29,7 +29,7 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 ### Security
 
-## [0.1.8] - 2023-06-xx
+## [0.1.8] - 2026-07-04
 
 ### Added
 
@@ -40,9 +40,10 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 ### Changed
 
-- Use vqm version 0.1.xx.
+- Use vqm version 0.1.13.
+- `AltitudeKalmanFilter` changed to use generics.
 
-## [0.1.7] - 2023-06-08
+## [0.1.7] - 2026-06-08
 
 ### Added
 
@@ -57,7 +58,7 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 - Renamed update to correct for `PositionKalmanFilter`.
 - Code tidy.
 
-## [0.1.6] - 2023-05-24
+## [0.1.6] - 2026-05-24
 
 ### Changed
 
@@ -65,7 +66,7 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 - Improved efficiency of Kalman filters.
 - Improved Kalman documentation.
 
-## [0.1.5] - 2023-05-16
+## [0.1.5] - 2026-05-16
 
 ### Added
 
@@ -76,26 +77,26 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 - `katex-header.html`
 
-## [0.1.4] - 2023-05-16
+## [0.1.4] - 2026-05-16
 
 ### Changed
 
 - Use vqm version 0.1.5.
 
-## [0.1.3] - 2023-05-06
+## [0.1.3] - 2026-05-06
 
 ### Changed
 
 - Use vqm version 0.1.3.
 
-## [0.1.2] - 2023-05-02
+## [0.1.2] - 2026-05-02
 
 ### Changed
 
 - Improved README.md.
 - Use vqm version 0.1.2.
 
-## [0.1.1] - 2023-04-27
+## [0.1.1] - 2026-04-27
 
 ### Added
 
@@ -109,6 +110,6 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 - Improved documentation.
 - Use vqm version 0.1.1.
 
-## [0.1.0] - 2023-04-12
+## [0.1.0] - 2026-04-12
 
 Initial release.
