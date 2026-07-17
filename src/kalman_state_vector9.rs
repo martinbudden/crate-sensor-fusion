@@ -66,36 +66,34 @@ where
         Self::outer_product_associated(self, row)
     }
 
-    /// Calculates the outer product of two 9-element states in a compiler-friendly manner.
+    /// Calculates the outer product of two 9-element states for COLUMN-MAJOR matrices (Cortex-M Edition).
     #[inline]
     fn outer_product_associated(col: KalmanStateVector9<T>, row: KalmanStateVector9<T>) -> Matrix9x9<T> {
-        // Convert the 9 elements into three 4-lane logically padded chunks.
-        // The 4th element is padding to fulfill 128-bit SIMD constraints.
-        let r1 = [row.pos.x, row.pos.y, row.pos.z, T::zero()];
-        let r2 = [row.vel.x, row.vel.y, row.vel.z, T::zero()];
-        let r3 = [row.bias.x, row.bias.y, row.bias.z, T::zero()];
+        // Flatten row elements (scalar weights)
+        let r = [row.pos.x, row.pos.y, row.pos.z, row.vel.x, row.vel.y, row.vel.z, row.bias.x, row.bias.y, row.bias.z];
 
-        // Flatten `col` into an array  easily indexable via registers
+        // Flatten column entries natively without any artificial 4-lane padding
         let c = [col.pos.x, col.pos.y, col.pos.z, col.vel.x, col.vel.y, col.vel.z, col.bias.x, col.bias.y, col.bias.z];
 
         let mut ret = <Matrix9x9<T>>::zero();
 
-        // Process each row. LLVM sees fixed loops of 4 elements and emits optimized parallel hardware vector instructions.
-        for (r_idx, &scalar) in c.iter().enumerate().take(9) {
-            // array::map creates a clean, fixed-size loop that LLVM easily unrolls
-            // and vectorizes since the size (4) and operation are perfectly predictable.
-            let chunk1 = r1.map(|val| scalar * val);
-            let chunk2 = r2.map(|val| scalar * val);
-            let chunk3 = r3.map(|val| scalar * val);
+        // Process each column.
+        // With the slice copies removed, the compiler can assign the entire `c` array
+        // to CPU/FPU registers and stream them directly out to the matrix memory.
+        for (c_idx, &scalar) in r.iter().enumerate().take(9) {
+            let ret_col = &mut ret[c_idx * 9..(c_idx + 1) * 9];
 
-            // Get a mutable reference to the row (9 elements)
-            let ret_row = &mut ret[r_idx * 9..(r_idx + 1) * 9];
-
-            // Write back to the matrix, dropping the 4th padding lane of each chunk.
-            // Since the sizes are matched the compiler can generate raw, grouped memory stream instructions.
-            ret_row[0..3].copy_from_slice(&chunk1[0..3]);
-            ret_row[3..6].copy_from_slice(&chunk2[0..3]);
-            ret_row[6..9].copy_from_slice(&chunk3[0..3]);
+            // Direct scalar assignment. LLVM unrolls this perfectly and generates
+            // branchless, pipelined single-cycle hardware float multiplications.
+            ret_col[0] = c[0] * scalar;
+            ret_col[1] = c[1] * scalar;
+            ret_col[2] = c[2] * scalar;
+            ret_col[3] = c[3] * scalar;
+            ret_col[4] = c[4] * scalar;
+            ret_col[5] = c[5] * scalar;
+            ret_col[6] = c[6] * scalar;
+            ret_col[7] = c[7] * scalar;
+            ret_col[8] = c[8] * scalar;
         }
 
         ret

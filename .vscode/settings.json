@@ -48,6 +48,7 @@
         "itoa",
         "Kalman",
         "katex",
+        "KRKᵀ",
         "lalrpop",
         "libc",
         "libm",

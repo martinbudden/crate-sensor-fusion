@@ -23,14 +23,14 @@ rustc_version = "0.4.1"
 default = ["libm"]
 std = ["num-traits/std", "vqm/std"] # Propagates std upwards properly
 libm = ["dep:libm", "num-traits/libm", "vqm/libm"]
-no_align = ["vqm/no_align"]
+align = ["vqm/align"]
 simd = ["vqm/simd"]
 
 [dependencies]
 # Set default-features = false to prevent host target leakage
-vqm = { version = "0.1.13" }
+#vqm = { version = "0.1.13" }
 #vqm = { git = "https://github.com/martinbudden/crate-vector-quaternion-matrix" }
-#vqm = { path = "../vqm"  }
+vqm = { path = "../vqm"  }
 num-traits = { version = "0.2.19", default-features = false }
 libm = { version = "0.2.16", optional = true }
 

@@ -142,31 +142,31 @@ impl SensorFusionMath for f32 {
         {
             let q_v = f32x4::from(q);
 
-            // 1. Calculate wz_common
+            // Calculate wz_common
             let wz_common = 2.0 * (q.x * q.x + q.y * q.y);
 
-            // 2. Calculate xy_common (w*w + z*z - 1.0 + 2.0*wz_common + a.z)
+            // Calculate xy_common (w*w + z*z - 1.0 + 2.0*wz_common + a.z)
             let xy_common = 2.0 * (q.w * q.w + q.z * q.z - 1.0 + 2.0 * wz_common + a.z);
 
-            // 3. Calculate common term: [w, x, y, z] * [qq, xy_common, xy_common, qq]
+            // Calculate common term: [w, x, y, z] * [qq, xy_common, xy_common, qq]
             let common_scalars = f32x4::from_array([wz_common, xy_common, xy_common, wz_common]);
             let common = q_v * common_scalars;
 
-            // 4. Calculate ax term: [y, -z, w, -x] * ax
+            // Calculate ax term: [y, -z, w, -x] * ax
             // Term 2: [y, -z, w, -x] * ax
             // Indices needed: y=2, z=3, w=0, x=1
             let ax_q_swiz = simd_swizzle!(q_v, [2, 3, 0, 1]);
             let ax_signs = f32x4::from_array([1.0, -1.0, 1.0, -1.0]);
             let ax = (ax_q_swiz * ax_signs) * f32x4::splat(a.x);
 
-            // 5. Calculate ay term: [-x, -w, -z, -y] * ay
+            // Calculate ay term: [-x, -w, -z, -y] * ay
             // Term 3: [-x, -w, -z, -y] * ay
             // Indices needed: x=1, w=0, z=3, y=2
             let ay_q_swiz = simd_swizzle!(q_v, [1, 0, 3, 2]);
             let ay_signs = f32x4::splat(-1.0);
             let ay = (ay_q_swiz * ay_signs) * f32x4::splat(a.y);
 
-            // 6. Combine: step = common + ax + ay
+            // Combine: step = common + ax + ay
             let ret_v = common + ax + ay;
 
             ret_v.into()

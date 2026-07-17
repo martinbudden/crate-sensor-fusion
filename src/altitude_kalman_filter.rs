@@ -106,14 +106,14 @@ where
         r_rangefinder: T,
         r_gps: T,
     ) -> Self {
-        // 1. Calculate analytical steady-state variance bounds.
+        // Calculate analytical steady-state variance bounds.
         // Higher sensor noise (R) increases state uncertainty boundaries.
         // Higher process noise (Q) indicates dynamic, fast-changing states.
         let steady_state_alt_variance = (q_velocity * r_barometer).sqrt();
         let steady_state_vel_variance = q_velocity;
         let steady_state_bias_variance = q_bias;
 
-        // 2. Map variances to the diagonal elements of the Covariance Matrices
+        // Map variances to the diagonal elements of the Covariance Matrices
         #[rustfmt::skip]
         let initial_covariance = Matrix3x3::new([
             steady_state_vel_variance, T::ZERO,                   T::ZERO,
@@ -271,7 +271,7 @@ mod tests {
         // Initialize the Kalman Gain vector (K)
         let k = Vector3df32 { x: 3.0, y: 7.0, z: 13.0 };
 
-        // 2. Initialize a starting Covariance Matrix (P)
+        // Initialize a starting Covariance Matrix (P)
         // We set the 2nd row to [2.0, 5.0, 11.0] to match our proven outer product values
         let p = Matrix3x3f32::new([
             10.0, 20.0, 30.0, // Row 1
@@ -283,12 +283,12 @@ mod tests {
         let altitude_row = p.row(AltitudeKalmanFilterf32::ALTITUDE_ROW);
         assert_eq!(Vector3df32 { x: 2.0, y: 5.0, z: 11.0 }, altitude_row);
 
-        // Compute the updated Covariance Matrix (E).
+        // Calculate the updated Covariance Matrix (E).
         let kh_p = k.outer_product(altitude_row);
 
         let e = p - kh_p;
 
-        // 5. Calculate the mathematically expected output data layout:
+        // Calculate the mathematically expected output data layout:
         // Row 1: [10, 20, 30] - [6,  15, 33]  = [4,   5,  -3]
         // Row 2: [2,  5,  11] - [14, 35, 77]  = [-12, -30, -66]
         // Row 3: [50, 60, 70] - [26, 65, 143] = [24,  -5,  -73]
