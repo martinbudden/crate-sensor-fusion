@@ -70,7 +70,7 @@ impl PositionKalmanFilter {
 impl PositionKalmanFilter {
     /// Constructor.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             pos: Vector3df32 { x: 0.0, y: 0.0, z: 0.0 },
             vel: Vector3df32 { x: 0.0, y: 0.0, z: 0.0 },
