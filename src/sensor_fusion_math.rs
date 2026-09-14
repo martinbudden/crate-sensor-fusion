@@ -101,7 +101,7 @@ impl SensorFusionMath for f32 {
         {
             Quaternion {
                 w: (-q.x * gyro.x - q.y * gyro.y - q.z * gyro.z) * 0.5,
-                x: (q.w * gyro.x - q.z * gyro.y + q.y * gyro.z) * 0.5,
+                x: f32::midpoint(q.w * gyro.x - q.z * gyro.y, q.y * gyro.z),
                 y: (q.z * gyro.x + q.w * gyro.y - q.x * gyro.z) * 0.5,
                 z: (-q.y * gyro.x + q.x * gyro.y + q.w * gyro.z) * 0.5,
             }
@@ -284,7 +284,7 @@ impl SensorFusionMath for f64 {
         Quaternion {
             w: (-q.x * gyro_rps.x - q.y * gyro_rps.y - q.z * gyro_rps.z) * 0.5,
             x: (q.w * gyro_rps.x + q.y * gyro_rps.z - q.z * gyro_rps.y) * 0.5,
-            y: (q.w * gyro_rps.y - q.x * gyro_rps.z + q.z * gyro_rps.x) * 0.5,
+            y: f64::midpoint(q.w * gyro_rps.y - q.x * gyro_rps.z, q.z * gyro_rps.x),
             z: (q.w * gyro_rps.z + q.x * gyro_rps.y - q.y * gyro_rps.x) * 0.5,
         }
     }
