@@ -1,0 +1,44 @@
+name: Rust CI
+
+on:
+  pull_request:
+    branches: [ "main" ]
+#  push:
+#    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy, rustfmt
+
+    - name: Enable Rust caching
+      uses: swatinem/rust-cache@v2
+
+    - name: Check code formatting
+      run: cargo fmt --check
+
+    - name: Run Clippy lints
+      run: cargo clippy --all-targets -- -D warnings
+
+    - name: Run automated tests
+      run: cargo test --verbose
+
+    - name: Verify documentation builds
+      run: cargo doc --no-deps --document-private-items
+      env:
+        RUSTDOCFLAGS: "-D warnings"
+
+    - name: Dry-run crates.io publish
+      run: cargo publish --dry-run
