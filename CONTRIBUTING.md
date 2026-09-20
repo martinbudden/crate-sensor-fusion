@@ -6,10 +6,8 @@ Thank you for your interest in contributing to this project. This document outli
 
 By submitting a pull request or otherwise contributing code to this project, you agree to the following terms:
 
-1. You grant the project maintainer a perpetual, worldwide, irrevocable, non-exclusive,
-   transferable, and sub-licensable license to use, reproduce, modify, distribute,
-   publicly perform/display, and relicense your contributions (including under different terms),
-   including in dual- and commercial-licensing arrangements.
+1. Any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license,
+   shall be dual licensed (MIT or Apache-2.0), without any additional terms or conditions.
 2. You represent and warrant you have all necessary rights to grant the above license and that,
    to the best of your knowledge, your contributions do not knowingly infringe third-party rights.
 3. Patent license: To the extent your contributions or their combination with the project
