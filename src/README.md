@@ -46,9 +46,9 @@ during the time-propagation step, pushing the physics model forward. Absolute re
 ### Covariance Time Propagation: `P = F * E * Fᵀ + Q`
 
 ```text
-    ⎡  1    0   -dT    ⎤          ⎡ -dT² * q_vel    0            0      ⎤
-F = ⎢ dT    1     0    ⎥      Q = ⎢      0          0            0      ⎥
-    ⎣  0    0   1+β*dT ⎦          ⎣      0          0      dT² * q_bias ⎦
+    ⎡  1    0   -dt    ⎤          ⎡ -dt² * q_vel    0            0      ⎤
+F = ⎢ dt    1     0    ⎥      Q = ⎢      0          0            0      ⎥
+    ⎣  0    0   1+β*dt ⎦          ⎣      0          0      dt² * q_bias ⎦
 ```
 
 ### Multi-Dimensional GPS Innovation Matrix: `S = H * P * Hᵀ + R`

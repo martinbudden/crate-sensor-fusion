@@ -109,8 +109,8 @@ impl KalmanFilterXY {
     /// ### Physical Mechanics
     /// ```math
     ///
-    /// pos_k = pos_k₋₁ + vel_k₋₁ * dT + 0.5 * acc * dT²
-    /// vel_k = vel_k₋₁ + acc * dT
+    /// pos_k = pos_k₋₁ + vel_k₋₁ * dt + 0.5 * acc * dt²
+    /// vel_k = vel_k₋₁ + acc * dt
     /// ```
     pub fn predict_state(&mut self, acc_measurement: Vector2f32, dt: f32) {
         // Physical mechanics
