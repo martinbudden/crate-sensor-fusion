@@ -31,9 +31,9 @@ simd = ["vqm/simd"]
 
 [dependencies]
 # Set default-features = false to prevent host target leakage
-#vqm = { version = "0.1.16" }
-vqm = { git = "https://github.com/martinbudden/crate-vector-quaternion-matrix" }
-#vqm = { path = "../vqm"  }
+#vqm = { version = "0.1.16", default-features = false  }
+vqm = { git = "https://github.com/martinbudden/crate-vector-quaternion-matrix", default-features = false }
+#vqm = { path = "../vqm", default-features = false   }
 num-traits = { version = "0.2.19", default-features = false }
 libm = { version = "0.2.16", optional = true }
 # derive_more = { version = "2.1.1", optional = true }
