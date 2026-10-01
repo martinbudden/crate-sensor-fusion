@@ -4,6 +4,9 @@ This crate contains [sensor fusion](https://en.wikipedia.org/wiki/Sensor_fusion)
 output from a gyroscope, accelerometer, and optionally a magnetometer to give output that has less uncertainty
 than the output of the individual sensors.
 
+This crate is `no_std`, ie it does not link to the standard library, does not depend on an operating system, and uses no allocation.
+This means it is suitable for embedded systems.
+
 Six sensor fusion implementations are available:
 
 1. Complementary Filter
