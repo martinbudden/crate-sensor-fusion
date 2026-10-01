@@ -44,16 +44,6 @@ where
     T: Copy + ConstZero + ConstOne + ConstFour,
 {
     /// Constructor.
-    pub const fn with_orientation_and_beta(orientation: Quaternion<T>, beta: T) -> Self {
-        MadgwickFilter { q: orientation, max_acc_magnitude_squared: T::FOUR, beta, beta_yaw: T::ZERO }
-    }
-
-    /// Constructor.
-    pub const fn with_orientation(orientation: Quaternion<T>) -> Self {
-        MadgwickFilter { q: orientation, max_acc_magnitude_squared: T::FOUR, beta: T::ONE, beta_yaw: T::ZERO }
-    }
-
-    /// Constructor.
     #[must_use]
     pub const fn new() -> Self {
         MadgwickFilter {
@@ -62,6 +52,20 @@ where
             beta: T::ONE,
             beta_yaw: T::ZERO,
         }
+    }
+
+    /// Set the beta gain of a newly constructed filter.
+    #[must_use]
+    pub const fn with_beta(mut self, beta: T) -> Self {
+        self.beta = beta;
+        self
+    }
+
+    /// Set the orientation of a newly constructed filter.
+    #[must_use]
+    pub const fn with_orientation(mut self, orientation: Quaternion<T>) -> Self {
+        self.q = orientation;
+        self
     }
 }
 
@@ -284,7 +288,7 @@ mod tests {
         let initial_q = Quaternionf32::from_yaw_degrees(initial_yaw);
         //println!("Initial q: {initial_q}");
 
-        let mut filter = MadgwickFilterf32::with_orientation(initial_q);
+        let mut filter = MadgwickFilterf32::new().with_orientation(initial_q);
         let gain = 5.0;
         let delta_t = 0.1;
         filter.set_beta_yaw(gain);

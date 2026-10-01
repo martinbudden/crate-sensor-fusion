@@ -15,7 +15,7 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 - May port  **VQF** (Versatile Quaternion Filter) from my C++ library [Library-SensorFusion](https://github.com/martinbudden/Library-SensorFusion).
 
-## [0.1.11] - 2026-09-xx
+## [0.1.11] - 2026-10-01
 
 ### Added
 
@@ -24,6 +24,7 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 ### Changed
 
 - updated to Rust version 1.89.
+- improved `with` form of `MadgwickFilter` constructors.
 
 ## [0.1.10] - 2026-09-05
 
