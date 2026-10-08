@@ -1,11 +1,10 @@
-# `sensor-fusion` Rust Crate<br>![License: MIT](https://img.shields.io/badge/license-MIT-green) [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) ![open source](https://badgen.net/badge/open/source/blue?icon=github)
+# `sensor-fusion` Rust Crate<br>[![Crates.io](https://img.shields.io/crates/v/sensor-fusion.svg)](https://crates.io/crates/sensor-fusion) [![Documentation](https://docs.rs/sensor-fusion/badge.svg)](https://docs.rs/sensor-fusion) [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT) ![open source](https://badgen.net/badge/open/source/blue?icon=github)
 
 This crate contains [sensor fusion](https://en.wikipedia.org/wiki/Sensor_fusion) algorithms to combine
 output from a gyroscope, accelerometer, and optionally a magnetometer to give output that has less uncertainty
 than the output of the individual sensors.
 
-This crate is `no_std`, ie it does not link to the standard library, does not depend on an operating system, and uses no allocation.
-This means it is suitable for embedded systems.
+This crate is `no_std`, `no alloc`, and the Minimum Supported Rust Version (MSRV) is `Rust 1.89`.
 
 Six sensor fusion implementations are available:
 
