@@ -160,13 +160,16 @@ mod tests {
 
         calculate_distances(position, &mut anchors);
 
-        let result = trilaterate_3d_weighted(&anchors).expect("Should successfully calculate coordinate");
+        let option = trilaterate_3d_weighted(&anchors);
+        assert!(option.is_some());
 
-        // Validate that calculated values match the true location within tolerance
-        let epsilon = 0.007;
-        assert!((result.x - position.x).abs() < epsilon, "X mismatch: expected {}, got {}", position.x, result.x);
-        assert!((result.y - position.y).abs() < epsilon, "Y mismatch: expected {}, got {}", position.y, result.y);
-        assert!((result.z - position.z).abs() < epsilon, "Z mismatch: expected {}, got {}", position.z, result.z);
+        if let Some(result) = option {
+            // Validate that calculated values match the true location within tolerance
+            let epsilon = 0.007;
+            assert!((result.x - position.x).abs() < epsilon, "X mismatch: expected {}, got {}", position.x, result.x);
+            assert!((result.y - position.y).abs() < epsilon, "Y mismatch: expected {}, got {}", position.y, result.y);
+            assert!((result.z - position.z).abs() < epsilon, "Z mismatch: expected {}, got {}", position.z, result.z);
+        }
     }
 
     #[test]
@@ -200,12 +203,14 @@ mod tests {
         // Artificially corrupt the distance on the 5th anchor by adding 15 meters of noise
         anchors[4].distance += 15.0;
 
-        let result = trilaterate_3d_weighted(&anchors).expect("Should compute coordinate despite noise");
-
-        // The target coordinates should stay highly accurate because the bad sensor's weight is near zero
-        assert!((result.x - position.x).abs() < 0.05, "X deviated too far due to outlier: {}", result.x);
-        assert!((result.y - position.y).abs() < 0.05, "Y deviated too far due to outlier: {}", result.y);
-        assert!((result.z - position.z).abs() < 0.05, "Z deviated too far due to outlier: {}", result.z);
+        let option = trilaterate_3d_weighted(&anchors);
+        assert!(option.is_some());
+        if let Some(result) = option {
+            // The target coordinates should stay highly accurate because the bad sensor's weight is near zero
+            assert!((result.x - position.x).abs() < 0.05, "X deviated too far due to outlier: {}", result.x);
+            assert!((result.y - position.y).abs() < 0.05, "Y deviated too far due to outlier: {}", result.y);
+            assert!((result.z - position.z).abs() < 0.05, "Z deviated too far due to outlier: {}", result.z);
+        }
     }
 
     #[test]
@@ -240,10 +245,13 @@ mod tests {
         // Ensure its absolute junk data stays corrupted
         anchors[4].distance = 999.0;
 
-        let result = trilaterate_3d_weighted(&anchors).expect("Should compute coordinate");
-        let epsilon = 0.002;
-        assert!((result.x - position.x).abs() < epsilon);
-        assert!((result.y - position.y).abs() < epsilon);
-        assert!((result.z - position.z).abs() < epsilon);
+        let option = trilaterate_3d_weighted(&anchors);
+        assert!(option.is_some());
+        if let Some(result) = option {
+            let epsilon = 0.002;
+            assert!((result.x - position.x).abs() < epsilon);
+            assert!((result.y - position.y).abs() < epsilon);
+            assert!((result.z - position.z).abs() < epsilon);
+        }
     }
 }

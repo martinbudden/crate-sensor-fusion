@@ -680,7 +680,6 @@ impl KalmanFilterXYZ {
     #[allow(non_snake_case)]
     pub fn validate_measurement(&self, y: Vector3f32, R: Vector3f32, gate_threshold: f32) -> bool {
         // Collect the columns into an array using standard iteration.
-        // Collecting exactly 3 items ensures we can pattern match them safely without using `unwrap`.
         /*let mut col_iter = self.P.iter_columns();
         let (Some(col0), Some(col1), Some(col2)) = (col_iter.next(), col_iter.next(), col_iter.next()) else {
             return false; // Structured pipeline fallback safety
