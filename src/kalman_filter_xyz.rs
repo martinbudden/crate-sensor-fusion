@@ -24,8 +24,13 @@ Action: Decrease Q or Increase R.
 ///   ┌─────┐  Acc/Gyro  ┌─────────────────┐
 ///   │ IMU ├──────────► │ MADGWICK FILTER ├──────► Orientation Quaternion
 ///   └─────┘            └─────────────────┘
-///  Acc │────────────────────────────────────────► Acc
-///      │            ┌────────────────────────┐
+///      | Acc
+///      │────────────────────────────────────────► Acc
+/// ┌────────────┐
+/// │ INTEGRATOR | (since Kalman filter runs at a fraction of the rate of the Madgwick filter)
+/// └────────────┘
+///      |
+///   delta V         ┌────────────────────────┐
 ///      └──────────► │ POSITION KALMAN FILTER ├──► Position Vector
 ///                   └────────────────────────┘    Velocity Vector
 ///                                │
@@ -45,6 +50,7 @@ pub struct KalmanFilterXYZ {
     /// Process Noise spectral density mapping to Velocity variance.
     pub Q_velocity: f32,
     /// Process Noise spectral density mapping to Sensor Drift variance.
+    /// Units: (m/s³)² / Hz.
     pub Q_bias: f32,
 }
 
@@ -107,6 +113,43 @@ impl KalmanFilterXYZ {
             P,
         }
     }
+
+    /// Set `Q_velocity`, the spectral density of the acceleration noise.
+    /// Input is accelerometer noise density in g per root-Hertz.
+    /// Datasheets typically specify accelerometer noise density in micro-g per root-Hertz  or mg per root-Hertz.
+    pub fn set_q_velocity(&mut self, acc_noise_density_g_per_root_hz: f32, denominator: u32) {
+        const G:f32 =  9.80665;
+        let acc_noise_density_mps2_per_root_hz = acc_noise_density_g_per_root_hz* G;
+        #[allow(clippy::cast_precision_loss)]
+        {self.Q_velocity = acc_noise_density_mps2_per_root_hz * acc_noise_density_mps2_per_root_hz / (denominator as f32);}
+    }
+
+    /// Set `Q_bias`, the spectral density of the acceleration bias random walk.
+    /// Input is accelerometer bias instability in g per time period tau.
+    /// Datasheets typically specify bias instability in micro-g over a time constant tau, typically 100 seconds.
+    pub fn set_q_bias(&mut self, bias_instability_g: f32, tau: f32) {
+        const G:f32 =  9.80665;
+        let bias_instability_mps2 = bias_instability_g* G;
+        self.Q_velocity = bias_instability_mps2 * bias_instability_mps2 / tau;
+    }
+
+    pub fn set_initial_position(&mut self, initial_position: Vector3f32) {
+
+        self.state.pos = initial_position;
+
+        // --- Define Initial Uncertainties (Variances) ---
+        let p_pos_init  = 25.0;   // ±5 meters initial position uncertainty, typical of GPS
+        let p_vel_init  = 0.25;   // ±0.5 m/s initial velocity uncertainty
+        let p_bias_init = 0.04;   // ±0.2 m/s² initial accelerometer bias uncertainty
+
+        // --- Populate the Diagonal Core Blocks ---
+        // Setting these ensures the X, Y, and Z axes are uniformly weighted at startup.
+        self.P[Self::PP].add_diagonal_scalar_in_place(p_pos_init);
+        self.P[Self::VV].add_diagonal_scalar_in_place(p_vel_init);
+        self.P[Self::BB].add_diagonal_scalar_in_place(p_bias_init);
+
+        // Off-diagonal blocks (PV, PB, VP, VB, BP, BV) remain pure zero matrices, as no cross-correlations exist yet.
+    }
 }
 
 impl KalmanFilterXYZ {
@@ -159,7 +202,7 @@ impl KalmanFilterXYZ {
         self.state.vel += acc * dt;
 
         // Bias remains constant during prediction, it is modeled as a random walk in covariance.
-        // So `self.acc_bias` not updated.
+        // So `self.acc_bias` is not updated.
     }
 
     /// Predict covariance:
@@ -303,6 +346,8 @@ impl KalmanFilterXYZ {
         // Since H selects position.z:
         // S = P_PP[z,z] + R
 
+        // Innovation Covariance (S) is a scalar
+        // Pull the Z-axis variance element directly out of the PP 3x3 block matrix
         let S = self.P[Self::PP][Matrix3x3f32::M33] + R;
 
         if S <= f32::EPSILON {
@@ -319,6 +364,8 @@ impl KalmanFilterXYZ {
         // P_VP[:,z]
         // P_BP[:,z]
 
+        // Calculate the Kalman Gain (K) as 3D vectors
+        // H isolates row index 2, so P * Hᵀ extracts column 2 of the sub-blocks.
         let P_pos = self.P[Self::PP].column(2);
         let P_vel = self.P[Self::VP].column(2);
         let P_acc_bias = self.P[Self::BP].column(2);
@@ -327,14 +374,15 @@ impl KalmanFilterXYZ {
         let K_vel = P_vel * S_inv;
         let K_acc_bias = P_acc_bias * S_inv;
 
-        // State update.
+        // The residual(y) is a scalar.
         let residual = altitude_measurement - self.state.pos.z;
 
+        // Update state using vector scaling
         self.state.pos += K_pos * residual;
         self.state.vel += K_vel * residual;
         self.state.acc_bias += K_acc_bias * residual;
 
-        // Covariance update:
+        // Covariance update (rank-1 outer product)
         //
         // P -= (P Hᵀ)(H P) / S
         //
@@ -361,9 +409,9 @@ impl KalmanFilterXYZ {
     ///
     /// ### Core Operations
     /// *  Extracts `PositionPosition` sub-block from P (top left 3x3 matrix).
-    /// *  `S = H * P * Hᵀ + R_gps` (yields a 3x3 innovation matrix)
-    /// *  `S_inv = try_inverse(S)`
-    /// *  `K = (P * Hᵀ) * S_inv` (yields a 9x3 block matrix representation)
+    /// *  `S = H * P * Hᵀ + R` (yields a 3x3 innovation matrix)
+    /// *  `S⁻¹ = try_inverse(S)`
+    /// *  `K = (P * Hᵀ) * S⁻¹` (yields a 9x3 block matrix representation)
     ///
     /// Performs a full 3D Position Correction (e.g., GPS or Optical Flow position packet).
     /// Observations sample the full x, y, and z position channels simultaneously.
