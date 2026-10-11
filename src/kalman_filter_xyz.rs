@@ -160,23 +160,26 @@ impl KalmanFilterXyz {
     /// ### Physical Mechanics
     /// ```math
     ///
+    /// delta_v = integral of acc over t, ie ~ acc * dt
+    ///
     /// pos_k = pos_k₋₁ + vel_k₋₁ * dt + 0.5 * acc * dt²
     /// vel_k = vel_k₋₁ + acc * dt
+    ///
+    /// so
+    /// pos_k = pos_k₋₁ + vel_k₋₁ * dt + 0.5 * delta_v * dt
+    /// vel_k = vel_k₋₁ + delta_v
     /// ```
-    pub fn predict_state(&mut self, acc_measurement: Vector3f32, dt: f32) {
+    pub fn predict_state(&mut self, delta_v_measurement: Vector3f32, dt: f32) {
         // In NED, positive Z is down, so gravity is a positive vector
         let gravity = Vector3f32 { x: 0.0, y: 0.0, z: 9.80665 };
 
-        // Calculate true physical acceleration by removing bias and adding gravity
-        // Note: in a NED frame, gravity is a positive vector pointing downwards, so it is added to the accelerometer measurement.
-        let acc = acc_measurement - self.state.acc_bias + gravity;
+        // The raw delta_v contains integrated bias and lacks integrated gravity.
+        // We remove the bias (acc_bias * dt) and add gravity (gravity * dt).
+        let delta_v = delta_v_measurement - (self.state.acc_bias * dt) + (gravity * dt);
 
-        // Physical mechanics
-        // s = ut + 0.5 * a * t²
-        self.state.pos += (self.state.vel + 0.5 * acc * dt) * dt;
+        self.state.pos += self.state.vel * dt + 0.5 * delta_v * dt;
 
-        // v = u + a * t
-        self.state.vel += acc * dt;
+        self.state.vel += delta_v;
 
         // Bias remains constant during prediction, it is modeled as a random walk in covariance.
         // So `self.acc_bias` is not updated.
@@ -187,7 +190,7 @@ impl KalmanFilterXyz {
     /// `P = F * P * Fᵀ + Q`.
     ///
     /// `P`: State covariance matrix
-    /// `F`: State transition matrix
+    /// `F`: State transition matrix (Delta-Velocity model)
     /// `Q`: Process noise covariance.
     ///
     /// A full 9x9 matrix multiplication involves 729 individual arithmetic operations.
@@ -220,7 +223,7 @@ impl KalmanFilterXyz {
     ///
     ///     ┌                 9x9                  ┐
     ///     │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
-    ///     │ │    I     ││   dt*I   ││    0     │ │
+    ///     │ │    I     ││   dt*I   ││-0.5·dt²·I│ │
     ///     │ └          ┘└          ┘└          ┘ │
     ///     │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
     /// F = │ │    0     ││    I     ││  -dt*I   │ │
@@ -236,17 +239,26 @@ impl KalmanFilterXyz {
     /// Expanding F * P * Fᵀ algebraically gives the following block updates:
     ///
     /// For the position columns (PP, VP, BP)
-    ///     PP_new = PP + dt * (VP + PV) + dt^2 * VV
-    ///     VP_new = VP + dt * VV - dt * BP - dt^2 * BV
-    ///     BP_new = BP + dt * BV
+    ///     PP_new = PP + dt * (PV + VP) + dt2 * VV - 0.5*dt2*(PB + BP) - 0.5*dt3*(VB + BV) + 0.25*dt4*BB
+    ///     VP_new = VP + dt * VV - dt * BP - dt2*BV - 0.5*dt2*VB + 0.5*dt3*BB
+    ///     BP_new = BP + dt * BV - 0.5 * dt2 * BB
+    ///
     /// For the velocity columns (PV, VV, BV)
-    ///     PV_new = PV + dt * VV - dt * PB - dt^2 * VB
-    ///     VV_new = VV - dt * (BV + VB) + dt^2 * BB
+    ///     PV_new = PV + dt * VV - dt*PB - dt2*VB - 0.5*dt2*BV + 0.5*dt3*BB
+    ///     VV_new = VV - dt * (BV + VB) + dt2*BB
     ///     BV_new = BV - dt * BB
+    ///
     /// For the bias columns (PB, VB, BB)
-    ///     PB_new = PB + dt * VB
+    ///     PB_new = PB + dt * VB - 0.5 * dt2 * BB
     ///     VB_new = VB - dt * BB
     ///     BB_new = BB
+    /// 
+    /// The process noise matrix Q
+    ///     ┌                               ┐
+    ///     │ ⅓·Q_v·dt³  ½·Q_v·dt²       0  │
+    /// Q = │ ½·Q_v·dt²    Q_v·dt        0  │
+    ///     │         0          0  Q_b·dt  │
+    ///     └                               ┘
     /// ```
     #[allow(unused)]
     #[allow(non_snake_case)]
@@ -263,26 +275,35 @@ impl KalmanFilterXyz {
             (Self::PP, Self::VP, Self::BP, Self::PV, Self::VV, Self::BV, Self::PB, Self::VB, Self::BB);
 
         // --- POSITION COLUMNS (PP, VP, BP) ---
-        self.P[PP] = self.P[PP] + (self.P[VP] + self.P[PV]) * dt + self.P[VV] * dt2;
-        let PP = (); // Stop P_new[PP] being used in subsequent calculations.
-        self.P[VP] = self.P[VP] + (self.P[VV] - self.P[BP]) * dt - self.P[BV] * dt2;
-        let VP = (); // Stop P_new[VP] being used in subsequent calculations.
-        self.P[BP] = self.P[BP] + self.P[BV] * dt;
+        self.P[PP] = self.P[PP] + (self.P[PV] + self.P[VP]) * dt + self.P[VV] * dt2
+            - (self.P[PB] + self.P[BP]) * (0.5 * dt2)
+            - (self.P[VB] + self.P[BV]) * (0.5 * dt3)
+            + self.P[BB] * (0.25 * dt4);
+        let PP = (); // Prevent P_new[PP] being used in subsequent calculations.
+
+        self.P[VP] = self.P[VP] + self.P[VV] * dt - self.P[BP] * dt - self.P[BV] * dt2 - self.P[VB] * (0.5 * dt2)
+            + self.P[BB] * (0.5 * dt3);
+        let VP = ();
+
+        self.P[BP] = self.P[BP] + self.P[BV] * dt - self.P[BB] * (0.5 * dt2);
         let BP = (); // Stop P_new[BP] being used in subsequent calculations.
 
         // --- VELOCITY COLUMNS (PV, VV, BV) ---
-        self.P[PV] = self.P[PV] + (self.P[VV] - self.P[PB]) * dt - self.P[VB] * dt2;
+        self.P[PV] = self.P[PV] + self.P[VV] * dt - self.P[PB] * dt - self.P[VB] * dt2 - self.P[BV] * (0.5 * dt2)
+            + self.P[BB] * (0.5 * dt3);
         let PV = ();
+
         self.P[VV] = self.P[VV] - (self.P[BV] + self.P[VB]) * dt + self.P[BB] * dt2;
         let VV = ();
+
         self.P[BV] = self.P[BV] - self.P[BB] * dt;
         let BV = ();
 
         // --- BIAS COLUMNS (PB, VB, BB) ---
-        self.P[PB] = self.P[PB] + self.P[VB] * dt;
+        self.P[PB] = self.P[PB] + self.P[VB] * dt - self.P[BB] * (0.5 * dt2);
         let PB = ();
-        self.P[VB] = self.P[VB] - self.P[BB] * dt;
-        // self.P[Self::BB] = self.P[Self::BB]; don't need to update BB.
+
+        self.P[VB] = self.P[VB] - self.P[BB] * dt; // self.P[Self::BB] = self.P[Self::BB]; don't need to update BB.
 
         // =====================================================================
         // APPLY PROCESS NOISE (Q)
@@ -290,9 +311,18 @@ impl KalmanFilterXyz {
 
         // Continuous process noise integrated over dt maps to the diagonal variance slots of Velocity and Bias.
         // P += Q
-        self.P[Self::VV].add_diagonal_scalar_in_place(self.Q_velocity * dt);
-        self.P[Self::BB].add_diagonal_scalar_in_place(self.Q_bias * dt);
+        let q_pos = (1.0 / 3.0) * self.Q_velocity * dt3;
+        let q_cross = 0.5 * self.Q_velocity * dt2;
+        let q_vel = self.Q_velocity * dt;
+        let q_bias = self.Q_bias * dt;
 
+        self.P[Self::PP].add_diagonal_scalar_in_place(q_pos);
+        self.P[Self::PV].add_diagonal_scalar_in_place(q_cross);
+        self.P[Self::VP].add_diagonal_scalar_in_place(q_cross);
+        self.P[Self::VV].add_diagonal_scalar_in_place(q_vel);
+
+        // Random walk bias drift integration
+        self.P[Self::BB].add_diagonal_scalar_in_place(q_bias);
         // Time propagation is highly sensitive to asymmetric shearing, so enforce symmetry on the covariance matrix.
         self.P.enforce_symmetry();
     }
@@ -377,7 +407,6 @@ impl KalmanFilterXyz {
         //
         // P -= (P Hᵀ)(H P) / S
         //
-        // This is a rank-1 update.
         self.P[Self::PP] -= Matrix3x3f32::outer_product(K_pos, P_pos);
         self.P[Self::PV] -= Matrix3x3f32::outer_product(K_pos, P_vel);
         self.P[Self::PB] -= Matrix3x3f32::outer_product(K_pos, P_acc_bias);
