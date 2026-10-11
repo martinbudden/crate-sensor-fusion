@@ -72,7 +72,10 @@ impl KalmanFilterXYZWithSensors {
             // Vertical variance in meters squared
             // A standard barometric pressure sensor (e.g., BMP280, MS5611) typically has an RMS noise of around 10 to 20 centimeters
             // which corresponds to a variance of 0.01 to 0.04 m². However, the actual noise can vary based on environmental conditions and sensor quality.
-            R_barometer: 0.03,
+            // If the barometer is placed near spinning propellers or inside an enclosure with turbulent wind forces,
+            // its real-world noise will be much higher than the datasheet specification.
+            // A common practice is to multiply the datasheet variance by 4 to 10 to account for environmental pressure spikes.
+            R_barometer: 0.1, // Slightly detuned to account for wind buffeting
             R_rangefinder: 0.03,
             R_optical_flow: Vector2f32 { x: 0.04, y: 0.04 },
             // 1cm to 10cm typical accuracy, use 10cm = 0.10m, = 0.01 variance for cheap modules.

@@ -144,39 +144,31 @@ This reduces the covariance matrix to more manageable size of 9x9.
 What's more, prediction using a accelerometer alone is a linear operation, so we can use a LFK rather than an EKF.
 
 ```text
-   ┌─────┐  Acc/Gyro  ┌─────────────────┐
-   │ IMU ├──────────► │ MADGWICK FILTER ├──► Orientation Quaternion
-   └─────┘            └─────────────────┘
-      │
-      │ Acc
-      │            ┌────────────────────────┐
-      └──────────► │ POSITION KALMAN FILTER ├──► Position Vector
-                   └────────────────────────┘    Velocity Vector
-                                │
-   GPS & Barometer  ──►─────────┘
+  ┌─────┐  Acc/Gyro  ┌─────────────────┐
+  │ IMU ├──────────► │ MADGWICK FILTER ├───► Orientation Quaternion
+  └─────┘            └─────────────────┘
+     | Acc
+     │─────────────────────────────────────► Acc
+┌────────────┐
+│ INTEGRATOR |
+└────────────┘
+     |
+  delta V         ┌────────────────────────┐
+     └──────────► │ POSITION KALMAN FILTER ├──► Position Vector
+                  └────────────────────────┘    Velocity Vector
+                               │
+  GPS, Barometer etc ─────►────┘
 ```
+
+Note that we integrate the accelerometer output from the IMU to give a `delta_v` value since
+the Kalman filter runs at a lower rate than the IMU (the IMU can run at up to 8kHz, the Kalman
+filter typically runs ate 1kHz or less).
 
 But we are still not out of the woods: multiplying two 9x9 matrices requires 729 individual arithmetic operations,
 matrix inversion even more.
 And the Kalman filter predict and correct steps each require several matrix operations.
 
 TODO: further explanation of Kalman filter internals in readme.
-
-## SIMD support
-
-**SIMD** support (for the `f32` variants) can be enabled with the `simd` feature.
-
-It is currently experimental, so if you used SIMD make sure you benchmark to show that you are indeed getting
-a performance improvement over the non-SIMD version.
-
-This uses [portable simd](https://doc.rust-lang.org/core/simd/index.html), which requires the nightly compiler, since it is still
-unstable in rust.
-
-This can be invoked using `rustup`, eg:
-
-```sh
-rustup run nightly cargo build --features simd --target thumbv8m.main-none-eabi
-```
 
 ## Madgwick Filter Optimization {#opt}
 
