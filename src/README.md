@@ -22,16 +22,16 @@ In flight controller firmware, sensors execute at different rates (asynchronous 
 This filter splits the prediction and correction cycles into modular functions:
 
 ```text
-┌────────────────────────────────────────────────────────────────┐
-│  IMU INTERRUPT TIMELOOP (~1000 Hz)                             │
-│  1. Read Accel ──► predict_states()      [State Propagation]   │
-│  2. Execute    ──► predict_covariance()  [P = F·E·Fᵀ + Q]  │
-└────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  IMU INTERRUPT TIMELOOP (~1000 Hz)                           │
+│  1. Read Accel ──► predict_states()      [State Propagation] │
+│  2. Execute    ──► predict_covariance()  [P = F·E·Fᵀ + Q]    │
+└──────────────────────────────────────────────────────────────┘
                             │
                             ▼
     Asynchronous Data Packets Available?
     ├── YES (Baro SPI @ ~40Hz)  ──► correct_barometer(z)  [S = P₂₂ + R]
-    └── YES (GPS UART @ ~5Hz)   ──► correct_gps(x, y, z)  [S = H*P*Hᵀ + R]
+    └── YES (GPS UART @ ~5Hz)   ──► correct_gps(x, y, z)  [S = H·P·Hᵀ + R]
 ```
 
 ## 3. Architectural Rule: The Accelerometer is NOT a Measurement Update
@@ -71,20 +71,20 @@ S = H·P·Hᵀ + R = ⎢ P₂₁  P₂₂  P₂₃ ⎥ + ⎢    0     R_horiz   
 
 <https://thekalmanfilter.com/kalman-filter-explained-simply/>
 
-|   | description                  | type         | usage        |
-| - | ---------------------------- | ------------ | ------------ |
-|   | **predict**<br>`x = F·x`<br>`P = F·P·Fᵀ + Q` | |           |
-| x | state vector                 | n x 1 vector | Output       |
-| F | state transition matrix      | n x n matrix | System Model |
-| P | state covariance matrix      | n x n matrix | System Model |
-| Q | process noise covariance     | n x n matrix | System Model |
-|   | **correct**<br>`S = H·P·Hᵀ + R`<br>`K = P·Hᵀ·S⁻¹`<br>`y = z - H·x`<br>`x = x + K·y` | ||
-| y | measurement innovation       | n x 1 vector | Internal     |
-| z | measurement vector           | m x 1 vector | Input        |
-| H | measurement matrix           | m x n matrix | System Model |
-| R | measurement noise covariance | m x m matrix | Input        |
-| S | innovation covariance matrix | n x n matrix | System Model |
-| K | Kalman Gain                  | n x m        | Internal     |
+|   | Description                     | Type         | Notes                                       |
+| - | ------------------------------- | ------------ | ------------------------------------------- |
+|   | **predict**<br>`x = F·x`<br>`P = F·P·Fᵀ + Q` | |                                             |
+| x | estimated state vector          | n x 1 vector | Output                                      |
+| F | state transition matrix         | n x n matrix | derived from system dynamics                |
+| P | state covariance matrix         | n x n matrix | estimated uncertainty                       |
+| Q | process noise covariance matrix | n x n matrix | how noisy is control vector (eg IMU)        |
+|   | **correct**<br>`S = H·P·Hᵀ + R`<br>`K = P·Hᵀ·S⁻¹`<br>`y = z - H·x`<br>`x = x + K·y` | |      |
+| y | measurement innovation          | n x 1 vector | difference between measurement and estimate |
+| z | measurement vector              | m x 1 vector | input                                       |
+| H | measurement matrix              | m x n matrix | derived from system dynamics                |
+| R | measurement noise covariance    | m x m matrix | how noisy/accurate is sensor (eg GPS)       |
+| S | innovation covariance matrix    | n x n matrix |                                             |
+| K | Kalman gain matrix              | n x m        |                                             |
 
 Alternate terms used in the literature and implementations
 

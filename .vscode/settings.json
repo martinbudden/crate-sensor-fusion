@@ -89,6 +89,7 @@
         "smallvec",
         "strsim",
         "submatrices",
+        "submatrix",
         "swatinem",
         "syscall",
         "termcolor",

@@ -15,6 +15,8 @@ Six sensor fusion implementations are available:
 5. 2D Position Kalman Filter.
 6. 3D Position Kalman Filter.
 
+The Madgwick filter and Kalman filters have been optimized for computational efficiency.
+
 ## Simple example
 
 Here's a simple example that uses a Madgwick filter to calculate the orientation by fusing accelerometer and gyro values:
@@ -138,7 +140,7 @@ for example: a GPS, a barometer, a rangefinder, and an optical flow device.
 
 (Note: The control input is normally denoted as **u**, the predicted measurement as **x**, and the actual measurement as **z**.)
 
-The correction step doesn't simply replaced the predicted value **x** with the measured value **z**,
+The correction step doesn't simply replace the predicted value **x** with the measured value **z**,
 instead it (simplistically speaking) uses a weighted mean of the two values.
 
 That mean is weighted according to how confident we are in the values from our sensors. So, for example,
@@ -149,9 +151,6 @@ The confidence in control input **u** (accelerometer in our case) is given by th
 The confidence in a measurement **z**, is given by the matrix **R** (called the measurement noise covariance matrix).
 Each sensor will have its matrix **R**. So there will be separate matrices **R gps**, **R barometer**, etc.
 
-When it obtains a reading for the object's actual position (for example from a GPS) it uses that reading
-to correct the prediction (essentially by taking a weighted average of the predicted state and the reading).
-
 ## Use of Kalman filter for vehicle control
 
 It would be possible to create a Kalman filter that takes accelerometer and gyroscope values as control inputs
@@ -160,7 +159,7 @@ and from those estimates orientation, position and velocity.
 However this would be computationally very expensive: in 3D the Kalman filter would need a massive 15x15 covariance matrix,
 even in 2D a 10x10 covariance matrix would be needed.
 
-the Kalman filter would need to calculate [Jacobians](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant)
+Then the Kalman filter would need to calculate [Jacobians](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant)
 as well as multiplying and inverting these large matrices.
 
 A better approach is to remove the responsibility for calculating the orientation from the Kalman filter
@@ -184,21 +183,37 @@ and use a another sensor fusion filter (ie a Mahony or Madgwick) filter to do th
   GPS, Barometer etc ──►─┘
 ```
 
-This reduces the covariance matrix to more manageable size of 9x9 for 3D (and 6x6 by 2D) and avoids the need to calculate Jacobians.
+This reduces the covariance matrix to more manageable size of 9x9 for 3D (and 6x6 for 2D) and avoids the need to calculate Jacobians.
 
 Note that we integrate the accelerometer output from the IMU to give a `delta_v` value since
 the Kalman filter runs at a lower rate than the IMU (the IMU can run at up to 8kHz, the Kalman
-filter typically runs ate 1kHz or less).
+filter typically runs at 1kHz or less).
 
 ## Kalman Filter Optimization
 
-A naïve implementation of a 3D position Kalman filter is computationally very expensive.
-The state covariance matrix **P** is a 9x9 matrix so the prediction step would require multiplying 9x9 matrices,
-and the correction step would involve 9x9 matrix multiplication and inversion.
+A naïve implementation of a 3D position Kalman filter is computationally very expensive:
+
+|     | Description                     | Type         | Notes                                       |
+| --- | ------------------------------- | ------------ | ------------------------------------------- |
+|     | **predict**<br>`x = F·x`<br>`P = F·P·Fᵀ + Q` | |                                             |
+| `x` | estimated state vector          | 3 x vector3  | position x,y,z; velocity x,y,z; bias x,y,z  |
+| `F` | state transition matrix         | 9 x 9 matrix | derived from system dynamics                |
+| `P` | state covariance matrix         | 9 x 9 matrix | estimated uncertainty                       |
+| `Q` | process noise covariance matrix | 9 x 9 matrix | how noisy is control vector (eg IMU)        |
+|     | **correct**<br>`S = H·P·Hᵀ + R`<br>`K = P·Hᵀ·S⁻¹`<br>`y = z - H·x`<br>`x = x + K·y` | |      |
+| `y` | measurement innovation          | 3 x vector3  | difference between measurement and estimate |
+| `z` | measurement vector              | vector3      | input                                       |
+| `H` | measurement matrix              | 3 x 9 matrix | derived from system dynamics                |
+| `R` | measurement noise covariance    | 3 x 3 matrix | how noisy/accurate is sensor (eg GPS)       |
+| `S` | innovation covariance matrix    | 9 x 9 matrix |                                             |
+| `K` | Kalman gain matrix              | 9 x 3        |                                             |
+
+As you can see the **predict** step requires multiplying 9x9 matrices,
+and the **correct** step requires 9x9 matrix multiplication and inversion.
 
 Multiplying two 9x9 matrices requires 729 individual arithmetic operations, inversion even more.
 
-Fortunately, however, these matrices are sparse and so we can avoid doing the full multiplications and inversions.
+Fortunately, these matrices are sparse and so we can avoid doing the full multiplications and inversions.
 
 Firstly we split the 9x9 matrix **P** into nine 3x3 submatrices:
 
@@ -219,7 +234,19 @@ Firstly we split the 9x9 matrix **P** into nine 3x3 submatrices:
 └                                      ┘
 ```
 
-Then instead of performing operations on the entire 9x9 matrix, we can perform sub-operations on the sub-matrices.
+Then instead of performing operations on the entire 9x9 matrix, we can perform sub-operations on the submatrices.
+So, for example, the calculation`P = F·P·Fᵀ` is transformed into a number of 3x3 matrix multiplications and additions,
+rather than two 9x9 matrix multiplications and a transposition.
+
+In the correct phase we do not need to invert the full 9x9 matrix `S`, instead we invert the relevant submatrix.
+For a 3D measurement correction (eg position from GPS) this means inverting a 3x3 submatrix.
+For a 1D measurement correction (eg altitude from a barometer) this involves simply taking the reciprocal of a scalar.
+
+Further optimizations include:
+
+1. recognizing `R` is diagonal matrix, so multiplication by `R` is simplified.
+2. collapsing `Q` from a 9x9 matrix into the two scalars `Q_velocity` and `Q_bias`.
+3. don't explicitly create the matrix `H`: rather directly select the relevant submatrices when calculating `H·P·Hᵀ`, `P·Hᵀ·S⁻¹` and `H·x`.
 
 ## Madgwick Filter Optimization {#opt}
 

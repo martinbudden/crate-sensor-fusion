@@ -45,13 +45,15 @@ It highlights the difference between a prediction and an updated estimate:
 
 ## Variable Definitions
 
+- **u**: Control vector
 - **x̂**: Estimated state vector
+- **z**: Measurement vector
+- **y**: Measurement innovation
+
 - **P**: State covariance matrix (estimated uncertainty)
 - **F**: State transition matrix (derived from system dynamics)
 - **B**: Control input matrix
-- **u**: Control vector
 - **Q**: Process noise covariance matrix
-- **z**: Measurement vector
 - **H**: Measurement matrix
 - **R**: Measurement noise covariance matrix
 - **K**: Kalman gain matrix
