@@ -212,9 +212,9 @@ impl KalmanFilterXY {
             return;
         };
 
-        // Calculate the residual.
+        // Calculate the innovation.
         // y = z - H * x
-        let residual = measurement - predicted_measurement;
+        let innovation = measurement - predicted_measurement;
 
         // Calculate K, the Kalman gain.
         // Calculate the 3x3 segmented Kalman Gain pieces
@@ -230,9 +230,9 @@ impl KalmanFilterXY {
 
         // Update the physical state vectors
         // x += K * y
-        self.state.pos += K_pos * residual;
-        self.state.vel += K_vel * residual;
-        self.state.acc_bias += K_acc_bias * residual;
+        self.state.pos += K_pos * innovation;
+        self.state.vel += K_vel * innovation;
+        self.state.acc_bias += K_acc_bias * innovation;
 
         // P -= K * (H * P)
         // Calculate by subtracting the K * (H * P) submatrices one by one.
@@ -284,15 +284,15 @@ impl KalmanFilterXY {
         let K_vel = self.P[Self::VP] * S_inv;
         let K_acc_bias = self.P[Self::BP] * S_inv;
 
-        // Calculate the residual.
+        // Calculate the innovation.
         // y = z - H * x
-        let residual = measurement - predicted_measurement;
+        let innovation = measurement - predicted_measurement;
 
         // Update the physical state vectors
         // x += K * y
-        self.state.pos += K_pos * residual;
-        self.state.vel += K_vel * residual;
-        self.state.acc_bias += K_acc_bias * residual;
+        self.state.pos += K_pos * innovation;
+        self.state.vel += K_vel * innovation;
+        self.state.acc_bias += K_acc_bias * innovation;
 
         // P = (I - KH) * P * (I - KH)ᵀ + KRKᵀ
 

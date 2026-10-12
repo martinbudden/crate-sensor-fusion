@@ -107,7 +107,7 @@ When using a Kalman filter for 3D there are two possible implementation choices:
 | Feature            | Split Architecture (1D + 2D)                                     | Unified 3D Architecture                             |
 | ------------------ | ---------------------------------------------------------------- | --------------------------------------------------- |
 | Computational Cost | Lower (2×2 and 4×4 matrices )                                    | Higher (6×6 and 9×9 matrices)                       |
-| Sensor Coupling    | Independent (Barometer noise cannot corrupt horizontal accuracy) | Coupled (Vertical errors can bleed into horizontal) |
+| Sensor Coupling    | Independent (barometer noise cannot corrupt horizontal accuracy) | Coupled (vertical errors can bleed into horizontal) |
 | Tuning Complexity  | Easier (can tune vertical and horizontal separately)             | Harder                                              |
 | Fault Tolerance    | Higher                                                           | Lower                                               |
 
@@ -116,59 +116,110 @@ For vehicles that stay upright, or tilt minimally (eg a walker, a car, or a cine
 For vehicles such as acrobatic quadcopters or rockets, where pitching and rolling movements are common,
 the combined approach is better.
 
-## Position Kalman filter internals
+## Position Kalman filter overview
 
-A Kalman filter works by predicting an object's state using a physical model of the object. So, for example,
-to predict an object's position velocity it uses the measured acceleration and the kinematic equations
-`s = u*t + 0.5*a*t^2` and `v = u + a*t`.
+A Kalman filter works by predicting an object's state using a physical model of the object and a control input.
+
+So, for example, using acceleration (`a`) as the control input it would predict an object's position and velocity using kinematic equations:
+
+```text
+s = ut + ½at²
+v = u + at`
+```
+
+However, if you keep predicting position an velocity using integration like that, noise in the system
+will cause the predicted values to drift away from the actual values.
+
+A Kalman filter periodically corrects this prediction with an actual measurement, for example a
+position from a GPS, or an altitude from a barometer.
+
+A Kalman filter can accept measurements from multiple sources to make its corrections,
+for example: a GPS, a barometer, a rangefinder, and an optical flow device.
+
+(Note: The control input is normally denoted as **u**, the predicted measurement as **x**, and the actual measurement as **z**.)
+
+The correction step doesn't simply replaced the predicted value **x** with the measured value **z**,
+instead it (simplistically speaking) uses a weighted mean of the two values.
+
+That mean is weighted according to how confident we are in the values from our sensors. So, for example,
+if we know the accelerometer is very noisy and the GPS is highly accurate, we would put more weight on the GPS reading.
+
+The confidence in a value is given by a "noise matrix".
+The confidence in control input **u** (accelerometer in our case) is given by the matrix **Q** (called the process noise covariance matrix).
+The confidence in a measurement **z**, is given by the matrix **R** (called the measurement noise covariance matrix).
+Each sensor will have its matrix **R**. So there will be separate matrices **R gps**, **R barometer**, etc.
 
 When it obtains a reading for the object's actual position (for example from a GPS) it uses that reading
 to correct the prediction (essentially by taking a weighted average of the predicted state and the reading).
 
-The naive implementation of a 3D Position Kalman filter is extremely computationally intensive.
+## Use of Kalman filter for vehicle control
 
-To predict 3D position using a gyroscope, accelerometer, you need a massive 15x15 covariance matrix, even in 2D
-you need a 10x10 matrix.
+It would be possible to create a Kalman filter that takes accelerometer and gyroscope values as control inputs
+and from those estimates orientation, position and velocity.
 
-Furthermore, since combining gyroscope and accelerometer measurements is an non-linear operation, a Linear Kalman Filter (LKF),
-cannot be used: an Extended Kalman Filter (EKF) is required. An EKF is even more computationally intensive:
-as well as doing the multiplication of these large matrices it also needs to calculate
-[Jacobians](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant).
+However this would be computationally very expensive: in 3D the Kalman filter would need a massive 15x15 covariance matrix,
+even in 2D a 10x10 covariance matrix would be needed.
 
-Fortunately there are a number of things that can be done to reduce this computational load.
+the Kalman filter would need to calculate [Jacobians](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant)
+as well as multiplying and inverting these large matrices.
 
-Firstly we remove the responsibility for calculating the orientation from the Kalman filter:
-we use a another sensor fusion filter (ie a Mahony or Madgwick) filter to do this.
-
-This reduces the covariance matrix to more manageable size of 9x9.
-What's more, prediction using a accelerometer alone is a linear operation, so we can use a LFK rather than an EKF.
+A better approach is to remove the responsibility for calculating the orientation from the Kalman filter
+and use a another sensor fusion filter (ie a Mahony or Madgwick) filter to do this.
 
 ```text
-  ┌─────┐  Acc/Gyro  ┌─────────────────┐
-  │ IMU ├──────────► │ MADGWICK FILTER ├───► Orientation Quaternion
-  └─────┘            └─────────────────┘
-     | Acc
-     │─────────────────────────────────────► Acc
-┌────────────┐
+                    ┌──────────┐  Orientation
+ ┌─────┐  Acc/Gyro  | MADGWICK |  Quaternion        ┌────────────┐
+ │ IMU ├───────────►│ FILTER   ├───────────────────►| FLIGHT     |
+ └─────┘  Acc       └──────────┘                    | CONTROLLER |
+     │─────────────────────────────────────────────►|            |
+┌────────────┐                                      └────────────┘
 │ INTEGRATOR |
 └────────────┘
-     |
-  delta V         ┌────────────────────────┐
-     └──────────► │ POSITION KALMAN FILTER ├──► Position Vector
-                  └────────────────────────┘    Velocity Vector
-                               │
-  GPS, Barometer etc ─────►────┘
+     |              ┌──────────┐  Position Vector
+  delta V           | POSITION |  Velocity Vector   ┌───────────┐
+     └────────────► │ KALMAN   ├───────────────────►| AUTOPILOT |
+                    | FILTER   |                    └───────────┘
+                    └──────────┘
+                         │
+  GPS, Barometer etc ──►─┘
 ```
+
+This reduces the covariance matrix to more manageable size of 9x9 for 3D (and 6x6 by 2D) and avoids the need to calculate Jacobians.
 
 Note that we integrate the accelerometer output from the IMU to give a `delta_v` value since
 the Kalman filter runs at a lower rate than the IMU (the IMU can run at up to 8kHz, the Kalman
 filter typically runs ate 1kHz or less).
 
-But we are still not out of the woods: multiplying two 9x9 matrices requires 729 individual arithmetic operations,
-matrix inversion even more.
-And the Kalman filter predict and correct steps each require several matrix operations.
+## Kalman Filter Optimization
 
-TODO: further explanation of Kalman filter internals in readme.
+A naïve implementation of a 3D position Kalman filter is computationally very expensive.
+The state covariance matrix **P** is a 9x9 matrix so the prediction step would require multiplying 9x9 matrices,
+and the correction step would involve 9x9 matrix multiplication and inversion.
+
+Multiplying two 9x9 matrices requires 729 individual arithmetic operations, inversion even more.
+
+Fortunately, however, these matrices are sparse and so we can avoid doing the full multiplications and inversions.
+
+Firstly we split the 9x9 matrix **P** into nine 3x3 submatrices:
+
+```text
+┌                 9x9                  ┐
+│ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
+│ │ Position ││ Position ││ Position │ │
+│ │ Position ││ Velocity ││ Bias     │ │
+│ └          ┘└          ┘└          ┘ │
+│ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
+│ │ Velocity ││ Velocity ││ Velocity │ │
+│ │ Position ││ Velocity ││ Bias     │ │
+│ └          ┘└          ┘└          ┘ │
+│ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
+│ │ Bias     ││ Bias     ││ Bias     │ │
+│ │ Position ││ Velocity ││ Bias     │ │
+│ └          ┘└          ┘└          ┘ │
+└                                      ┘
+```
+
+Then instead of performing operations on the entire 9x9 matrix, we can perform sub-operations on the sub-matrices.
 
 ## Madgwick Filter Optimization {#opt}
 
@@ -179,7 +230,6 @@ However, because both the matrix and vector contain zero elements, and because t
 the calculation can be refactored to use fewer arithmetic operations.
 
 Indeed it can be reduced to a total of 31 arithmetic operations.
-By using SIMD this can be further reduced to 16 operations (11 scalar and 5 SIMD operations). See below.
 
 I haven't yet benchmarked this Rust implementation,
 but the original C++ version of `MadgwickFilter::update_orientation` (equivalent to `madgwick.fuse_acc_gyro`)

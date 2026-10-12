@@ -1,6 +1,6 @@
 use vqm::{Matrix3x3f32, Vector2f32, Vector3f32};
 
-use super::KalmanFilterXYZ;
+use super::{KalmanFilterDiagnostics, KalmanFilterXYZ};
 
 /// `f32` variant of `KalmanFilterXYZWithSensors`.
 pub type KalmanFilterXYZWithSensorsf32 = KalmanFilterXYZWithSensors;
@@ -119,25 +119,25 @@ impl KalmanFilterXYZWithSensors {
 
     /// Phase 2: Correct altitude using the barometer measurement.
     #[inline]
-    pub fn correct_altitude(&mut self, altitude: f32, r: f32) {
-        self.base.correct_altitude(altitude, r);
+    pub fn correct_altitude(&mut self, altitude: f32, r: f32) -> KalmanFilterDiagnostics {
+        self.base.correct_altitude(altitude, r)
     }
 
     #[inline]
-    pub fn correct_altitude_using_barometer(&mut self, altitude: f32) {
-        self.base.correct_altitude(altitude, self.R_barometer);
+    pub fn correct_altitude_using_barometer(&mut self, altitude: f32) -> KalmanFilterDiagnostics {
+        self.base.correct_altitude(altitude, self.R_barometer)
     }
 
     /// Phase 2: Correct altitude using the rangefinder measurement.
     #[inline]
-    pub fn correct_altitude_using_rangefinder(&mut self, altitude: f32) {
-        self.base.correct_altitude(altitude, self.R_rangefinder);
+    pub fn correct_altitude_using_rangefinder(&mut self, altitude: f32) -> KalmanFilterDiagnostics {
+        self.base.correct_altitude(altitude, self.R_rangefinder)
     }
 
     /// Phase 2: Correct altitude using GPS vertical measurement.
     #[inline]
-    pub fn correct_altitude_using_gps(&mut self, altitude: f32) {
-        self.base.correct_altitude(altitude, self.R_gps_vertical);
+    pub fn correct_altitude_using_gps(&mut self, altitude: f32) -> KalmanFilterDiagnostics {
+        self.base.correct_altitude(altitude, self.R_gps_vertical)
     }
     /// Phase 2: Correct position using GPS position measurement (typically at a 1Hz to 10Hz rate).
     pub fn correct_position_using_gps(&mut self, position: Vector3f32) {
@@ -204,15 +204,15 @@ impl KalmanFilterXYZWithSensors {
             return;
         };
 
-        // Calculate the residual using the PAST position.
+        // Calculate the innovation using the PAST position.
         // y = z - H * x
-        let residual = measurement - past.pos;
+        let innovation = measurement - past.pos;
 
         // Directly update the PRESENT states
         // x += K * y
-        self.base.state.pos += K_pos * residual;
-        self.base.state.vel += K_vel * residual;
-        self.base.state.acc_bias += K_acc_bias * residual;
+        self.base.state.pos += K_pos * innovation;
+        self.base.state.vel += K_vel * innovation;
+        self.base.state.acc_bias += K_acc_bias * innovation;
 
         // Directly update the PRESENT P matrix block-by-block
         // P -= K * (H * P)
@@ -320,7 +320,7 @@ impl KalmanFilterXYZWithSensors {
         self.base.P[Self::VV] = past.VV;
 
         // Apply the delayed Barometer correction in the past
-        self.correct_altitude(altitude, R_baro);
+        _ = self.correct_altitude(altitude, R_baro);
 
         // Fast-Forward back to the present, preserving all historical events
         self.fast_forward_timeline(start_idx, dt, R_gps, R_baro);
@@ -354,7 +354,7 @@ impl KalmanFilterXYZWithSensors {
 
             // Re-apply an intermediate Baro correction if it historically existed here
             if let Some(past_baro_measurement) = next_step.baro_alt {
-                self.base.correct_altitude(past_baro_measurement, R_baro);
+                _ = self.base.correct_altitude(past_baro_measurement, R_baro);
             }
 
             // Re-cache our new fully synchronized forward estimations back into history

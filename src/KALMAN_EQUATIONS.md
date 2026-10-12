@@ -37,8 +37,8 @@ It highlights the difference between a prediction and an updated estimate:
 
 | Step | Equation | Description |
 | :--- | :--- | :--- |
-| **Innovation** | ỹ<sub>k</sub> = z<sub>k</sub> - H<sub>k</sub> x̂<sub>k\|k-1</sub> | Computes the measurement residual |
-| **Innovation Covariance** | S<sub>k</sub> = H<sub>k</sub> P<sub>k\|k-1</sub> H<sub>k</sub><sup>T</sup> + R<sub>k</sub> | Computes the residual covariance |
+| **Innovation** | ỹ<sub>k</sub> = z<sub>k</sub> - H<sub>k</sub> x̂<sub>k\|k-1</sub> | Computes the measurement innovation |
+| **Innovation Covariance** | S<sub>k</sub> = H<sub>k</sub> P<sub>k\|k-1</sub> H<sub>k</sub><sup>T</sup> + R<sub>k</sub> | Computes the innovation covariance |
 | **Kalman Gain** | K<sub>k</sub> = P<sub>k\|k-1</sub> H<sub>k</sub><sup>T</sup> S<sub>k</sub><sup>-1</sup> | Computes the optimal gain matrix |
 | **Updated State** | x̂<sub>k\|k</sub> = x̂<sub>k\|k-1</sub> + K<sub>k</sub> ỹ<sub>k</sub> | Updates state estimate with measurement |
 | **Updated Covariance** | P<sub>k\|k</sub> = (I - K<sub>k</sub> H<sub>k</sub>) P<sub>k\|k-1</sub> | Updates the error covariance matrix |

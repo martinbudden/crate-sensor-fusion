@@ -1,5 +1,7 @@
 use vqm::{Matrix3x3, Matrix3x3f32, Matrix3x3xM3x3, Matrix3x3xM3x3f32, Vector2f32, Vector3f32};
 
+use crate::KalmanFilterDiagnostics;
+
 /// `f32` variant of `PositionKalmanFilter0`.
 pub type KalmanFilterXYZf32 = KalmanFilterXYZ;
 
@@ -52,6 +54,9 @@ pub struct KalmanFilterXYZ {
     /// Process Noise spectral density mapping to Sensor Drift variance.
     /// Units: (m/s³)² / Hz.
     pub Q_bias: f32,
+    /// Count to avoid filter latching.
+    pub altitude_consecutive_rejection_count: u32,
+    pub position_consecutive_rejection_count: u32,
 }
 
 impl Default for KalmanFilterXYZ {
@@ -111,6 +116,8 @@ impl KalmanFilterXYZ {
             // shifting it incrementally over minutes rather than fluctuating on every single vibration loop.
             Q_bias: 1e-4,
             P,
+            altitude_consecutive_rejection_count: 0,
+            position_consecutive_rejection_count: 0,
         }
     }
 
@@ -118,29 +125,31 @@ impl KalmanFilterXYZ {
     /// Input is accelerometer noise density in g per root-Hertz.
     /// Datasheets typically specify accelerometer noise density in micro-g per root-Hertz  or mg per root-Hertz.
     pub fn set_q_velocity(&mut self, acc_noise_density_g_per_root_hz: f32, denominator: u32) {
-        const G:f32 =  9.80665;
-        let acc_noise_density_mps2_per_root_hz = acc_noise_density_g_per_root_hz* G;
+        const G: f32 = 9.80665;
+        let acc_noise_density_mps2_per_root_hz = acc_noise_density_g_per_root_hz * G;
         #[allow(clippy::cast_precision_loss)]
-        {self.Q_velocity = acc_noise_density_mps2_per_root_hz * acc_noise_density_mps2_per_root_hz / (denominator as f32);}
+        {
+            self.Q_velocity =
+                acc_noise_density_mps2_per_root_hz * acc_noise_density_mps2_per_root_hz / (denominator as f32);
+        }
     }
 
     /// Set `Q_bias`, the spectral density of the acceleration bias random walk.
     /// Input is accelerometer bias instability in g per time period tau.
     /// Datasheets typically specify bias instability in micro-g over a time constant tau, typically 100 seconds.
     pub fn set_q_bias(&mut self, bias_instability_g: f32, tau: f32) {
-        const G:f32 =  9.80665;
-        let bias_instability_mps2 = bias_instability_g* G;
+        const G: f32 = 9.80665;
+        let bias_instability_mps2 = bias_instability_g * G;
         self.Q_velocity = bias_instability_mps2 * bias_instability_mps2 / tau;
     }
 
     pub fn set_initial_position(&mut self, initial_position: Vector3f32) {
-
         self.state.pos = initial_position;
 
         // --- Define Initial Uncertainties (Variances) ---
-        let p_pos_init  = 25.0;   // ±5 meters initial position uncertainty, typical of GPS
-        let p_vel_init  = 0.25;   // ±0.5 m/s initial velocity uncertainty
-        let p_bias_init = 0.04;   // ±0.2 m/s² initial accelerometer bias uncertainty
+        let p_pos_init = 25.0; // ±5 meters initial position uncertainty, typical of GPS
+        let p_vel_init = 0.25; // ±0.5 m/s initial velocity uncertainty
+        let p_bias_init = 0.04; // ±0.2 m/s² initial accelerometer bias uncertainty
 
         // --- Populate the Diagonal Core Blocks ---
         // Setting these ensures the X, Y, and Z axes are uniformly weighted at startup.
@@ -279,6 +288,8 @@ impl KalmanFilterXYZ {
         // =====================================================================
 
         let dt2 = dt * dt;
+        let dt3 = dt2 * dt;
+        let dt4 = dt2 * dt2;
 
         // Avoid taking a copy of self.P by using temporary indices and shadowing them out of scope when they have been used.
         // This ensures we cannot use an updated value in a subsequent update.
@@ -336,7 +347,7 @@ impl KalmanFilterXYZ {
            let K_vel = self.P[Self::VP].column(2) * S_inv;
            let K_acc_bias = self.P[Self::BP].column(2) * S_inv;
     */
-    pub fn correct_altitude(&mut self, altitude_measurement: f32, R: f32) {
+    pub fn correct_altitude(&mut self, altitude_measurement: f32, R: f32) -> KalmanFilterDiagnostics {
         // The altitude measurement directly observes position.z.
         //
         // H = [0 0 1   0 0 0   0 0 0]
@@ -351,7 +362,7 @@ impl KalmanFilterXYZ {
         let S = self.P[Self::PP][Matrix3x3f32::M33] + R;
 
         if S <= f32::EPSILON {
-            return;
+            return KalmanFilterDiagnostics::default();
         }
 
         let S_inv = 1.0 / S;
@@ -374,13 +385,27 @@ impl KalmanFilterXYZ {
         let K_vel = P_vel * S_inv;
         let K_acc_bias = P_acc_bias * S_inv;
 
-        // The residual(y) is a scalar.
-        let residual = altitude_measurement - self.state.pos.z;
+        // The innovation(y) is a scalar.
+        let innovation = altitude_measurement - self.state.pos.z;
+
+        // NIS = yᵀ * S⁻¹ * y.
+        let nis = (innovation * innovation) * S_inv;
+        let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP].trace(), nis };
+
+        if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_1D
+            && self.altitude_consecutive_rejection_count < KalmanFilterDiagnostics::MAX_CONSECUTIVE_REJECTION_COUNT
+        {
+            // If nis > NIS_THRESHOLD_1D, there is less than a 5% chance this is normal sensor noise,
+            // so reject this measurement as an outlier.
+            self.altitude_consecutive_rejection_count += 1;
+            return diagnostics;
+        }
+        self.altitude_consecutive_rejection_count = 0;
 
         // Update state using vector scaling
-        self.state.pos += K_pos * residual;
-        self.state.vel += K_vel * residual;
-        self.state.acc_bias += K_acc_bias * residual;
+        self.state.pos += K_pos * innovation;
+        self.state.vel += K_vel * innovation;
+        self.state.acc_bias += K_acc_bias * innovation;
 
         // Covariance update (rank-1 outer product)
         //
@@ -401,6 +426,8 @@ impl KalmanFilterXYZ {
 
         // Ensure numerical stability by enforcing symmetry on the covariance matrix.
         self.P.enforce_symmetry();
+
+        diagnostics
     }
 
     /// Executes an asynchronous measurement update when a new 3D GPS reading arrives
@@ -449,9 +476,9 @@ impl KalmanFilterXYZ {
             return;
         };
 
-        // Calculate the residual.
+        // Calculate the innovation.
         // y = z - H * x
-        let residual = measurement - predicted_measurement;
+        let innovation = measurement - predicted_measurement;
 
         // Calculate K, the Kalman gain.
         // Calculate the 3x3 segmented Kalman Gain pieces
@@ -467,9 +494,9 @@ impl KalmanFilterXYZ {
 
         // Update the physical state vectors
         // x += K * y
-        self.state.pos += K_pos * residual;
-        self.state.vel += K_vel * residual;
-        self.state.acc_bias += K_acc_bias * residual;
+        self.state.pos += K_pos * innovation;
+        self.state.vel += K_vel * innovation;
+        self.state.acc_bias += K_acc_bias * innovation;
 
         // P -= K * (H * P)
         // Calculate by subtracting the K * (H * P) submatrices one by one.
@@ -504,7 +531,7 @@ impl KalmanFilterXYZ {
         measurement: Vector3f32,
         predicted_measurement: Vector3f32,
         R: Vector3f32,
-    ) {
+    ) -> KalmanFilterDiagnostics {
         // Calculate S, the Residual Covariance matrix:
         // S = H * P * Hᵀ + R
         let S = self.P[Self::PP].add_diagonal_vector(R);
@@ -512,7 +539,7 @@ impl KalmanFilterXYZ {
         // The the Residual Covariance matrix may be non-invertible.
         // This happens very rarely and is due to rounding errors when the process noise covariance Q is small.
         let Some(S_inv) = S.try_inverse() else {
-            return;
+            return KalmanFilterDiagnostics::default();
         };
 
         // Calculate K, the Kalman gain.
@@ -521,15 +548,30 @@ impl KalmanFilterXYZ {
         let K_vel = self.P[Self::VP] * S_inv;
         let K_acc_bias = self.P[Self::BP] * S_inv;
 
-        // Calculate the residual.
+        // Calculate the innovation.
         // y = z - H * x
-        let residual = measurement - predicted_measurement;
+        let innovation = measurement - predicted_measurement;
+
+        // NIS = yᵀ * S⁻¹ * y  (Mahalanobis Distance)
+        // Calculated efficiently as a vector-matrix-vector dot product:
+        let nis = innovation.dot(S_inv * innovation); // Dot product results in a unitless scalar
+        let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP].trace(), nis };
+
+        if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_3D
+            && self.position_consecutive_rejection_count < KalmanFilterDiagnostics::MAX_CONSECUTIVE_REJECTION_COUNT
+        {
+            // If nis > NIS_THRESHOLD_1D, there is less than a 5% chance this is normal sensor noise,
+            // so reject this measurement as an outlier.
+            self.position_consecutive_rejection_count += 1;
+            return diagnostics;
+        }
+        self.altitude_consecutive_rejection_count = 0;
 
         // Update the physical state vectors
         // x += K * y
-        self.state.pos += K_pos * residual;
-        self.state.vel += K_vel * residual;
-        self.state.acc_bias += K_acc_bias * residual;
+        self.state.pos += K_pos * innovation;
+        self.state.vel += K_vel * innovation;
+        self.state.acc_bias += K_acc_bias * innovation;
 
         // P = (I - KH) * P * (I - KH)ᵀ + KRKᵀ
 
@@ -583,6 +625,8 @@ impl KalmanFilterXYZ {
 
         // Ensure numerical stability by enforcing symmetry on the covariance matrix.
         self.P.enforce_symmetry();
+
+        diagnostics
     }
 
     pub fn correct_position_xy_standard_form(&mut self, position: Vector2f32, past_pos: Vector3f32, R: Vector2f32) {
@@ -653,12 +697,12 @@ impl KalmanFilterXYZ {
         }
         let S_inv = 1.0 / S;
 
-        // Calculate the residual.
+        // Calculate the innovation.
         // y = z - H * x
-        let residual = measured_distance - predicted_distance;
+        let innovation = measured_distance - predicted_distance;
 
-        // Normalized residual squared (Mahalanobis distance squared).
-        let mahalanobis_squared = residual * residual * S_inv;
+        // Normalized innovation squared (Mahalanobis distance squared).
+        let mahalanobis_squared = innovation * innovation * S_inv;
 
         if mahalanobis_squared > mahalanobis_squared_threshold {
             // Reject this measurement as an outlier.
@@ -673,9 +717,9 @@ impl KalmanFilterXYZ {
 
         // Update the physical state vectors
         // x += K * y
-        self.state.pos += K_pos * residual;
-        self.state.vel += K_vel * residual;
-        self.state.acc_bias += K_acc_bias * residual;
+        self.state.pos += K_pos * innovation;
+        self.state.vel += K_vel * innovation;
+        self.state.acc_bias += K_acc_bias * innovation;
 
         // Covariance update:
         //     P_new = P - K * H * P
@@ -704,8 +748,8 @@ impl KalmanFilterXYZ {
         self.correct_position_standard_form(position, self.state.pos, R);
     }
 
-    pub fn correct_position_joseph(&mut self, position: Vector3f32, R: Vector3f32) {
-        self.correct_position_joseph_stabilized_form(position, self.state.pos, R);
+    pub fn correct_position_joseph(&mut self, position: Vector3f32, R: Vector3f32) -> KalmanFilterDiagnostics {
+        self.correct_position_joseph_stabilized_form(position, self.state.pos, R)
     }
 
     pub fn correct_position_xy(&mut self, position: Vector2f32, R: Vector2f32) {
@@ -716,12 +760,12 @@ impl KalmanFilterXYZ {
 // **** Validate ***
 
 impl KalmanFilterXYZ {
-    /// Evaluates if an incoming innovation residual vector satisfies chi-squared gating thresholds.
+    /// Evaluates if an incoming innovation vector satisfies chi-squared gating thresholds.
     /// Formula: `d² = yᵀ * S⁻¹ * y`.
     ///
     /// Layouts:
     /// * `self.P`: 9x9 Column-Major Covariance Matrix (used to extract the 3x3 S matrix block)
-    /// * `y`: 3-element measurement innovation residual `[y_x, y_y, y_z]`
+    /// * `y`: 3-element measurement innovation `[y_x, y_y, y_z]`
     /// * `R`: 3-element diagonal measurement noise variance array `[R_x, R_y, R_z]`
     /// * `gate_threshold`: Chi-squared limit (e.g., 7.815 for 3 DOF at 95% confidence)
     #[must_use]
@@ -842,7 +886,7 @@ mod tests {
             filter.predict_covariance(dt);
 
             //filter.correct_position(true_pos, r_gps);
-            filter.correct_position_joseph(true_pos, r_gps);
+            _ = filter.correct_position_joseph(true_pos, r_gps);
         }
 
         // --- PHASE 1 AUDIT LOGS ---
@@ -930,7 +974,7 @@ mod tests {
 
             // Step B: Measurement Update (Simulate stationary altitude updates)
             // Injecting a fixed R variance value
-            filter.correct_altitude(true_pos.z, r_baro);
+            _ = filter.correct_altitude(true_pos.z, r_baro);
             // Print out the Z-variance tracking elements every 50 steps
             if step % 50 == 0 {
                 println!(
@@ -976,7 +1020,7 @@ mod tests {
             filter.predict_covariance(dt);
 
             // Step B: Measurement Update with simulated moving barometer data
-            filter.correct_altitude(true_pos.z, r_baro);
+            _ = filter.correct_altitude(true_pos.z, r_baro);
         }
 
         // --- VERIFICATIONS FOR PHASE 2 ---
@@ -1035,6 +1079,8 @@ mod test_anchors {
 
             Q_velocity: 0.0,
             Q_bias: 0.0,
+            altitude_consecutive_rejection_count: 0,
+            position_consecutive_rejection_count: 0,
         }
     }
 
@@ -1049,7 +1095,7 @@ mod test_anchors {
         // H = [0.6, 0.8, 0]
         //
         // Measurement = 6
-        // residual = +1
+        // innovation = +1
         //
         // S = 1 + 0.01 = 1.01
 
@@ -1086,6 +1132,8 @@ mod test_anchors {
 
             Q_velocity: 0.0,
             Q_bias: 0.0,
+            altitude_consecutive_rejection_count: 0,
+            position_consecutive_rejection_count: 0,
         };
 
         kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, 100.0, 0.01);
@@ -1098,7 +1146,7 @@ mod test_anchors {
         //
         // S = 1.01
         //
-        // residual = 1
+        // innovation = 1
 
         let scale = 1.0 / 1.01;
 
@@ -1127,6 +1175,8 @@ mod test_anchors {
 
             Q_velocity: 0.0,
             Q_bias: 0.0,
+            altitude_consecutive_rejection_count: 0,
+            position_consecutive_rejection_count: 0,
         };
 
         kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, 100.0, 0.01);

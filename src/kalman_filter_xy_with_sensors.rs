@@ -203,15 +203,15 @@ impl KalmanFilterXYWithSensors {
             return;
         };
 
-        // Calculate the residual using the PAST position.
+        // Calculate the innovation using the PAST position.
         // y = z - H * x
-        let residual = measurement - past.pos;
+        let innovation = measurement - past.pos;
 
         // Directly update the PRESENT states
         // x += K * y
-        self.base.state.pos += K_pos * residual;
-        self.base.state.vel += K_vel * residual;
-        self.base.state.acc_bias += K_acc_bias * residual;
+        self.base.state.pos += K_pos * innovation;
+        self.base.state.vel += K_vel * innovation;
+        self.base.state.acc_bias += K_acc_bias * innovation;
 
         // Directly update the PRESENT P matrix block-by-block
         // P -= K * (H * P)
