@@ -1,4 +1,4 @@
-use super::KalmanFilterZ;
+use super::{KalmanFilterDiagnostics, KalmanFilterZ};
 
 /// `f32` variant of `PositionKalmanFilterExtended`.
 pub type KalmanFilterZWithSensorsf32 = KalmanFilterZWithSensors;
@@ -71,12 +71,44 @@ impl KalmanFilterZWithSensors {
         self.base.state.acc_bias
     }
 
+    /// Called inside the main IMU execution loop (eg `gyro_pid` loop).
+    pub fn predict(&mut self, acc: f32, dt: f32) {
+        // Integrate physical kinematics forward (deterministic)
+        self.predict_state(acc, dt);
+
+        // Propagate covariance uncertainty blocks forward (stochastic)
+        self.predict_covariance(dt);
+    }
+
     pub fn predict_state(&mut self, acc_measurement: f32, dt: f32) {
         self.base.predict_state(acc_measurement, dt);
     }
 
     pub fn predict_covariance(&mut self, dt: f32) {
         self.base.predict_covariance(dt);
+    }
+    /// Correct altitude using supplied R.
+    #[inline]
+    pub fn correct_altitude(&mut self, altitude: f32, r: f32) -> KalmanFilterDiagnostics {
+        self.base.correct_altitude(altitude, r)
+    }
+
+    /// Correct altitude using the barometer measurement.
+    #[inline]
+    pub fn correct_altitude_using_barometer(&mut self, altitude: f32) -> KalmanFilterDiagnostics {
+        self.base.correct_altitude(altitude, self.R_barometer)
+    }
+
+    /// Correct altitude using the rangefinder measurement.
+    #[inline]
+    pub fn correct_altitude_using_rangefinder(&mut self, altitude: f32) -> KalmanFilterDiagnostics {
+        self.base.correct_altitude(altitude, self.R_rangefinder)
+    }
+
+    /// Correct altitude using GPS vertical measurement.
+    #[inline]
+    pub fn correct_altitude_using_gps(&mut self, altitude: f32) -> KalmanFilterDiagnostics {
+        self.base.correct_altitude(altitude, self.R_gps_vertical)
     }
 }
 

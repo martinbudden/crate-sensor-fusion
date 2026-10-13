@@ -344,7 +344,6 @@ impl KalmanFilterZ {
         // NIS = yᵀ * S⁻¹ * y.
         let nis = (innovation * innovation) * S_inv;
         let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP], nis };
-
         if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_1D
             && self.consecutive_rejection_count < KalmanFilterDiagnostics::MAX_CONSECUTIVE_REJECTION_COUNT
         {
@@ -382,7 +381,12 @@ impl KalmanFilterZ {
         diagnostics
     }
 
-    pub fn correct_position(&mut self, measurement: f32, predicted_measurement: f32, R: f32) {
+    pub fn correct_position(
+        &mut self,
+        measurement: f32,
+        predicted_measurement: f32,
+        R: f32,
+    ) -> KalmanFilterDiagnostics {
         // S = H * P * Hᵀ + R
         // K = P * Hᵀ * S⁻¹
         // y = z - H * x
@@ -398,13 +402,26 @@ impl KalmanFilterZ {
         // S = H * P * Hᵀ + R
         let S = P_pos + R;
         if S == 0.0 {
-            return;
+            return KalmanFilterDiagnostics::default();
         }
         let S_inv = 1.0 / S;
 
         // Calculate the innovation.
         // y = z - H * x
         let innovation = measurement - predicted_measurement;
+
+        // NIS = yᵀ * S⁻¹ * y.
+        let nis = (innovation * innovation) * S_inv;
+        let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP], nis };
+        if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_1D
+            && self.consecutive_rejection_count < KalmanFilterDiagnostics::MAX_CONSECUTIVE_REJECTION_COUNT
+        {
+            // If nis > NIS_THRESHOLD_1D, there is less than a 5% chance this is normal sensor noise,
+            // so reject this measurement as an outlier.
+            self.consecutive_rejection_count += 1;
+            return diagnostics;
+        }
+        self.consecutive_rejection_count = 0;
 
         // Calculate K, the Kalman gain.
         // Calculate the 3x3 segmented Kalman Gain pieces
@@ -444,6 +461,8 @@ impl KalmanFilterZ {
 
         // Ensure numerical stability by enforcing symmetry on the covariance matrix.
         self.P.enforce_symmetry();
+
+        diagnostics
     }
 }
 #[allow(unused)]

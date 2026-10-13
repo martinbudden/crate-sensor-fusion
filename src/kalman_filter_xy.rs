@@ -1,5 +1,7 @@
 use vqm::{Matrix2x2f32, Matrix3x3xM2x2, Matrix3x3xM2x2f32, Vector2f32};
 
+use crate::KalmanFilterDiagnostics;
+
 /// `f32` variant of `PositionKalmanFilterXy`.
 pub type KalmanFilterXyf32 = KalmanFilterXy;
 
@@ -196,7 +198,7 @@ impl KalmanFilterXy {
         measurement: Vector2f32,
         predicted_measurement: Vector2f32,
         R: Vector2f32,
-    ) {
+    ) -> KalmanFilterDiagnostics {
         // Extract the submatrices representing H * P.
         let P_pos = self.P[Self::PP];
         let P_vel = self.P[Self::PV];
@@ -209,7 +211,7 @@ impl KalmanFilterXy {
         // The the Residual Covariance matrix may be non-invertible.
         // This happens very rarely and is due to rounding errors when the process noise covariance Q is small.
         let Some(S_inv) = S.try_inverse() else {
-            return;
+            return KalmanFilterDiagnostics::default();
         };
 
         // Calculate the innovation.
@@ -254,6 +256,8 @@ impl KalmanFilterXy {
 
         // Ensure numerical stability by enforcing symmetry on the covariance matrix.
         self.P.enforce_symmetry();
+
+        KalmanFilterDiagnostics::default()
     }
 
     /// Joseph's Stabilized Form for the covariance update step:
@@ -267,7 +271,7 @@ impl KalmanFilterXy {
         measurement: Vector2f32,
         predicted_measurement: Vector2f32,
         R: Vector2f32,
-    ) {
+    ) -> KalmanFilterDiagnostics {
         // Calculate S, the Residual Covariance matrix:
         // S = H * P * Hᵀ + R
         let S = self.P[Self::PP].add_diagonal_vector(R);
@@ -275,7 +279,7 @@ impl KalmanFilterXy {
         // The the Residual Covariance matrix may be non-invertible.
         // This happens very rarely and is due to rounding errors when the process noise covariance Q is small.
         let Some(S_inv) = S.try_inverse() else {
-            return;
+            return KalmanFilterDiagnostics::default();
         };
 
         // Calculate K, the Kalman gain.
@@ -346,14 +350,16 @@ impl KalmanFilterXy {
 
         // Ensure numerical stability by enforcing symmetry on the covariance matrix.
         self.P.enforce_symmetry();
+
+        KalmanFilterDiagnostics::default()
     }
 
-    pub fn correct_position(&mut self, position: Vector2f32, R: Vector2f32) {
-        self.correct_position_short_form(position, self.state.pos, R);
+    pub fn correct_position(&mut self, position: Vector2f32, R: Vector2f32) -> KalmanFilterDiagnostics {
+        self.correct_position_short_form(position, self.state.pos, R)
     }
 
-    pub fn correct_position_joseph(&mut self, position: Vector2f32, R: Vector2f32) {
-        self.correct_position_joseph_stabilized_form(position, self.state.pos, R);
+    pub fn correct_position_joseph(&mut self, position: Vector2f32, R: Vector2f32) -> KalmanFilterDiagnostics {
+        self.correct_position_joseph_stabilized_form(position, self.state.pos, R)
     }
 }
 
@@ -439,7 +445,7 @@ mod tests {
             filter.predict_covariance(dt);
 
             //filter.correct_position(true_pos, r_gps);
-            filter.correct_position_joseph(true_pos, r_gps);
+            _ = filter.correct_position_joseph(true_pos, r_gps);
         }
 
         // --- PHASE 1 AUDIT LOGS ---
@@ -472,7 +478,7 @@ mod tests {
             filter.predict_state(acc_measurement, dt);
             filter.predict_covariance(dt);
 
-            filter.correct_position(true_pos, r_gps);
+            _ = filter.correct_position(true_pos, r_gps);
         }
 
         // --- PHASE 2 AUDIT LOGS ---

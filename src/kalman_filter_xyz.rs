@@ -421,7 +421,7 @@ impl KalmanFilterXyz {
         measurement: Vector3f32,
         predicted_measurement: Vector3f32,
         R: Vector3f32,
-    ) {
+    ) -> KalmanFilterDiagnostics {
         // S = H * P * Hᵀ + R
         // K = P * Hᵀ * S⁻¹
         // y = z - H * x
@@ -439,13 +439,27 @@ impl KalmanFilterXyz {
         let Some(S_inv) = S.try_inverse() else {
             // The the Residual Covariance matrix may be non-invertible.
             // This happens very rarely and is due to rounding errors when the process noise covariance Q is small.
-            return;
+            return KalmanFilterDiagnostics::default();
         };
 
         // Calculate the innovation.
         // y = z - H * x
         let innovation = measurement - predicted_measurement;
 
+        // Normalized Innovation Squared (NIS) = yᵀ * S⁻¹ * y  (aka Mahalanobis Distance)
+        // Dot product results in a unitless scalar
+        let nis = innovation.dot(S_inv * innovation);
+        let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP].trace(), nis };
+
+        if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_3D
+            && self.position_consecutive_rejection_count < KalmanFilterDiagnostics::MAX_CONSECUTIVE_REJECTION_COUNT
+        {
+            // If nis > NIS_THRESHOLD_3D, there is less than a 5% chance this is normal sensor noise,
+            // so reject this measurement as an outlier.
+            self.position_consecutive_rejection_count += 1;
+            return diagnostics;
+        }
+        self.position_consecutive_rejection_count = 0;
         // Calculate K, the Kalman gain.
         // Calculate the 3x3 segmented Kalman Gain pieces
         //
@@ -484,6 +498,8 @@ impl KalmanFilterXyz {
 
         // Ensure numerical stability by enforcing symmetry on the covariance matrix.
         self.P.enforce_symmetry();
+
+        diagnostics
     }
 
     /// Joseph's Stabilized Form for the covariance update step:
@@ -519,7 +535,7 @@ impl KalmanFilterXyz {
 
         // Normalized Innovation Squared (NIS) = yᵀ * S⁻¹ * y  (aka Mahalanobis Distance)
         let s_inv_times_innovation = S_cholesky.solve_cholesky_vector(innovation);
-         // Dot product results in a unitless scalar
+        // Dot product results in a unitless scalar
         let nis = innovation.dot(s_inv_times_innovation);
         let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP].trace(), nis };
 
@@ -531,7 +547,7 @@ impl KalmanFilterXyz {
             self.position_consecutive_rejection_count += 1;
             return diagnostics;
         }
-        self.altitude_consecutive_rejection_count = 0;
+        self.position_consecutive_rejection_count = 0;
 
         // Update the physical state vectors
         // x += K * y
@@ -595,12 +611,18 @@ impl KalmanFilterXyz {
         diagnostics
     }
 
-    pub fn correct_position_xy_joseph_stabilized_form(&mut self, position: Vector2f32, past_pos: Vector3f32, R: Vector2f32) {
+    pub fn correct_position_xy_joseph_stabilized_form(
+        &mut self,
+        position: Vector2f32,
+        past_pos: Vector3f32,
+        R: Vector2f32,
+    ) -> KalmanFilterDiagnostics {
         // TODO: implement correct_position_xy_delayed.
         _ = self;
         _ = position;
         _ = R;
         _ = past_pos;
+        KalmanFilterDiagnostics::default()
     }
 
     /// Non-linear correction using anchor distance.
@@ -610,11 +632,11 @@ impl KalmanFilterXyz {
         measured_distance: f32,
         mahalanobis_squared_threshold: f32,
         R: f32,
-    ) {
+    ) -> KalmanFilterDiagnostics {
         const MIN_DISTANCE: f32 = 1.0e-4;
 
         if measured_distance < 0.0 {
-            return;
+            return KalmanFilterDiagnostics::default();
         }
         // Position relative to the anchor.
         let position = self.state.pos - anchor_position;
@@ -624,7 +646,7 @@ impl KalmanFilterXyz {
 
         // The range Jacobian is undefined at zero distance.
         if predicted_distance <= MIN_DISTANCE {
-            return;
+            return KalmanFilterDiagnostics::default();
         }
 
         // Jacobian with respect to position:
@@ -656,7 +678,7 @@ impl KalmanFilterXyz {
         let S = H.dot(P_pos) + R;
 
         if S <= f32::EPSILON {
-            return;
+            return KalmanFilterDiagnostics::default();
         }
         let S_inv = 1.0 / S;
 
@@ -669,7 +691,7 @@ impl KalmanFilterXyz {
 
         if mahalanobis_squared > mahalanobis_squared_threshold {
             // Reject this measurement as an outlier.
-            return;
+            return KalmanFilterDiagnostics::default();
         }
 
         // Calculate K, the Kalman gain.
@@ -705,15 +727,16 @@ impl KalmanFilterXyz {
 
         // Ensure numerical stability by enforcing symmetry on the covariance matrix.
         self.P.enforce_symmetry();
+
+        KalmanFilterDiagnostics::default()
     }
 
-    pub fn correct_position(&mut self, position: Vector3f32, R: Vector3f32) {
-        _ = self.correct_position_joseph_stabilized_form(position, self.state.pos, R);
+    pub fn correct_position(&mut self, position: Vector3f32, R: Vector3f32) -> KalmanFilterDiagnostics {
+        self.correct_position_joseph_stabilized_form(position, self.state.pos, R)
     }
 
-
-    pub fn correct_position_xy(&mut self, position: Vector2f32, R: Vector2f32) {
-        self.correct_position_xy_joseph_stabilized_form(position, self.state.pos, R);
+    pub fn correct_position_xy(&mut self, position: Vector2f32, R: Vector2f32) -> KalmanFilterDiagnostics {
+        self.correct_position_xy_joseph_stabilized_form(position, self.state.pos, R)
     }
 }
 
@@ -847,7 +870,7 @@ mod tests {
             filter.predict_covariance(dt);
 
             //filter.correct_position(true_pos, r_gps);
-            () = filter.correct_position(true_pos, r_gps);
+            _ = filter.correct_position(true_pos, r_gps);
         }
 
         // --- PHASE 1 AUDIT LOGS ---
@@ -880,7 +903,7 @@ mod tests {
             filter.predict_state(acc_measurement, dt);
             filter.predict_covariance(dt);
 
-            filter.correct_position(true_pos, r_gps);
+            _ = filter.correct_position(true_pos, r_gps);
         }
 
         // --- PHASE 2 AUDIT LOGS ---
@@ -1060,7 +1083,7 @@ mod test_anchors {
         //
         // S = 1 + 0.01 = 1.01
 
-        kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, 100.0, 0.01);
+        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, 100.0, 0.01);
 
         let scale = 1.0 / 1.01;
 
@@ -1097,7 +1120,7 @@ mod test_anchors {
             position_consecutive_rejection_count: 0,
         };
 
-        kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, 100.0, 0.01);
+        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, 100.0, 0.01);
 
         // P_VP * H^T:
         //
@@ -1140,7 +1163,7 @@ mod test_anchors {
             position_consecutive_rejection_count: 0,
         };
 
-        kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, 100.0, 0.01);
+        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, 100.0, 0.01);
 
         // P_BP * H^T =
         //
@@ -1164,7 +1187,7 @@ mod test_anchors {
         let original_bias = kf.state.acc_bias;
 
         // Predicted range is exactly 5.
-        kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 5.0, 100.0, 0.01);
+        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 5.0, 100.0, 0.01);
 
         assert_vector_near(kf.state.pos, original_pos, EPS);
         assert_vector_near(kf.state.vel, original_vel, EPS);
@@ -1184,7 +1207,7 @@ mod test_anchors {
 
         // Predicted range = 5.
         // 100 m is obviously an outlier.
-        kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 100.0, 6.63, 0.01);
+        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 100.0, 6.63, 0.01);
 
         assert_vector_near(kf.state.pos, original_pos, EPS);
         assert_vector_near(kf.state.vel, original_vel, EPS);
@@ -1208,7 +1231,7 @@ mod test_anchors {
 
         let before = h.dot(kf.P[KalmanFilterXyz::PP] * h);
 
-        kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 5.0, 100.0, 0.01);
+        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 5.0, 100.0, 0.01);
 
         let after = h.dot(kf.P[KalmanFilterXyz::PP] * h);
 

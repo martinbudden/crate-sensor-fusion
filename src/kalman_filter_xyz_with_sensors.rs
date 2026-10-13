@@ -43,18 +43,6 @@ impl Default for KalmanFilterXyzWithSensors {
 }
 
 impl KalmanFilterXyzWithSensors {
-    const PP: usize = 0;
-    const VP: usize = 1;
-    const BP: usize = 2;
-
-    const PV: usize = 3;
-    const VV: usize = 4;
-    const BV: usize = 5;
-
-    const PB: usize = 6;
-    const VB: usize = 7;
-    const BB: usize = 8;
-
     /// Constructor.
     #[must_use]
     pub fn new() -> Self {
@@ -142,14 +130,14 @@ impl KalmanFilterXyzWithSensors {
     }
 
     /// Correct position using GPS position measurement (typically at a 1Hz to 10Hz rate).
-    pub fn correct_position_using_gps(&mut self, position: Vector3f32) {
+    pub fn correct_position_using_gps(&mut self, position: Vector3f32) -> KalmanFilterDiagnostics {
         let r_gps = Vector3f32 { x: self.R_gps_horizontal, y: self.R_gps_horizontal, z: self.R_gps_vertical };
-        self.base.correct_position(position, r_gps);
+        self.base.correct_position(position, r_gps)
     }
 
     /// Correct position using optical flow position measurement.
-    pub fn correct_position_using_optical_flow(&mut self, position: Vector2f32) {
-        self.base.correct_position_xy(position, self.R_optical_flow);
+    pub fn correct_position_using_optical_flow(&mut self, position: Vector2f32) -> KalmanFilterDiagnostics {
+        self.base.correct_position_xy(position, self.R_optical_flow)
     }
 }
 
@@ -172,60 +160,19 @@ impl KalmanFilterXyzWithSensors {
     /// When a delayed measurement arrives, we calculate the innovation error using the past state vector (`past.pos`).
     /// We calculate the Kalman Gain vectors using the current active P matrix.
     /// We correct the current state vector directly.
-    pub fn correct_position_delayed(&mut self, measurement: Vector3f32, R: Vector3f32, sensor_time: f32, dt: f32) {
+    pub fn correct_position_delayed(
+        &mut self,
+        measurement: Vector3f32,
+        R: Vector3f32,
+        sensor_time: f32,
+        dt: f32,
+    ) -> KalmanFilterDiagnostics {
         // Find the past state matching the sensor timestamp
         let Some((past, _)) = self.find_snapshot(sensor_time, dt) else {
-            return;
+            return KalmanFilterDiagnostics::default();
         };
         let predicted_measurement = past.pos;
-        self.base.correct_position_short_form(measurement, predicted_measurement, R);
-
-        // Extract the submatrices representing H * P.
-        let P_pos = self.base.P[Self::PP];
-        let P_vel = self.base.P[Self::PV];
-        let P_acc_bias = self.base.P[Self::PB];
-
-        // Calculate S, the Residual Covariance matrix using the PRESENT P.
-        // S = H * P * Hᵀ + R
-        let S = P_pos.add_diagonal_vector(R);
-        // let Some(S_inv) = S.try_inverse() else {
-        let Some(S_cholesky) = S.cholesky() else {
-            return;
-        };
-
-        // Calculate K, the Kalman Gain using the PRESENT P.
-        // let K_pos = P_pos * S_inv;
-        // let K_vel = P_vel * S_inv;
-        // let K_acc_bias = P_acc_bias * S_inv;*/
-        let K_pos = S_cholesky.solve_cholesky_matrix_transposed(P_pos);
-        let K_vel = S_cholesky.solve_cholesky_matrix_transposed(P_vel);
-        let K_acc_bias = S_cholesky.solve_cholesky_matrix_transposed(P_acc_bias);
-
-        // Calculate the innovation using the PAST position.
-        // y = z - H * x
-        let innovation = measurement - predicted_measurement;
-
-        // Directly update the PRESENT states
-        // x += K * y
-        self.base.state.pos += K_pos * innovation;
-        self.base.state.vel += K_vel * innovation;
-        self.base.state.acc_bias += K_acc_bias * innovation;
-
-        // Directly update the PRESENT P matrix block-by-block
-        // P -= K * (H * P)
-        self.base.P[Self::PP] -= K_pos * P_pos;
-        self.base.P[Self::VP] -= K_vel * P_pos;
-        self.base.P[Self::BP] -= K_acc_bias * P_pos;
-
-        self.base.P[Self::PV] -= K_pos * P_vel;
-        self.base.P[Self::VV] -= K_vel * P_vel;
-        self.base.P[Self::BV] -= K_acc_bias * P_vel;
-
-        self.base.P[Self::PB] -= K_pos * P_acc_bias;
-        self.base.P[Self::VB] -= K_vel * P_acc_bias;
-        self.base.P[Self::BB] -= K_acc_bias * P_acc_bias;
-
-        self.base.P.enforce_symmetry();
+        self.base.correct_position_short_form(measurement, predicted_measurement, R)
     }
 }
 
@@ -240,7 +187,8 @@ impl KalmanFilterXyzWithSensors {
 
         self.history.system_time += dt;
 
-        let snapshot = Snapshot { time_stamp: self.history.system_time, pos: self.pos(), gps_pos: None, baro_alt: None };
+        let snapshot =
+            Snapshot { time_stamp: self.history.system_time, pos: self.pos(), gps_pos: None, baro_alt: None };
 
         self.history.head_idx = (self.history.head_idx + 1) % self.history.snapshot.len();
         self.history.snapshot[self.history.head_idx] = snapshot;
