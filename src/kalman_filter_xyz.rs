@@ -2,42 +2,10 @@ use vqm::{Matrix3x3, Matrix3x3f32, Matrix3x3xM3x3, Matrix3x3xM3x3f32, Vector2f32
 
 use crate::KalmanFilterDiagnostics;
 
-/// `f32` variant of `PositionKalmanFilter0`.
+/// `f32` variant of `PositionKalmanFilterXYZ`.
 pub type KalmanFilterXYZf32 = KalmanFilterXYZ;
 
-/*
-Rule of Thumb for Tuning
-
-If the filter output looks laggy or sluggish (clinging too closely to the old path and trailing behind rapid movements),
-you need to trust the physics model less and the sensors more:
-Action: Increase Q or Decrease R.
-
-If the filter output looks jittery or nervous (shaking whenever the sensor outputs minor noise spikes),
-you are trusting the noisy sensors too heavily over the smooth physics predictions:
-Action: Decrease Q or Increase R.
-*/
-/// Linear Kalman Filter in 3 dimensions.
-///
-/// The system is split into two cleanly decoupled steps. This:
-/// 1. reduces the covariance matrix from 15x15 to 9x9.
-/// 2. allows a Linear Kalman Filter (rather than an Extended Kalman Filter) to be used.
-///
-/// ```text
-///   ┌─────┐  Acc/Gyro  ┌─────────────────┐
-///   │ IMU ├──────────► │ MADGWICK FILTER ├──────► Orientation Quaternion
-///   └─────┘            └─────────────────┘
-///      | Acc
-///      │────────────────────────────────────────► Acc
-/// ┌────────────┐
-/// │ INTEGRATOR | (since Kalman filter runs at a fraction of the rate of the Madgwick filter)
-/// └────────────┘
-///      |
-///   delta V         ┌────────────────────────┐
-///      └──────────► │ POSITION KALMAN FILTER ├──► Position Vector
-///                   └────────────────────────┘    Velocity Vector
-///                                │
-///   GPS, Barometer etc ─────►────┘
-/// ```
+/// Kalman Filter in 3 dimensions.
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterXYZ {
@@ -86,9 +54,9 @@ impl KalmanFilterXYZ {
 
 impl KalmanFilterXYZ {
     /// Constructor.
-    #[allow(non_snake_case)]
     #[must_use]
     pub fn new() -> Self {
+        #[allow(non_snake_case)]
         let mut P = Matrix3x3xM3x3f32::default();
 
         // Seed initial Position uncertainty (ie, confident within 1 meter)
@@ -551,7 +519,8 @@ impl KalmanFilterXYZ {
 
         // Normalized Innovation Squared (NIS) = yᵀ * S⁻¹ * y  (aka Mahalanobis Distance)
         let s_inv_times_innovation = S_cholesky.solve_cholesky_vector(innovation);
-        let nis = innovation.dot(s_inv_times_innovation); // Dot product results in a unitless scalar
+         // Dot product results in a unitless scalar
+        let nis = innovation.dot(s_inv_times_innovation);
         let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP].trace(), nis };
 
         if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_3D
@@ -626,7 +595,7 @@ impl KalmanFilterXYZ {
         diagnostics
     }
 
-    pub fn correct_position_xy_short_form(&mut self, position: Vector2f32, past_pos: Vector3f32, R: Vector2f32) {
+    pub fn correct_position_xy_joseph_stabilized_form(&mut self, position: Vector2f32, past_pos: Vector3f32, R: Vector2f32) {
         // TODO: implement correct_position_xy_delayed.
         _ = self;
         _ = position;
@@ -634,6 +603,7 @@ impl KalmanFilterXYZ {
         _ = past_pos;
     }
 
+    /// Non-linear correction using anchor distance.
     pub fn correct_position_using_anchor_distance(
         &mut self,
         anchor_position: Vector3f32,
@@ -658,20 +628,16 @@ impl KalmanFilterXYZ {
         }
 
         // Jacobian with respect to position:
-        //
         // H = [ dx/r, dy/r, dz/r ]
         //
         // Vector3 is used as a row vector for:
-        //
         //     H * P
         //
         // and as a column vector for:
-        //
         //     P * Hᵀ
         let H = position / predicted_distance;
 
         // P * Hᵀ for each state block.
-        //
         // u = P * Hᵀ
         //
         //     [ P_PP * Hᵀ ]
@@ -742,15 +708,12 @@ impl KalmanFilterXYZ {
     }
 
     pub fn correct_position(&mut self, position: Vector3f32, R: Vector3f32) {
-        self.correct_position_short_form(position, self.state.pos, R);
+        _ = self.correct_position_joseph_stabilized_form(position, self.state.pos, R);
     }
 
-    pub fn correct_position_joseph(&mut self, position: Vector3f32, R: Vector3f32) -> KalmanFilterDiagnostics {
-        self.correct_position_joseph_stabilized_form(position, self.state.pos, R)
-    }
 
     pub fn correct_position_xy(&mut self, position: Vector2f32, R: Vector2f32) {
-        self.correct_position_xy_short_form(position, self.state.pos, R);
+        self.correct_position_xy_joseph_stabilized_form(position, self.state.pos, R);
     }
 }
 
@@ -883,7 +846,7 @@ mod tests {
             filter.predict_covariance(dt);
 
             //filter.correct_position(true_pos, r_gps);
-            _ = filter.correct_position_joseph(true_pos, r_gps);
+            () = filter.correct_position(true_pos, r_gps);
         }
 
         // --- PHASE 1 AUDIT LOGS ---

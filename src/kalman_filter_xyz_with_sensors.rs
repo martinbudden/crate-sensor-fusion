@@ -1,4 +1,5 @@
-use vqm::{Matrix3x3f32, Vector2f32, Vector3f32};
+use num_traits::ConstZero;
+use vqm::{Vector2f32, Vector3f32};
 
 use super::{KalmanFilterDiagnostics, KalmanFilterXYZ};
 
@@ -32,12 +33,7 @@ pub struct KalmanFilterXYZWithSensors {
     /// Absolute Measurement Noise variance for ultra-wideband indoor positioning system..
     pub R_ultra_wideband: f32,
     /// Delayed State Buffer for Retrodictive Updates.
-    pub history: [Snapshot; Self::SNAPSHOT_SIZE], // Fixed circular window (e.g., handles up to 640ms of latency at 100Hz)
-    pub head_idx: usize, // Current write pointer in our ring buffer
-    pub system_time: f32,
-    pub acc_accumulator: Vector3f32,
-    pub tick_counter: usize,
-    pub skip_factor: usize,
+    pub history: KalmanFilterXyzHistory,
 }
 
 impl Default for KalmanFilterXYZWithSensors {
@@ -47,8 +43,6 @@ impl Default for KalmanFilterXYZWithSensors {
 }
 
 impl KalmanFilterXYZWithSensors {
-    pub const SNAPSHOT_SIZE: usize = 64; // 640ms of history at 100Hz
-
     const PP: usize = 0;
     const VP: usize = 1;
     const BP: usize = 2;
@@ -80,12 +74,7 @@ impl KalmanFilterXYZWithSensors {
             R_optical_flow: Vector2f32 { x: 0.04, y: 0.04 },
             // 1cm to 10cm typical accuracy, use 10cm = 0.10m, = 0.01 variance for cheap modules.
             R_ultra_wideband: 0.01,
-            history: [Snapshot::default(); Self::SNAPSHOT_SIZE],
-            head_idx: 0,
-            system_time: 0.0,
-            acc_accumulator: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
-            tick_counter: 0,
-            skip_factor: 1, // Default to 1 (no skipping), can be adjusted for logging or averaging
+            history: KalmanFilterXyzHistory::new(),
         }
     }
 }
@@ -109,6 +98,17 @@ impl KalmanFilterXYZWithSensors {
         self.base.state.acc_bias
     }
 
+    /// Called inside the main IMU execution loop (eg `gyro_pid` loop).
+    pub fn predict(&mut self, acc: Vector3f32, dt: f32) {
+        // Integrate physical kinematics forward (deterministic)
+        self.predict_state(acc, dt);
+
+        // Propagate covariance uncertainty blocks forward (stochastic)
+        self.predict_covariance(dt);
+
+        self.push_snapshot(dt);
+    }
+
     pub fn predict_state(&mut self, acc_measurement: Vector3f32, dt: f32) {
         self.base.predict_state(acc_measurement, dt);
     }
@@ -117,48 +117,39 @@ impl KalmanFilterXYZWithSensors {
         self.base.predict_covariance(dt);
     }
 
-    /// Phase 2: Correct altitude using the barometer measurement.
+    /// Correct altitude using supplied R.
     #[inline]
     pub fn correct_altitude(&mut self, altitude: f32, r: f32) -> KalmanFilterDiagnostics {
         self.base.correct_altitude(altitude, r)
     }
 
+    /// Correct altitude using the barometer measurement.
     #[inline]
     pub fn correct_altitude_using_barometer(&mut self, altitude: f32) -> KalmanFilterDiagnostics {
         self.base.correct_altitude(altitude, self.R_barometer)
     }
 
-    /// Phase 2: Correct altitude using the rangefinder measurement.
+    /// Correct altitude using the rangefinder measurement.
     #[inline]
     pub fn correct_altitude_using_rangefinder(&mut self, altitude: f32) -> KalmanFilterDiagnostics {
         self.base.correct_altitude(altitude, self.R_rangefinder)
     }
 
-    /// Phase 2: Correct altitude using GPS vertical measurement.
+    /// Correct altitude using GPS vertical measurement.
     #[inline]
     pub fn correct_altitude_using_gps(&mut self, altitude: f32) -> KalmanFilterDiagnostics {
         self.base.correct_altitude(altitude, self.R_gps_vertical)
     }
-    /// Phase 2: Correct position using GPS position measurement (typically at a 1Hz to 10Hz rate).
+
+    /// Correct position using GPS position measurement (typically at a 1Hz to 10Hz rate).
     pub fn correct_position_using_gps(&mut self, position: Vector3f32) {
         let r_gps = Vector3f32 { x: self.R_gps_horizontal, y: self.R_gps_horizontal, z: self.R_gps_vertical };
         self.base.correct_position(position, r_gps);
     }
 
-    /// Phase 2: Correct position using optical flow position measurement.
+    /// Correct position using optical flow position measurement.
     pub fn correct_position_using_optical_flow(&mut self, position: Vector2f32) {
         self.base.correct_position_xy(position, self.R_optical_flow);
-    }
-
-    // Inside the main IMU execution loop (eg gyro_pid loop).
-    pub fn handle_imu_tick(&mut self, acc: Vector3f32, dt: f32) {
-        // Integrate physical kinematics forward (deterministic)
-        self.predict_state(acc, dt);
-
-        // Propagate covariance uncertainty blocks forward (stochastic)
-        self.predict_covariance(dt);
-
-        self.push_snapshot(acc, dt);
     }
 }
 
@@ -182,6 +173,13 @@ impl KalmanFilterXYZWithSensors {
     /// We calculate the Kalman Gain vectors using the current active P matrix.
     /// We correct the current state vector directly.
     pub fn correct_position_delayed(&mut self, measurement: Vector3f32, R: Vector3f32, sensor_time: f32, dt: f32) {
+        // Find the past state matching the sensor timestamp
+        let Some((past, _)) = self.find_snapshot(sensor_time, dt) else {
+            return;
+        };
+        let predicted_measurement = past.pos;
+        self.base.correct_position_short_form(measurement, predicted_measurement, R);
+
         // Extract the submatrices representing H * P.
         let P_pos = self.base.P[Self::PP];
         let P_vel = self.base.P[Self::PV];
@@ -203,14 +201,9 @@ impl KalmanFilterXYZWithSensors {
         let K_vel = S_cholesky.solve_cholesky_matrix_transposed(P_vel);
         let K_acc_bias = S_cholesky.solve_cholesky_matrix_transposed(P_acc_bias);
 
-        // Find the past state matching the sensor timestamp
-        let Some((past, _)) = self.find_snapshot(sensor_time, dt) else {
-            return;
-        };
-
         // Calculate the innovation using the PAST position.
         // y = z - H * x
-        let innovation = measurement - past.pos;
+        let innovation = measurement - predicted_measurement;
 
         // Directly update the PRESENT states
         // x += K * y
@@ -234,192 +227,35 @@ impl KalmanFilterXYZWithSensors {
 
         self.base.P.enforce_symmetry();
     }
-
-    /*
-    Multi-Rate Sensor Delay Buffer (often called a Delayed State Buffer or Retrodictive Update)
-
-    In a flight controller, IMU updates are typically 400Hz - 8kHz.
-    However GPS updates are typically at 10Hz.
-
-    If we apply a delayed GPS measurement to the much more frequently updated IMU state, will cause errors.
-
-    The solution is to keep a running history of the state and sensor inputs,
-    rewind time to the exact moment the GPS measurement actually occurred, apply the correction,
-    and then fast-forward the filter back to the present.
-
-    Critical Edge Cases to check:
-
-    Buffer Overflow:
-
-    If the IMU loops at 400Hz and a sensor has a 200ms lag, then the history buffer must be at least 0.200 / (1/400) = 80 slots deep.
-    If it's too small, the data will wrap around and overwrite the present state.
-    Size the buffer array with an extra 20% breathing room.
-
-    Correction Cascades:
-    If we receive a Barometer update and a GPS update at the same past timestamp, then
-    we must execute both updates back-to-back inside the same rewind event before fast-forwarding.
-    */
-    /// Past GPS Step Matched] ──► Apply GPS Correction ──► Fast-Forward Predictions ──► [Back to Present]
-    ///         ▲                                                      │
-    ///         └─────── (History Window of stored Data Steps) ────────┘.
-    ///
-    /// The steps are:
-    ///
-    /// * Find the match: Look backward through the history buffer to find the snapshot whose time tamp matches the arrival of the delayed measurement.
-    /// * Rewind: Overwrite the active states (self.pos, self.vel, self.P, etc) with the contents of that historical snapshot.
-    /// * Correct: Run the `correct_position` code on these reloaded past states using the new sensor data.
-    /// * Fast-Forward: Loop forward through the rest of the buffer from that past index back up to the present head index,
-    ///   re-running `predict_state` and `predict_covariance` for every intermediate step.
-    pub fn correct_position_delayed_with_fast_forward(
-        &mut self,
-        position: Vector3f32,
-        R_gps: Vector3f32,
-        sensor_time: f32,
-        dt: f32,
-    ) {
-        let Some((past, start_idx)) = self.find_snapshot(sensor_time, dt) else {
-            return; // Discard safely if too old or out-of-bounds
-        };
-
-        // REWIND: Restore the past kinematic state variables
-        self.base.state.pos = past.pos;
-        self.base.state.vel = past.vel;
-        self.base.state.acc_bias = past.acc_bias;
-
-        // Splice the historical kinematic uncertainty blocks back into P
-        self.base.P[Self::PP] = past.PP;
-        self.base.P[Self::PV] = past.PV;
-        self.base.P[Self::VP] = past.PV.transpose(); // Generate VP from upper transpose
-        self.base.P[Self::VV] = past.VV;
-        // Bias blocks (PB, VB, BB, BP, BV) remain untouched and retain their present values
-
-        // CORRECT: Run `correct_position` in the past
-        self.base.correct_position(position, R_gps);
-
-        // Fast-Forward back to the present, preserving all historical events
-        // Assumes a fixed R_baro default or passed variable
-        let R_baro = 0.02; // Example default value for Barometer noise variance
-        self.fast_forward_timeline(start_idx, dt, R_gps, R_baro);
-    }
-
-    pub fn correct_altitude_delayed_with_fast_forward(
-        &mut self,
-        altitude: f32,
-        sensor_time: f32,
-        dt: f32,
-        R_baro: f32,
-        R_gps: Vector3f32,
-    ) {
-        let Some((past, start_idx)) = self.find_snapshot(sensor_time, dt) else {
-            return;
-        };
-
-        // Rewind kinematics
-        self.base.state.pos = past.pos;
-        self.base.state.vel = past.vel;
-        self.base.state.acc_bias = past.acc_bias;
-        self.base.P[Self::PP] = past.PP;
-        self.base.P[Self::PV] = past.PV;
-        self.base.P[Self::VP] = past.PV.transpose();
-        self.base.P[Self::VV] = past.VV;
-
-        // Apply the delayed Barometer correction in the past
-        _ = self.correct_altitude(altitude, R_baro);
-
-        // Fast-Forward back to the present, preserving all historical events
-        self.fast_forward_timeline(start_idx, dt, R_gps, R_baro);
-    }
-
-    fn fast_forward_timeline(&mut self, start_idx: usize, dt: f32, R_gps: Vector3f32, R_baro: f32) {
-        // Save the corrected past snapshot back into history
-        self.history[start_idx].pos = self.base.state.pos;
-        self.history[start_idx].vel = self.base.state.vel;
-        self.history[start_idx].PP = self.base.P[Self::PP];
-        self.history[start_idx].PV = self.base.P[Self::PV];
-        self.history[start_idx].VV = self.base.P[Self::VV];
-
-        let mut current_idx = (start_idx + 1) % self.history.len();
-        let target_idx = (self.head_idx + 1) % self.history.len();
-
-        #[allow(clippy::cast_precision_loss)]
-        let playback_dt = dt * self.skip_factor as f32;
-
-        while current_idx != target_idx {
-            let next_step = self.history[current_idx];
-
-            // Step time dynamics forward
-            self.predict_state(next_step.acc, playback_dt);
-            self.predict_covariance(playback_dt);
-
-            // Re-apply an intermediate GPS correction if it historically existed here
-            if let Some(past_gps_measurement) = next_step.gps_pos {
-                self.base.correct_position(past_gps_measurement, R_gps);
-            }
-
-            // Re-apply an intermediate Baro correction if it historically existed here
-            if let Some(past_baro_measurement) = next_step.baro_alt {
-                _ = self.base.correct_altitude(past_baro_measurement, R_baro);
-            }
-
-            // Re-cache our new fully synchronized forward estimations back into history
-            self.history[current_idx].pos = self.pos();
-            self.history[current_idx].vel = self.vel();
-            self.history[current_idx].acc_bias = self.acc_bias();
-            self.history[current_idx].PP = self.base.P[Self::PP];
-            self.history[current_idx].PV = self.base.P[Self::PV];
-            self.history[current_idx].VV = self.base.P[Self::VV];
-
-            current_idx = (current_idx + 1) % self.history.len();
-        }
-    }
 }
 
 impl KalmanFilterXYZWithSensors {
     /// Caches the current state of the filter into our history ring buffer.
     /// Run this at the very end of EVERY IMU time update step.
-    pub fn push_snapshot(&mut self, acc_raw: Vector3f32, dt: f32) {
+    pub fn push_snapshot(&mut self, dt: f32) {
         // Cache the fully synchronized state + covariance into history
         // Call this here so it captures the results of BOTH predictions
         // Accumulate the raw measurements to form a true average over the window
-        self.acc_accumulator += acc_raw;
-        self.tick_counter += 1;
+        self.history.tick_counter += 1;
 
-        // Push a snapshot every 2nd tick (50 Hz snapshot log)
-        if self.tick_counter >= self.skip_factor {
-            #[allow(clippy::cast_precision_loss)]
-            let avg_acc = self.acc_accumulator / self.skip_factor as f32;
+        self.history.system_time += dt;
 
-            self.system_time += dt;
+        let snapshot = Snapshot { time_stamp: self.history.system_time, pos: self.pos(), gps_pos: None, baro_alt: None };
 
-            let snapshot = Snapshot {
-                time_stamp: self.system_time,
-                pos: self.pos(),
-                vel: self.vel(),
-                acc_bias: self.acc_bias(),
-                PP: self.base.P[Self::PP],
-                PV: self.base.P[Self::PV],
-                VV: self.base.P[Self::VV],
-                acc: avg_acc,
-                gps_pos: None,
-                baro_alt: None,
-            };
+        self.history.head_idx = (self.history.head_idx + 1) % self.history.snapshot.len();
+        self.history.snapshot[self.history.head_idx] = snapshot;
 
-            self.head_idx = (self.head_idx + 1) % self.history.len();
-            self.history[self.head_idx] = snapshot;
-
-            // Reset accumulators
-            self.acc_accumulator = Vector3f32::default();
-            self.tick_counter = 0;
-        }
+        // Reset accumulators
+        self.history.tick_counter = 0;
     }
 
     pub fn register_gps_event(&mut self, gps_pos: Vector3f32) {
-        self.history[self.head_idx].gps_pos = Some(gps_pos);
+        self.history.snapshot[self.history.head_idx].gps_pos = Some(gps_pos);
     }
 
     /// Flags that a fresh Barometric Altitude measurement occurred at the current step.
     pub fn register_baro_event(&mut self, altitude: f32) {
-        self.history[self.head_idx].baro_alt = Some(altitude);
+        self.history.snapshot[self.history.head_idx].baro_alt = Some(altitude);
     }
 
     /// Retrieves a historical snapshot of the filter state at a given index.
@@ -429,10 +265,10 @@ impl KalmanFilterXYZWithSensors {
         let mut match_idx = None;
         let mut min_diff = f32::MAX;
         #[allow(clippy::cast_precision_loss)]
-        let diff_threshold = dt * (0.5 + self.skip_factor as f32); // Allowable time difference threshold
+        let diff_threshold = dt * 0.5; // Allowable time difference threshold
 
-        for ii in 0..self.history.len() {
-            let time_stamp = self.history[ii].time_stamp;
+        for ii in 0..self.history.snapshot.len() {
+            let time_stamp = self.history.snapshot[ii].time_stamp;
             // Skip uninitialized buffer slots at system startup
             if time_stamp <= 0.0 {
                 continue;
@@ -446,26 +282,54 @@ impl KalmanFilterXYZWithSensors {
 
         let start_idx = match_idx?;
 
-        Some((self.history[start_idx], start_idx))
+        Some((self.history.snapshot[start_idx], start_idx))
     }
 }
 
 #[allow(non_snake_case)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Snapshot {
     pub time_stamp: f32,
-    pub pos: Vector3f32,
-    pub vel: Vector3f32,
-    pub acc_bias: Vector3f32,
-    pub PP: Matrix3x3f32,
-    pub PV: Matrix3x3f32,
-    pub VV: Matrix3x3f32,
-    pub acc: Vector3f32,
 
+    pub pos: Vector3f32,
     pub gps_pos: Option<Vector3f32>,
     pub baro_alt: Option<f32>,
 }
 
+impl Default for Snapshot {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Snapshot {
+    pub const fn new() -> Self {
+        Self { time_stamp: 0.0, pos: Vector3f32::ZERO, gps_pos: None, baro_alt: None }
+    }
+}
+#[allow(non_snake_case)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct KalmanFilterXyzHistory {
+    pub snapshot: [Snapshot; Self::SNAPSHOT_SIZE], // Fixed circular window (e.g., handles up to 640ms of latency at 100Hz)
+    /// Ring buffer index.
+    pub head_idx: usize,
+    pub system_time: f32,
+    pub tick_counter: usize,
+}
+
+impl Default for KalmanFilterXyzHistory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl KalmanFilterXyzHistory {
+    pub const SNAPSHOT_SIZE: usize = 128; // 256ms of history at 500Hz
+
+    pub const fn new() -> Self {
+        Self { snapshot: [Snapshot::new(); Self::SNAPSHOT_SIZE], head_idx: 0, system_time: 0.0, tick_counter: 0 }
+    }
+}
 #[cfg(test)]
 mod test_traits {
     use super::*;
@@ -477,355 +341,5 @@ mod test_traits {
         is_full::<KalmanFilterXYZWithSensors>();
         is_full::<KalmanFilterXYZWithSensorsf32>();
         is_full::<Snapshot>();
-    }
-}
-
-#[cfg(test)]
-mod tests_delayed {
-    use super::*;
-
-    /// A simple struct to model a delayed hardware communication packet.
-    struct GpsPacket {
-        pub time_stamp: f32,
-        pub position: Vector3f32,
-    }
-
-    #[test]
-    fn test_delayed_position_tracking() {
-        let mut filter = KalmanFilterXYZWithSensors::new();
-
-        let dt = 0.01; // 100Hz internal state update loop
-        let r_gps = Vector3f32 { x: 2.25, y: 2.25, z: 9.0 };
-
-        // Define our simulation world metrics
-        let mut true_pos = Vector3f32::default();
-        let mut true_vel = Vector3f32::default();
-        let true_bias = Vector3f32 { x: 0.05, y: -0.02, z: 0.03 }; // Accelerometer bias
-        let gravity = Vector3f32 { x: 0.0, y: 0.0, z: 9.80665 }; // NED gravity
-
-        // A queue to simulate network/hardware transmission delay
-        let mut gps_latency_queue: Vec<GpsPacket> = Vec::new();
-        let gps_delay_seconds = 0.15; // 150ms transmission lag
-
-        // Run a 4-second flight test under severe lateral acceleration
-        let total_simulation_seconds = 4.0;
-        #[allow(clippy::cast_possible_truncation)]
-        let total_loops = (total_simulation_seconds / dt) as i32;
-
-        println!("\n--- STARTING 150MS ASYNCHRONOUS DELAY TEST (4 SECONDS) ---");
-
-        for step in 0..total_loops {
-            #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-            let current_sim_time = step as f32 * dt;
-
-            // Generate an active trajectory maneuver profile (sine wave acceleration)
-            let true_acc_kinematic = Vector3f32 {
-                x: (current_sim_time * 2.0).cos() * 2.0, // Swerving back and forth
-                y: (current_sim_time * 2.0).sin() * 1.5,
-                z: 0.5, // Steady climb downward in NED
-            };
-
-            // Propagate true physical world kinematics via Trapezoidal integration
-            true_pos += (true_vel + 0.5 * true_acc_kinematic * dt) * dt;
-            true_vel += true_acc_kinematic * dt;
-
-            // Raw IMU measurement = Kinematic acceleration + Bias - Gravity reaction force
-            let acc_measurement = true_acc_kinematic + true_bias - gravity;
-
-            // Step A: 100Hz predictive filter step
-            filter.handle_imu_tick(acc_measurement, dt);
-
-            // Step B: Asynchronous 10Hz GPS Sampling
-            if step % 10 == 0 {
-                // The GPS reads the true coordinates right now, but applies a timestamp
-                gps_latency_queue.push(GpsPacket { time_stamp: current_sim_time, position: true_pos });
-                // Tag the active snapshot with the position payload
-                filter.register_gps_event(true_pos);
-            }
-
-            // Step C: Check if a delayed GPS communication packet has arrived at the present moment
-            if let Some(front_packet) = gps_latency_queue.first() {
-                // Does the present system time match or exceed the packet capture time + delay?
-                if current_sim_time >= (front_packet.time_stamp + gps_delay_seconds) {
-                    let packet = gps_latency_queue.remove(0);
-
-                    // Execute the rewind, past-correction, and fast-forward sequence
-                    filter.correct_position_delayed_with_fast_forward(packet.position, r_gps, packet.time_stamp, dt);
-                }
-            }
-
-            // Output trace telemetry data every 1 second to inspect convergence trends
-            if step % 100 == 0 && step > 0 {
-                println!(
-                    "Time: {:.2}s -> TruePos X: {:7.3}, EstPos X: {:7.3} | TrueVel Y: {:6.3}, EstVel Y: {:6.3}",
-                    current_sim_time,
-                    true_pos.x,
-                    filter.pos().x,
-                    true_vel.y,
-                    filter.vel().y
-                );
-            }
-        }
-
-        // --- FINAL TRACKING PERFORMANCE AUDIT ---
-        println!("\n--- FINAL DELAYED TRACKING RESULTS ---");
-        println!("True Final Pos X: {:8.4}, Estimated Final Pos X: {:8.4}", true_pos.x, filter.pos().x);
-        println!("True Final Pos Y: {:8.4}, Estimated Final Pos Y: {:8.4}", true_pos.y, filter.pos().y);
-        println!("True Final Vel X: {:8.4}, Estimated Final Vel X: {:8.4}", true_vel.x, filter.vel().x);
-        println!("True Final Vel Y: {:8.4}, Estimated Final Vel Y: {:8.4}", true_vel.y, filter.vel().y);
-
-        // Verification Assertions: Despite a massive 150ms sensor lag, the filter tracking should be highly precise
-        assert!((filter.pos().x - true_pos.x).abs() < 0.12, "X Position track failed under severe latency!");
-        assert!((filter.pos().y - true_pos.y).abs() < 0.12, "Y Position track failed under severe latency!");
-        assert!((filter.vel().x - true_vel.x).abs() < 0.15, "X Velocity estimate diverged due to delay!");
-        assert!((filter.vel().y - true_vel.y).abs() < 0.15, "Y Velocity estimate diverged due to delay!");
-
-        println!("\n✅ Hybrid Delayed State architecture handles asynchronous transmission lag flawlessly!");
-    }
-}
-
-#[cfg(test)]
-mod tests_downsampled {
-    use super::*;
-
-    struct GpsPacket {
-        pub time_stamp: f32,
-        pub position: Vector3f32,
-    }
-
-    #[test]
-    fn test_downsampled_history_tracking() {
-        // TODO: downsampling currently fails if SKIP_FACTOR != 1
-        const SKIP_FACTOR: usize = 1;
-        let mut filter = KalmanFilterXYZWithSensors::new();
-        filter.skip_factor = SKIP_FACTOR;
-
-        let dt = 0.01; // 100Hz internal state update loop
-        let r_gps = Vector3f32 { x: 2.25, y: 2.25, z: 9.0 };
-
-        // Define our simulation world metrics
-        let mut true_pos = Vector3f32::default();
-        let mut true_vel = Vector3f32::default();
-        let true_bias = Vector3f32 { x: 0.05, y: -0.02, z: 0.03 };
-        let gravity = Vector3f32 { x: 0.0, y: 0.0, z: 9.80665 };
-
-        // A queue to simulate network/hardware transmission delay
-        let mut gps_latency_queue: Vec<GpsPacket> = Vec::new();
-        let gps_delay_seconds = 0.15; // 150ms transmission lag
-
-        let total_simulation_seconds = 4.0;
-        #[allow(clippy::cast_possible_truncation)]
-        let total_loops = (total_simulation_seconds / dt) as i32;
-
-        println!("\n--- STARTING DOWNSAMPLED (50HZ SNAPSHOT) 150MS DELAY TEST ---");
-
-        for step in 0..total_loops {
-            #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-            let current_sim_time = step as f32 * dt;
-
-            // Oscillatory trajectory profile
-            let true_acc_kinematic = Vector3f32 {
-                x: (current_sim_time * 2.0).cos() * 2.0, // Swerving back and forth
-                y: (current_sim_time * 2.0).sin() * 1.5,
-                z: 0.5, // Steady climb downward in NED
-            };
-
-            // Propagate true physical world kinematics via Trapezoidal integration
-            true_pos += (true_vel + 0.5 * true_acc_kinematic * dt) * dt;
-            true_vel += true_acc_kinematic * dt;
-
-            // Raw IMU measurement = Kinematic acceleration + Bias - Gravity reaction force
-            let acc_measurement = true_acc_kinematic + true_bias - gravity;
-
-            // Step A: Run full 100Hz predictive filter step
-            filter.handle_imu_tick(acc_measurement, dt);
-
-            // Step B: Asynchronous 10Hz GPS Sampling (Runs at 10Hz)
-            if step % 10 == 0 {
-                // The GPS reads the true coordinates right now, but applies a timestamp
-                gps_latency_queue.push(GpsPacket { time_stamp: current_sim_time, position: true_pos });
-                // Tag the active snapshot with the position payload
-                filter.register_gps_event(true_pos);
-            }
-
-            // Process delayed packet arrival
-            if let Some(front_packet) = gps_latency_queue.first()
-                && current_sim_time >= (front_packet.time_stamp + gps_delay_seconds)
-            {
-                let packet = gps_latency_queue.remove(0);
-                // Execute the rewind, past-correction, and fast-forward sequence
-                #[allow(clippy::cast_precision_loss)]
-                filter.correct_position_delayed_with_fast_forward(
-                    packet.position,
-                    r_gps,
-                    packet.time_stamp,
-                    dt * SKIP_FACTOR as f32,
-                );
-            }
-
-            // Output trace telemetry data every 1 second to inspect convergence trends
-            if step % 100 == 0 && step > 0 {
-                println!(
-                    "Time: {:.2}s -> TruePos X: {:7.3}, EstPos X: {:7.3} | TrueVel Y: {:6.3}, EstVel Y: {:6.3}",
-                    current_sim_time,
-                    true_pos.x,
-                    filter.pos().x,
-                    true_vel.y,
-                    filter.vel().y
-                );
-            }
-        }
-
-        println!("\n--- FINAL DOWNSAMPLED REWIND RESULTS ---");
-        println!("True Final Pos X: {:8.4}, Estimated Final Pos X: {:8.4}", true_pos.x, filter.pos().x);
-        println!("True Final Pos Y: {:8.4}, Estimated Final Pos Y: {:8.4}", true_pos.y, filter.pos().y);
-        println!("True Final Vel X: {:8.4}, Estimated Final Vel X: {:8.4}", true_vel.x, filter.vel().x);
-        println!("True Final Vel Y: {:8.4}, Estimated Final Vel Y: {:8.4}", true_vel.y, filter.vel().y);
-
-        // Assertions are slightly relaxed (+2cm margin) to allow for the intentional 10ms quantization error
-        assert!((filter.pos().x - true_pos.x).abs() < 0.14, "X Position track failed under downsampling!");
-        assert!((filter.pos().y - true_pos.y).abs() < 0.14, "Y Position track failed under downsampling!");
-        assert!((filter.vel().x - true_vel.x).abs() < 0.17, "X Velocity estimate diverged!");
-        assert!((filter.vel().y - true_vel.y).abs() < 0.17, "Y Velocity estimate diverged!");
-
-        //println!("\n✅ Downsampled 50Hz snapshot window verified successfully with minimal precision penalty!");
-    }
-}
-
-#[cfg(test)]
-mod tests_dual_sensor {
-    use super::*;
-
-    struct GpsPacket {
-        pub time_stamp: f32,
-        pub position: Vector3f32,
-    }
-
-    struct BaroPacket {
-        pub time_stamp: f32,
-        pub altitude: f32,
-    }
-
-    #[test]
-    fn test_dual_sensor_asynchronous_rewind() {
-        // 1. Initialize the filter with skip_factor = 2 (50Hz snapshot interval)
-        let mut filter = KalmanFilterXYZWithSensors::new();
-        filter.skip_factor = 2;
-
-        let dt = 0.01; // 100Hz IMU execution loop
-
-        // Sensor noise characteristics (R)
-        let r_gps = Vector3f32 { x: 2.25, y: 2.25, z: 0.04 };
-        let r_baro = 0.04; // 20cm variance
-
-        // 2. Define our simulation world truths
-        let mut true_pos = Vector3f32::default();
-        let mut true_vel = Vector3f32::default();
-        let true_bias = Vector3f32 { x: 0.03, y: -0.01, z: 0.02 }; // System accelerometer bias
-        let gravity = Vector3f32 { x: 0.0, y: 0.0, z: 9.80665 }; // NED gravity
-
-        // Latency communication queues
-        let mut gps_queue: Vec<GpsPacket> = Vec::new();
-        let mut baro_queue: Vec<BaroPacket> = Vec::new();
-
-        let gps_delay = 0.15; // 150ms lag
-        let baro_delay = 0.04; // 40ms lag
-
-        let total_simulation_seconds = 4.0;
-        #[allow(clippy::cast_possible_truncation)]
-        let total_loops = (total_simulation_seconds / dt) as i32;
-
-        println!("\n--- STARTING DUAL-SENSOR ASYNCHRONOUS REWIND TEST (4 SECONDS) ---");
-        println!("GPS: 10Hz, 150ms lag | Baro: 25Hz, 40ms lag | Snapshots: 50Hz\n");
-
-        for step in 0..total_loops {
-            #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-            let current_sim_time = step as f32 * dt;
-
-            // Helicopter-style swerving and climbing profile
-            let true_acc_kinematic = Vector3f32 {
-                x: (current_sim_time * 2.5).cos() * 2.5,
-                y: (current_sim_time * 2.5).sin() * 2.0,
-                z: -0.8, // Constant vertical acceleration upward in NED (climbing)
-            };
-
-            // Propagate true physics at 100Hz
-            true_pos += (true_vel + 0.5 * true_acc_kinematic * dt) * dt;
-            true_vel += true_acc_kinematic * dt;
-
-            let acc_measurement = true_acc_kinematic + true_bias - gravity;
-
-            // Step A: Fast 100Hz predictive filter update block
-            filter.handle_imu_tick(acc_measurement, dt);
-
-            // Step B: Asynchronous 10Hz GPS Sampling
-            if step % 10 == 0 {
-                gps_queue.push(GpsPacket { time_stamp: current_sim_time, position: true_pos });
-
-                // Log the action immediately on the active 100Hz tracking edge
-                filter.register_gps_event(true_pos);
-            }
-
-            // Step C: Asynchronous 25Hz Barometer Sampling (Every 4 steps)
-            if step % 4 == 0 {
-                baro_queue.push(BaroPacket { time_stamp: current_sim_time, altitude: true_pos.z });
-
-                // Log the action immediately on the active 100Hz tracking edge
-                filter.register_baro_event(true_pos.z);
-            }
-
-            // Step D: Process arriving Barometer Packets (40ms delayed)
-            if let Some(front_baro) = baro_queue.first()
-                && current_sim_time >= (front_baro.time_stamp + baro_delay)
-            {
-                let packet = baro_queue.remove(0);
-
-                // Execute time travel update for the barometer
-                filter.correct_altitude_delayed_with_fast_forward(
-                    packet.altitude,
-                    packet.time_stamp,
-                    dt,
-                    r_baro,
-                    r_gps,
-                );
-            }
-
-            // Step E: Process arriving GPS Packets (150ms delayed)
-            if let Some(front_gps) = gps_queue.first()
-                && current_sim_time >= (front_gps.time_stamp + gps_delay)
-            {
-                let packet = gps_queue.remove(0);
-
-                // Execute time travel update for the GPS
-                filter.correct_position_delayed_with_fast_forward(packet.position, r_gps, packet.time_stamp, dt);
-            }
-
-            // Periodically log tracking errors to the console
-            if step % 100 == 0 && step > 0 {
-                println!(
-                    "Time: {:.2}s -> TrueX: {:7.3}, EstX: {:7.3} | TrueZ: {:7.3}, EstZ: {:7.3}",
-                    current_sim_time,
-                    true_pos.x,
-                    filter.pos().x,
-                    true_pos.z,
-                    filter.pos().z
-                );
-            }
-        }
-
-        // --- FINAL REWIND ACCURACY RESULTS ---
-        println!("\n--- DUAL ASYNC SENSOR TRACKING RESULTS ---");
-        println!("True Final Pos X: {:8.4}, Estimated Final Pos X: {:8.4}", true_pos.x, filter.pos().x);
-        println!("True Final Pos Y: {:8.4}, Estimated Final Pos Y: {:8.4}", true_pos.y, filter.pos().y);
-        println!("True Final Pos Z: {:8.4}, Estimated Final Pos Z: {:8.4}", true_pos.z, filter.pos().z);
-        println!("True Final Vel Z: {:8.4}, Estimated Final Vel Z: {:8.4}", true_vel.z, filter.vel().z);
-
-        // Assertions verifying precision tracking despite complex overlapping delays
-        assert!((filter.pos().x - true_pos.x).abs() < 0.12, "Horizontal X position tracking broke!");
-        assert!((filter.pos().y - true_pos.y).abs() < 0.12, "Horizontal Y position tracking broke!");
-        // assert!((filter.pos().z - true_pos.z).abs() < 0.08, "Vertical Z tracking diverged under dual lag!");
-        //assert!((filter.vel().z - true_vel.z).abs() < 0.10, "Vertical Z velocity tracking lost tracking!");
-
-        println!("\n✅ Unified Fast-Forward engine successfully resolved overlapping multi-rate delays!");
     }
 }

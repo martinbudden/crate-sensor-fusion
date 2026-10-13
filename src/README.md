@@ -159,3 +159,13 @@ Correct:
     state += K·innovation
     P -= (K·H)·P
 ```
+
+### Rule of Thumb for Tuning
+
+If the filter output looks laggy or sluggish (clinging too closely to the old path and trailing behind rapid movements),
+you need to trust the physics model less and the sensors more:
+Action: Increase Q or Decrease R.
+
+If the filter output looks jittery or nervous (shaking whenever the sensor outputs minor noise spikes),
+you are trusting the noisy sensors too heavily over the smooth physics predictions:
+Action: Decrease Q or Increase R.

@@ -15,6 +15,16 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 - May port  **VQF** (Versatile Quaternion Filter) from my C++ library [Library-SensorFusion](https://github.com/martinbudden/Library-SensorFusion).
 
+## [0.1.12] - 2026-11-xx
+
+### Added
+
+- `KalmanFilterXyzHistory` struct.
+
+### Removed
+
+- fast-forward from `KalmanFilterXYZWithSensors`.
+
 ## [0.1.11] - 2026-10-01
 
 ### Added

@@ -1,10 +1,10 @@
 # `sensor-fusion` Rust Crate<br>[![Crates.io](https://img.shields.io/crates/v/sensor-fusion.svg)](https://crates.io/crates/sensor-fusion) [![Documentation](https://docs.rs/sensor-fusion/badge.svg)](https://docs.rs/sensor-fusion) [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT) ![open source](https://badgen.net/badge/open/source/blue?icon=github)
 
 This crate contains [sensor fusion](https://en.wikipedia.org/wiki/Sensor_fusion) algorithms to combine
-output from a gyroscope, accelerometer, and optionally a magnetometer to give output that has less uncertainty
+output from a gyroscope, accelerometer, and other sensors to give output that has less uncertainty
 than the output of the individual sensors.
 
-This crate is `no_std`, `no alloc`, and the Minimum Supported Rust Version (MSRV) is `Rust 1.89`.
+This crate is `no_std`, `no alloc`, `no panic`, `no unwrap`, `no expect` and the Minimum Supported Rust Version (MSRV) is `Rust 1.89`.
 
 Six sensor fusion implementations are available:
 
@@ -99,7 +99,7 @@ Three Kalman filters are provided:
 2. `KalmanFilterXY` - a filter to estimate 2D position and velocity.
 3. `KalmanFilterXYZ` - a filter to estimate 3D position and velocity.
 
-## 3D Kalman filter
+### 3D Kalman filter
 
 When using a Kalman filter for 3D there are two possible implementation choices:
 
@@ -115,10 +115,9 @@ When using a Kalman filter for 3D there are two possible implementation choices:
 
 For vehicles that stay upright, or tilt minimally (eg a walker, a car, or a cinematic quadcopter) the split approach is a good one.
 
-For vehicles such as acrobatic quadcopters or rockets, where pitching and rolling movements are common,
-the combined approach is better.
+For vehicles such as acrobatic quadcopters or rockets, where pitching and rolling movements are common, the combined approach is better.
 
-## Position Kalman filter overview
+### Position Kalman filter overview
 
 A Kalman filter works by predicting an object's state using a physical model of the object and a control input.
 
@@ -129,7 +128,7 @@ s = ut + ½at²
 v = u + at`
 ```
 
-However, if you keep predicting position an velocity using integration like that, noise in the system
+However, if you keep predicting position and velocity using integration like that, noise in the system
 will cause the predicted values to drift away from the actual values.
 
 A Kalman filter periodically corrects this prediction with an actual measurement, for example a
@@ -138,20 +137,20 @@ position from a GPS, or an altitude from a barometer.
 A Kalman filter can accept measurements from multiple sources to make its corrections,
 for example: a GPS, a barometer, a rangefinder, and an optical flow device.
 
-(Note: The control input is normally denoted as **u**, the predicted measurement as **x**, and the actual measurement as **z**.)
+(Note: The control input is normally denoted as `u`, the predicted measurement as `x`, and the actual measurement as `z`.)
 
-The correction step doesn't simply replace the predicted value **x** with the measured value **z**,
+The correction step doesn't simply replace the predicted value `x` with the measured value `z`,
 instead it (simplistically speaking) uses a weighted mean of the two values.
 
 That mean is weighted according to how confident we are in the values from our sensors. So, for example,
 if we know the accelerometer is very noisy and the GPS is highly accurate, we would put more weight on the GPS reading.
 
 The confidence in a value is given by a "noise matrix".
-The confidence in control input **u** (accelerometer in our case) is given by the matrix **Q** (called the process noise covariance matrix).
-The confidence in a measurement **z**, is given by the matrix **R** (called the measurement noise covariance matrix).
-Each sensor will have its matrix **R**. So there will be separate matrices **R gps**, **R barometer**, etc.
+The confidence in control input `u` (accelerometer in our case) is given by the matrix `Q` (called the process noise covariance matrix).
+The confidence in a measurement `z`, is given by the matrix `R` (called the measurement noise covariance matrix).
+Each sensor will have its matrix `R`. So there will be separate matrices `R gps`, `R barometer`, etc.
 
-## Use of Kalman filter for vehicle control
+### Use of Kalman filter for vehicle control
 
 It would be possible to create a Kalman filter that takes accelerometer and gyroscope values as control inputs
 and from those estimates orientation, position and velocity.
@@ -167,20 +166,20 @@ and use a another sensor fusion filter (ie a Mahony or Madgwick) filter to do th
 
 ```text
                     ┌──────────┐  Orientation
- ┌─────┐  Acc/Gyro  | MADGWICK |  Quaternion        ┌────────────┐
- │ IMU ├───────────►│ FILTER   ├───────────────────►| FLIGHT     |
- └─────┘  Acc       └──────────┘                    | CONTROLLER |
-     │─────────────────────────────────────────────►|            |
-┌────────────┐                                      └────────────┘
+ ┌─────┐  Acc/Gyro  | MADGWICK |  Quaternion       ┌────────────┐
+ │ IMU ├───────────►│ FILTER   ├──────────────────►| FLIGHT     |
+ └─────┘  Acc       └──────────┘                   | CONTROLLER |
+    │─────────────────────────────────────────────►|            |
+┌────────────┐                                     └────────────┘
 │ INTEGRATOR |
 └────────────┘
-     |              ┌──────────┐  Position Vector
-  delta V           | POSITION |  Velocity Vector   ┌───────────┐
-     └────────────► │ KALMAN   ├───────────────────►| AUTOPILOT |
-                    | FILTER   |                    └───────────┘
+    |               ┌──────────┐  Position Vector
+  delta V           | POSITION |  Velocity Vector  ┌───────────┐
+    └─────────────► │ KALMAN   ├──────────────────►| AUTOPILOT |
+                    | FILTER   |                   └───────────┘
                     └──────────┘
                          │
-  GPS, Barometer etc ──►─┘
+  GPS, Barometer, etc ─►─┘
 ```
 
 This reduces the covariance matrix to more manageable size of 9x9 for 3D (and 6x6 for 2D) and avoids the need to calculate Jacobians.
@@ -189,7 +188,7 @@ Note that we integrate the accelerometer output from the IMU to give a `delta_v`
 the Kalman filter runs at a lower rate than the IMU (the IMU can run at up to 8kHz, the Kalman
 filter typically runs at 1kHz or less).
 
-## Kalman Filter Optimization
+### Kalman Filter Optimization
 
 A naïve implementation of a 3D position Kalman filter is computationally very expensive:
 
@@ -215,7 +214,7 @@ Multiplying two 9x9 matrices requires 729 individual arithmetic operations, inve
 
 Fortunately, these matrices are sparse and so we can avoid doing the full multiplications and inversions.
 
-Firstly we split the 9x9 matrix **P** into nine 3x3 submatrices:
+Firstly we split the 9x9 matrix `P` into nine 3x3 submatrices:
 
 ```text
 ┌                 9x9                  ┐
@@ -297,8 +296,6 @@ fn madgwick_step(q: Quaternionf32, a: Vector3f32) -> Vector4f32 {
 //
 // total:
 //      31 arithmetic operations (19 multiplications, 12 additions/subtractions)
-// when converted to SIMD this becomes:
-//      16 operations (7 multiplications, 4 additions, 3 vector multiplications, 2 vector additions)
 //
 # use vqm::{Quaternionf32, Vector3f32};
 fn madgwick_step(q: Quaternionf32, a: Vector3f32) -> Quaternionf32 {
@@ -323,7 +320,7 @@ I originally implemented this crate as a C++ library:
 
 Licensed under either of:
 
-* Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0)>
-* MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT)>
+* Apache License, Version 2.0, see: [LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>
+* MIT license, see: [LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>
 
 at your option.
