@@ -1,17 +1,20 @@
 use num_traits::{ConstOne, ConstZero, float::FloatCore};
 use vqm::{MathMethods, Matrix3x3, Matrix3x3Math, Matrix3x3f32, Matrix3x3f64, Vector3};
 
-/// `f32` variant of `AltitudeKalmanFilter`.
+/// `f32` variant of `KalmanFilterZ`.
 pub type KalmanFilterZf32 = KalmanFilterZ<f32>;
-/// `f64` variant of `AltitudeKalmanFilter`.
+/// `f64` variant of `KalmanFilterZ`.
 pub type KalmanFilterZf64 = KalmanFilterZ<f64>;
+
+/// `f32` variant of `KalmanFilterStateZ`.
+pub type KalmanFilterStateZf32 = KalmanFilterStateZ<f32>;
+/// `f64` variant of `KalmanFilterStateZ`.
+pub type KalmanFilterStateZf64 = KalmanFilterStateZ<f64>;
 
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterZ<T> {
-    predicted: [T; 3],
-    estimated: [T; 3],
-    bias: T,
+    pub state: KalmanFilterStateZ<T>,
     /// Predicted System Uncertainty Covariance Matrix (P).
     P: Matrix3x3<T>,
 
@@ -43,9 +46,7 @@ impl KalmanFilterZf32 {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            predicted: [0.0; 3],
-            estimated: [0.0; 3],
-            bias: 0.0,
+            state: KalmanFilterStateZf32::new(),
             Q_velocity: 0.01,
             Q_bias: 100.0,
             P: Matrix3x3f32::ZERO,
@@ -58,9 +59,7 @@ impl KalmanFilterZf64 {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            predicted: [0.0; 3],
-            estimated: [0.0; 3],
-            bias: 0.0,
+            state: KalmanFilterStateZf64::new(),
             Q_velocity: 0.01,
             Q_bias: 100.0,
             P: Matrix3x3f64::ZERO,
@@ -72,19 +71,19 @@ impl<T: Copy> KalmanFilterZ<T> {
     #[inline]
     #[must_use]
     pub fn pos(&self) -> T {
-        self.estimated[Self::ALTITUDE]
+        self.state.estimated[Self::ALTITUDE]
     }
 
     #[inline]
     #[must_use]
     pub fn vel(&self) -> T {
-        self.estimated[Self::VELOCITY]
+        self.state.estimated[Self::VELOCITY]
     }
 
     #[inline]
     #[must_use]
     pub fn acc_bias(&self) -> T {
-        self.estimated[Self::BIAS]
+        self.state.estimated[Self::BIAS]
     }
 }
 
@@ -110,17 +109,15 @@ where
         ]);
 
         Self {
-            estimated: [T::ZERO, initial_altitude, T::ZERO],
-            predicted: [T::ZERO, initial_altitude, T::ZERO],
+            state: KalmanFilterStateZ::new_steady_state(initial_altitude),
             P: initial_covariance,
-            bias: T::ONE, // Damping factor configuration baseline
             Q_velocity,
             Q_bias,
         }
     }
 
     pub fn set_velocity(&mut self, velocity: T) {
-        self.estimated[0] = velocity;
+        self.state.estimated[0] = velocity;
     }
 }
 
@@ -136,21 +133,21 @@ where
     pub fn predict(&mut self, acc: T, dt: T) {
         // States are a 3d vector with components: velocity, altitude, and bias.
         // Destructure the state vectors as references with meaningful names, for code legibility (Zero cost abstraction).
-        //let Vector3 { x: estimated_velocity, y: estimated_altitude, z: estimated_bias } = self.estimated;
+        //let Vector3 { x: estimated_velocity, y: estimated_altitude, z: estimated_bias } = self.state.estimated;
         //let Vector3 { x: ref mut predicted_velocity, y: ref mut predicted_altitude, z: ref mut predicted_bias } =
-        //  self.predicted;
+        //  self.state.predicted;
 
         // Kinematic Euler integration for velocity and altitude.
-        self.predicted[Self::VELOCITY] = self.estimated[Self::VELOCITY] + (acc - self.estimated[Self::BIAS]) * dt;
-        self.predicted[Self::ALTITUDE] = self.estimated[Self::ALTITUDE] + self.estimated[Self::VELOCITY] * dt;
-        self.predicted[Self::BIAS] = self.estimated[Self::BIAS] + self.estimated[Self::BIAS] * (self.bias * dt);
+        self.state.predicted[Self::VELOCITY] = self.state.estimated[Self::VELOCITY] + (acc - self.state.estimated[Self::BIAS]) * dt;
+        self.state.predicted[Self::ALTITUDE] = self.state.estimated[Self::ALTITUDE] + self.state.estimated[Self::VELOCITY] * dt;
+        self.state.predicted[Self::BIAS] = self.state.estimated[Self::BIAS] + self.state.estimated[Self::BIAS] * (self.state.bias * dt);
 
         // State Transition Matrix (A)
         #[rustfmt::skip]
         let A = Matrix3x3::new([
             T::ONE,  T::ZERO, -dt,
             dt,      T::ONE,  T::ZERO,
-            T::ZERO, T::ZERO, T::ONE + self.bias * dt,
+            T::ZERO, T::ZERO, T::ONE + self.state.bias * dt,
         ]);
 
         // Process Noise Matrix (Q)
@@ -161,7 +158,7 @@ where
         self.P = A * self.P * A.transpose() + Q;
 
         // Safety: If no measurement arrives, the estimate tracks the prediction
-        self.estimated = self.predicted;
+        self.state.estimated = self.state.predicted;
     }
 }
 
@@ -188,18 +185,48 @@ where
         let K = (self.P * H_transpose) * (T::ONE / S);
 
         // Update state estimate
-        let error = altitude - self.predicted[Self::ALTITUDE];
+        let error = altitude - self.state.predicted[Self::ALTITUDE];
         let K_error = <[T; 3]>::from(K * error);
 
-        self.estimated[Self::VELOCITY] = self.predicted[Self::VELOCITY] + K_error[Self::VELOCITY];
-        self.estimated[Self::ALTITUDE] = self.predicted[Self::ALTITUDE] + K_error[Self::ALTITUDE];
-        self.estimated[Self::BIAS] = self.predicted[Self::BIAS] + K_error[Self::BIAS];
+        self.state.estimated[Self::VELOCITY] = self.state.predicted[Self::VELOCITY] + K_error[Self::VELOCITY];
+        self.state.estimated[Self::ALTITUDE] = self.state.predicted[Self::ALTITUDE] + K_error[Self::ALTITUDE];
+        self.state.estimated[Self::BIAS] = self.state.predicted[Self::BIAS] + K_error[Self::BIAS];
 
         // Update error covariance: P = (I - KH)P, ie P -= (KH)P
         self.P -= K.outer_product(self.P.row(Self::ALTITUDE));
 
         // Prepare for next cycle if multiple corrections happen sequentially
-        self.predicted = self.estimated;
+        self.state.predicted = self.state.estimated;
+    }
+}
+#[allow(unused)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct KalmanFilterStateZ<T> {
+    predicted: [T; 3],
+    estimated: [T; 3],
+    bias: T,
+}
+impl<T> Default for KalmanFilterStateZ<T> 
+where
+    T: Copy + ConstZero + ConstOne,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> KalmanFilterStateZ<T> 
+where
+    T: Copy + ConstZero + ConstOne,
+{
+    /// Constructor.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { predicted: [T::ZERO; 3], estimated: [T::ZERO; 3], bias: T::ONE }
+    }
+    #[must_use]
+    pub fn new_steady_state(initial_altitude: T) -> Self {
+        Self { predicted: [T::ZERO, initial_altitude, T::ZERO], estimated: [T::ZERO, initial_altitude, T::ZERO], bias: T::ONE }
     }
 }
 
