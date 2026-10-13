@@ -1,10 +1,10 @@
 use num_traits::ConstZero;
 use vqm::{Vector2f32, Vector3f32};
 
-use super::{KalmanFilterDiagnostics, KalmanFilterXYZ};
+use super::{KalmanFilterDiagnostics, KalmanFilterXyz};
 
-/// `f32` variant of `KalmanFilterXYZWithSensors`.
-pub type KalmanFilterXYZWithSensorsf32 = KalmanFilterXYZWithSensors;
+/// `f32` variant of `KalmanFilterXyzWithSensors`.
+pub type KalmanFilterXyzWithSensorsf32 = KalmanFilterXyzWithSensors;
 
 /*
 Desired Physical Noise (σ)            Equivalent R Variance Code Value (σ²)
@@ -17,8 +17,8 @@ Desired Physical Noise (σ)            Equivalent R Variance Code Value (σ²)
 */
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct KalmanFilterXYZWithSensors {
-    pub base: KalmanFilterXYZ,
+pub struct KalmanFilterXyzWithSensors {
+    pub base: KalmanFilterXyz,
     // measurement noise covariance Matrix `R`
     /// Absolute Measurement Noise variance for horizontal GPS channels.
     pub R_gps_horizontal: f32,
@@ -36,13 +36,13 @@ pub struct KalmanFilterXYZWithSensors {
     pub history: KalmanFilterXyzHistory,
 }
 
-impl Default for KalmanFilterXYZWithSensors {
+impl Default for KalmanFilterXyzWithSensors {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl KalmanFilterXYZWithSensors {
+impl KalmanFilterXyzWithSensors {
     const PP: usize = 0;
     const VP: usize = 1;
     const BP: usize = 2;
@@ -59,7 +59,7 @@ impl KalmanFilterXYZWithSensors {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            base: KalmanFilterXYZ::new(),
+            base: KalmanFilterXyz::new(),
             // Commercial GPS modules are typically accurate to within 1.5 to 3.0 meters horizontally, less vertically.
             R_gps_horizontal: 2.25,
             R_gps_vertical: 9.0,
@@ -79,7 +79,7 @@ impl KalmanFilterXYZWithSensors {
     }
 }
 
-impl KalmanFilterXYZWithSensors {
+impl KalmanFilterXyzWithSensors {
     #[inline]
     #[must_use]
     pub fn pos(&self) -> Vector3f32 {
@@ -154,7 +154,7 @@ impl KalmanFilterXYZWithSensors {
 }
 
 #[allow(non_snake_case)]
-impl KalmanFilterXYZWithSensors {
+impl KalmanFilterXyzWithSensors {
     /*
     Strategy: "State-Only Rewind"
 
@@ -229,7 +229,7 @@ impl KalmanFilterXYZWithSensors {
     }
 }
 
-impl KalmanFilterXYZWithSensors {
+impl KalmanFilterXyzWithSensors {
     /// Caches the current state of the filter into our history ring buffer.
     /// Run this at the very end of EVERY IMU time update step.
     pub fn push_snapshot(&mut self, dt: f32) {
@@ -338,8 +338,9 @@ mod test_traits {
 
     #[test]
     fn normal_types() {
-        is_full::<KalmanFilterXYZWithSensors>();
-        is_full::<KalmanFilterXYZWithSensorsf32>();
+        is_full::<KalmanFilterXyzWithSensors>();
+        is_full::<KalmanFilterXyzWithSensorsf32>();
+        is_full::<KalmanFilterXyzHistory>();
         is_full::<Snapshot>();
     }
 }

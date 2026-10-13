@@ -1,14 +1,14 @@
 use vqm::{Matrix2x2f32, Matrix3x3xM2x2, Matrix3x3xM2x2f32, Vector2f32};
 
-/// `f32` variant of `PositionKalmanFilterXY`.
-pub type KalmanFilterXYf32 = KalmanFilterXY;
+/// `f32` variant of `PositionKalmanFilterXy`.
+pub type KalmanFilterXyf32 = KalmanFilterXy;
 
 /// Linear Kalman Filter in 2 dimensions.
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct KalmanFilterXY {
+pub struct KalmanFilterXy {
     /// 2D Kinematic State Vectors.
-    pub state: KalmanStateXY,
+    pub state: KalmanStateXy,
 
     // Predicted System Uncertainty Covariance Matrix (P).
     /// `P`: Prediction error covariance (aka state covariance matrix, the system's internal uncertainty).
@@ -21,14 +21,14 @@ pub struct KalmanFilterXY {
     pub Q_bias: f32,
 }
 
-impl Default for KalmanFilterXY {
+impl Default for KalmanFilterXy {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[allow(missing_docs)]
-impl KalmanFilterXY {
+impl KalmanFilterXy {
     const M11: usize = Matrix2x2f32::M11;
     const M22: usize = Matrix2x2f32::M22;
 
@@ -45,7 +45,7 @@ impl KalmanFilterXY {
     const BB: usize = 8;
 }
 
-impl KalmanFilterXY {
+impl KalmanFilterXy {
     /// Constructor.
     #[allow(non_snake_case)]
     #[must_use]
@@ -65,7 +65,7 @@ impl KalmanFilterXY {
         P[Self::BB][Self::M22] = 0.01;
 
         Self {
-            state: KalmanStateXY::new(),
+            state: KalmanStateXy::new(),
             // A value of 0.05 implies that every second, we expect aerodynamic buffeting, vibration, or wind to naturally perturb the velocity
             // by roughly 0.22 m/s ie sqrt(0.05).
             Q_velocity: 0.05,
@@ -78,7 +78,7 @@ impl KalmanFilterXY {
     }
 }
 
-impl KalmanFilterXY {
+impl KalmanFilterXy {
     #[inline]
     #[must_use]
     pub fn pos(&self) -> Vector2f32 {
@@ -100,7 +100,7 @@ impl KalmanFilterXY {
 
 // **** Predict ****
 
-impl KalmanFilterXY {
+impl KalmanFilterXy {
     // Propagates the state vector forward using IMU acceleration inputs.
     /// Integrates raw IMU accelerometer data to predict new position and velocity vectors.
     ///
@@ -182,7 +182,7 @@ impl KalmanFilterXY {
 // **** Correct ***
 
 #[allow(non_snake_case)]
-impl KalmanFilterXY {
+impl KalmanFilterXy {
     /// Covariance correction step.
     ///
     /// `S = H * P * Hᵀ + R`
@@ -359,7 +359,7 @@ impl KalmanFilterXY {
 
 #[allow(unused)]
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct KalmanStateXY {
+pub struct KalmanStateXy {
     // 3D Kinematic State Vectors
     /// Position {x, y}.
     pub pos: Vector2f32,
@@ -369,13 +369,13 @@ pub struct KalmanStateXY {
     pub acc_bias: Vector2f32,
 }
 
-impl Default for KalmanStateXY {
+impl Default for KalmanStateXy {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl KalmanStateXY {
+impl KalmanStateXy {
     /// Constructor.
     #[must_use]
     pub const fn new() -> Self {
@@ -396,7 +396,8 @@ mod test_traits {
 
     #[test]
     fn normal_types() {
-        is_full::<KalmanFilterXY>();
+        is_full::<KalmanFilterXy>();
+        is_full::<KalmanStateXy>();
     }
 }
 
@@ -406,10 +407,10 @@ mod tests {
 
     #[test]
     fn test_2d_position_convergence() {
-        let mut filter = KalmanFilterXY::new();
+        let mut filter = KalmanFilterXy::new();
 
         // Capture initial uncertainty variance values from the main diagonal blocks
-        let init_p_pos_x = filter.P[KalmanFilterXY::PP][KalmanFilterXY::M11];
+        let init_p_pos_x = filter.P[KalmanFilterXy::PP][KalmanFilterXy::M11];
         //let init_p_vel_x = filter.P[PositionKalmanFilter::VV][PositionKalmanFilter::M11];
 
         // Setup simulation pacing parameters
@@ -451,7 +452,7 @@ mod tests {
         assert!((filter.vel().x - true_vel.x).abs() < 0.05, "Velocity accumulated noise while stationary!");
 
         // Ensure covariance has shrunk significantly below the starting bounds
-        let post_stat_p_pos_x = filter.P[KalmanFilterXY::PP][KalmanFilterXY::M11];
+        let post_stat_p_pos_x = filter.P[KalmanFilterXy::PP][KalmanFilterXy::M11];
         assert!(post_stat_p_pos_x < init_p_pos_x, "Position covariance failed to contract under GPS track!");
 
         println!("\n--- PHASE 2: 2D DYNAMIC SLIDE MANEUVER (2 SECONDS) ---");

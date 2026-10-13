@@ -21,6 +21,11 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 - `KalmanFilterXyzHistory` struct.
 
+### Changed
+
+- renamed `KalmanFilterXY` and related to `KalmanFilterXy`.
+- renamed `KalmanFilterXYZ` and related to `KalmanFilterXyz`.
+
 ### Removed
 
 - fast-forward from `KalmanFilterXYZWithSensors`.

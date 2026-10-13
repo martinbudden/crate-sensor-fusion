@@ -482,5 +482,6 @@ mod test_traits {
     #[test]
     fn normal_types() {
         is_full::<KalmanFilterZ>();
+        is_full::<KalmanStateZ>();
     }
 }

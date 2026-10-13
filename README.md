@@ -96,15 +96,15 @@ let orientation = (acc, gyro, mag).fuse_acc_gyro_mag_using(&mut madgwick, dt);
 Three Kalman filters are provided:
 
 1. `KalmanFilterZ` - a filter to estimate altitude and vertical speed.
-2. `KalmanFilterXY` - a filter to estimate 2D position and velocity.
-3. `KalmanFilterXYZ` - a filter to estimate 3D position and velocity.
+2. `KalmanFilterXy` - a filter to estimate 2D position and velocity.
+3. `KalmanFilterXyz` - a filter to estimate 3D position and velocity.
 
 ### 3D Kalman filter
 
 When using a Kalman filter for 3D there are two possible implementation choices:
 
-1. Use a `KalmanFilterXYZ`.
-2. Use a spilt architecture: use a `KalmanFilterXY` for horizontal position, and a `KalmanFilterZ` for vertical position.
+1. Use a `KalmanFilterXyz`.
+2. Use a spilt architecture: use a `KalmanFilterXy` for horizontal position, and a `KalmanFilterZ` for vertical position.
 
 | Feature            | Split Architecture (1D + 2D)                                     | Unified 3D Architecture                             |
 | ------------------ | ---------------------------------------------------------------- | --------------------------------------------------- |

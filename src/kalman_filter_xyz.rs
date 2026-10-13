@@ -2,15 +2,15 @@ use vqm::{Matrix3x3, Matrix3x3f32, Matrix3x3xM3x3, Matrix3x3xM3x3f32, Vector2f32
 
 use crate::KalmanFilterDiagnostics;
 
-/// `f32` variant of `PositionKalmanFilterXYZ`.
-pub type KalmanFilterXYZf32 = KalmanFilterXYZ;
+/// `f32` variant of `PositionKalmanFilterXyz`.
+pub type KalmanFilterXyzf32 = KalmanFilterXyz;
 
 /// Kalman Filter in 3 dimensions.
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct KalmanFilterXYZ {
+pub struct KalmanFilterXyz {
     /// 3D Kinematic State Vectors.
-    pub state: KalmanStateXYZ,
+    pub state: KalmanStateXyz,
 
     // Predicted System Uncertainty Covariance Matrix (P).
     /// `P`: Prediction error covariance (aka state covariance matrix, the system's internal uncertainty).
@@ -27,14 +27,14 @@ pub struct KalmanFilterXYZ {
     pub position_consecutive_rejection_count: u32,
 }
 
-impl Default for KalmanFilterXYZ {
+impl Default for KalmanFilterXyz {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[allow(missing_docs)]
-impl KalmanFilterXYZ {
+impl KalmanFilterXyz {
     const M11: usize = Matrix3x3xM3x3f32::M11;
     const M22: usize = Matrix3x3xM3x3f32::M22;
     const M33: usize = Matrix3x3xM3x3f32::M33;
@@ -52,7 +52,7 @@ impl KalmanFilterXYZ {
     const BB: usize = 8;
 }
 
-impl KalmanFilterXYZ {
+impl KalmanFilterXyz {
     /// Constructor.
     #[must_use]
     pub fn new() -> Self {
@@ -75,7 +75,7 @@ impl KalmanFilterXYZ {
         P[Self::BB][Self::M33] = 0.01;
 
         Self {
-            state: KalmanStateXYZ::new(),
+            state: KalmanStateXyz::new(),
             // A value of 0.05 implies that every second, we expect aerodynamic buffeting, vibration, or wind to naturally perturb the velocity
             // by roughly 0.22 m/s ie sqrt(0.05).
             Q_velocity: 0.05,
@@ -129,7 +129,7 @@ impl KalmanFilterXYZ {
     }
 }
 
-impl KalmanFilterXYZ {
+impl KalmanFilterXyz {
     #[inline]
     #[must_use]
     pub fn pos(&self) -> Vector3f32 {
@@ -151,7 +151,7 @@ impl KalmanFilterXYZ {
 
 // **** Predict ****
 
-impl KalmanFilterXYZ {
+impl KalmanFilterXyz {
     // Propagates the state vector forward using IMU acceleration inputs.
     /// Integrates raw IMU accelerometer data to predict new position and velocity vectors.
     ///
@@ -301,7 +301,7 @@ impl KalmanFilterXYZ {
 // **** Correct ***
 
 #[allow(non_snake_case)]
-impl KalmanFilterXYZ {
+impl KalmanFilterXyz {
     /// Phase 2 Altitude Correction using new measurement.
     /// Updates only the vertical Z axis components across all tracking states.
     ///
@@ -719,7 +719,7 @@ impl KalmanFilterXYZ {
 
 // **** Validate ***
 
-impl KalmanFilterXYZ {
+impl KalmanFilterXyz {
     /// Evaluates if an incoming innovation vector satisfies chi-squared gating thresholds.
     /// Formula: `d² = yᵀ * S⁻¹ * y`.
     ///
@@ -766,7 +766,7 @@ impl KalmanFilterXYZ {
 
 #[allow(unused)]
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct KalmanStateXYZ {
+pub struct KalmanStateXyz {
     // 3D Kinematic State Vectors
     /// Position {x, y, z}.
     pub pos: Vector3f32,
@@ -776,13 +776,13 @@ pub struct KalmanStateXYZ {
     pub acc_bias: Vector3f32,
 }
 
-impl Default for KalmanStateXYZ {
+impl Default for KalmanStateXyz {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl KalmanStateXYZ {
+impl KalmanStateXyz {
     /// Constructor.
     #[must_use]
     pub const fn new() -> Self {
@@ -803,7 +803,8 @@ mod test_traits {
 
     #[test]
     fn normal_types() {
-        is_full::<KalmanFilterXYZ>();
+        is_full::<KalmanFilterXyz>();
+        is_full::<KalmanStateXyz>();
     }
 }
 
@@ -813,10 +814,10 @@ mod tests {
 
     #[test]
     fn test_3d_position_convergence() {
-        let mut filter = KalmanFilterXYZ::new();
+        let mut filter = KalmanFilterXyz::new();
 
         // Capture initial uncertainty variance values from the main diagonal blocks
-        let init_p_pos_x = filter.P[KalmanFilterXYZ::PP][KalmanFilterXYZ::M11];
+        let init_p_pos_x = filter.P[KalmanFilterXyz::PP][KalmanFilterXyz::M11];
         //let init_p_vel_x = filter.P[PositionKalmanFilter::VV][PositionKalmanFilter::M11];
 
         // Setup simulation pacing parameters
@@ -859,7 +860,7 @@ mod tests {
         assert!((filter.vel().x - true_vel.x).abs() < 0.05, "Velocity accumulated noise while stationary!");
 
         // Ensure covariance has shrunk significantly below the starting bounds
-        let post_stat_p_pos_x = filter.P[KalmanFilterXYZ::PP][KalmanFilterXYZ::M11];
+        let post_stat_p_pos_x = filter.P[KalmanFilterXyz::PP][KalmanFilterXyz::M11];
         assert!(post_stat_p_pos_x < init_p_pos_x, "Position covariance failed to contract under GPS track!");
 
         println!("\n--- PHASE 2: 3D DYNAMIC SLIDE MANEUVER (2 SECONDS) ---");
@@ -898,10 +899,10 @@ mod tests {
     }
     #[test]
     fn test_altitude_convergence() {
-        let mut filter = KalmanFilterXYZ::new();
+        let mut filter = KalmanFilterXyz::new();
 
         // Capture the initial uncertainty bounds
-        let initial_p_pos = filter.P[KalmanFilterXYZ::PP][KalmanFilterXYZ::M33];
+        let initial_p_pos = filter.P[KalmanFilterXyz::PP][KalmanFilterXyz::M33];
         // let initial_p_vel = filter.P[PositionKalmanFilter::VV][PositionKalmanFilter::M33];
 
         // Define simulation parameters
@@ -940,9 +941,9 @@ mod tests {
                 println!(
                     "Step {:03} -> P_pos_z: {:e}, P_vel_z: {:e}, P_bias_z: {:e}",
                     step,
-                    filter.P[KalmanFilterXYZ::PP][KalmanFilterXYZ::M33],
-                    filter.P[KalmanFilterXYZ::VV][KalmanFilterXYZ::M33],
-                    filter.P[KalmanFilterXYZ::BB][KalmanFilterXYZ::M33]
+                    filter.P[KalmanFilterXyz::PP][KalmanFilterXyz::M33],
+                    filter.P[KalmanFilterXyz::VV][KalmanFilterXyz::M33],
+                    filter.P[KalmanFilterXyz::BB][KalmanFilterXyz::M33]
                 );
             }
         }
@@ -957,7 +958,7 @@ mod tests {
         assert!((filter.vel().z - true_vel.z).abs() < 0.05, "Velocity accumulated phantom motion!");
 
         // Assertions: Covariance bounds MUST contract if the sensor math is operating properly
-        let post_stationary_p_pos = filter.P[KalmanFilterXYZ::PP][KalmanFilterXYZ::M33];
+        let post_stationary_p_pos = filter.P[KalmanFilterXyz::PP][KalmanFilterXyz::M33];
         assert!(post_stationary_p_pos < initial_p_pos, "Covariance failed to contract with sensor updates!");
 
         println!("\n--- PHASE 2: UNIFORM CLIMB TEST (3 SECONDS) ---");
@@ -1031,9 +1032,9 @@ mod test_anchors {
         }
     }
 
-    fn make_filter() -> KalmanFilterXYZ {
-        KalmanFilterXYZ {
-            state: KalmanStateXYZ { pos: v(3.0, 4.0, 0.0), vel: v(0.0, 0.0, 0.0), acc_bias: v(0.0, 0.0, 0.0) },
+    fn make_filter() -> KalmanFilterXyz {
+        KalmanFilterXyz {
+            state: KalmanStateXyz { pos: v(3.0, 4.0, 0.0), vel: v(0.0, 0.0, 0.0), acc_bias: v(0.0, 0.0, 0.0) },
 
             P: Matrix3x3xM3x3f32::identity(),
 
@@ -1080,8 +1081,8 @@ mod test_anchors {
 
         let cross = Matrix3x3f32::from_diagonal_element(0.5);
 
-        let mut kf = KalmanFilterXYZ {
-            state: KalmanStateXYZ { pos: v(3.0, 4.0, 0.0), vel: v(0.0, 0.0, 0.0), acc_bias: v(0.0, 0.0, 0.0) },
+        let mut kf = KalmanFilterXyz {
+            state: KalmanStateXyz { pos: v(3.0, 4.0, 0.0), vel: v(0.0, 0.0, 0.0), acc_bias: v(0.0, 0.0, 0.0) },
 
             P: Matrix3x3xM3x3f32::from_column_array([
                 // PP, VP, BP
@@ -1123,8 +1124,8 @@ mod test_anchors {
         let bp = Matrix3x3f32::from_diagonal_array([0.2, 0.3, 0.4]);
         let pb = bp;
 
-        let mut kf = KalmanFilterXYZ {
-            state: KalmanStateXYZ { pos: v(3.0, 4.0, 0.0), vel: v(0.0, 0.0, 0.0), acc_bias: v(0.0, 0.0, 0.0) },
+        let mut kf = KalmanFilterXyz {
+            state: KalmanStateXyz { pos: v(3.0, 4.0, 0.0), vel: v(0.0, 0.0, 0.0), acc_bias: v(0.0, 0.0, 0.0) },
 
             P: Matrix3x3xM3x3f32::from_column_array([
                 // PP, VP, BP
@@ -1189,15 +1190,15 @@ mod test_anchors {
         assert_vector_near(kf.state.vel, original_vel, EPS);
         assert_vector_near(kf.state.acc_bias, original_bias, EPS);
 
-        assert_matrix_near(kf.P[KalmanFilterXYZ::PP], original_p[KalmanFilterXYZ::PP], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXYZ::PV], original_p[KalmanFilterXYZ::PV], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXYZ::PB], original_p[KalmanFilterXYZ::PB], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXYZ::VP], original_p[KalmanFilterXYZ::VP], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXYZ::VV], original_p[KalmanFilterXYZ::VV], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXYZ::VB], original_p[KalmanFilterXYZ::VB], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXYZ::BP], original_p[KalmanFilterXYZ::BP], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXYZ::BV], original_p[KalmanFilterXYZ::BV], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXYZ::BB], original_p[KalmanFilterXYZ::BB], EPS);
+        assert_matrix_near(kf.P[KalmanFilterXyz::PP], original_p[KalmanFilterXyz::PP], EPS);
+        assert_matrix_near(kf.P[KalmanFilterXyz::PV], original_p[KalmanFilterXyz::PV], EPS);
+        assert_matrix_near(kf.P[KalmanFilterXyz::PB], original_p[KalmanFilterXyz::PB], EPS);
+        assert_matrix_near(kf.P[KalmanFilterXyz::VP], original_p[KalmanFilterXyz::VP], EPS);
+        assert_matrix_near(kf.P[KalmanFilterXyz::VV], original_p[KalmanFilterXyz::VV], EPS);
+        assert_matrix_near(kf.P[KalmanFilterXyz::VB], original_p[KalmanFilterXyz::VB], EPS);
+        assert_matrix_near(kf.P[KalmanFilterXyz::BP], original_p[KalmanFilterXyz::BP], EPS);
+        assert_matrix_near(kf.P[KalmanFilterXyz::BV], original_p[KalmanFilterXyz::BV], EPS);
+        assert_matrix_near(kf.P[KalmanFilterXyz::BB], original_p[KalmanFilterXyz::BB], EPS);
     }
     #[test]
     fn range_update_reduces_radial_position_variance() {
@@ -1205,11 +1206,11 @@ mod test_anchors {
 
         let h = v(0.6, 0.8, 0.0);
 
-        let before = h.dot(kf.P[KalmanFilterXYZ::PP] * h);
+        let before = h.dot(kf.P[KalmanFilterXyz::PP] * h);
 
         kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 5.0, 100.0, 0.01);
 
-        let after = h.dot(kf.P[KalmanFilterXYZ::PP] * h);
+        let after = h.dot(kf.P[KalmanFilterXyz::PP] * h);
 
         assert!(after < before, "radial variance should decrease: before={before}, after={after}");
 
@@ -1218,14 +1219,14 @@ mod test_anchors {
         // original variance.
         let perpendicular = v(-0.8, 0.6, 0.0);
 
-        let before_perp = perpendicular.dot(kf.P[KalmanFilterXYZ::PP] * perpendicular);
+        let before_perp = perpendicular.dot(kf.P[KalmanFilterXyz::PP] * perpendicular);
 
         assert_near(before_perp, 1.0, 2.0e-3);
 
         // Z is completely unobserved by this range measurement.
         let z = v(0.0, 0.0, 1.0);
 
-        let z_variance = z.dot(kf.P[KalmanFilterXYZ::PP] * z);
+        let z_variance = z.dot(kf.P[KalmanFilterXyz::PP] * z);
 
         assert_near(z_variance, 1.0, 2.0e-3);
     }

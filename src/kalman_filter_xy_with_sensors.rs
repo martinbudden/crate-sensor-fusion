@@ -1,9 +1,9 @@
 use vqm::{Matrix2x2f32, Vector2f32};
 
-use super::KalmanFilterXY;
+use super::KalmanFilterXy;
 
 /// `f32` variant of `PositionKalmanFilterExtended`.
-pub type KalmanFilterXYWithSensorsf32 = KalmanFilterXYWithSensors;
+pub type KalmanFilterXyWithSensorsf32 = KalmanFilterXyWithSensors;
 
 /*
 Desired Physical Noise (σ)            Equivalent R Variance Code Value (σ²)
@@ -16,8 +16,8 @@ Desired Physical Noise (σ)            Equivalent R Variance Code Value (σ²)
 */
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct KalmanFilterXYWithSensors {
-    pub base: KalmanFilterXY,
+pub struct KalmanFilterXyWithSensors {
+    pub base: KalmanFilterXy,
     // measurement noise covariance Matrix `R`
     /// Absolute Measurement Noise variance for horizontal GPS channels.
     pub R_gps_horizontal: f32,
@@ -40,13 +40,13 @@ pub struct KalmanFilterXYWithSensors {
     pub skip_factor: usize,
 }
 
-impl Default for KalmanFilterXYWithSensors {
+impl Default for KalmanFilterXyWithSensors {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl KalmanFilterXYWithSensors {
+impl KalmanFilterXyWithSensors {
     pub const SNAPSHOT_SIZE: usize = 64; // 640ms of history at 100Hz
 
     const PP: usize = 0;
@@ -65,7 +65,7 @@ impl KalmanFilterXYWithSensors {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            base: KalmanFilterXY::new(),
+            base: KalmanFilterXy::new(),
             // Commercial GPS modules are typically accurate to within 1.5 to 3.0 meters horizontally, less vertically.
             R_gps_horizontal: 2.25,
             R_gps_vertical: 9.0,
@@ -87,7 +87,7 @@ impl KalmanFilterXYWithSensors {
     }
 }
 
-impl KalmanFilterXYWithSensors {
+impl KalmanFilterXyWithSensors {
     #[inline]
     #[must_use]
     pub fn pos(&self) -> Vector2f32 {
@@ -175,7 +175,7 @@ If we receive a Barometer update and a GPS update at the same past timestamp, th
 we must execute both updates back-to-back inside the same rewind event before fast-forwarding.
 */
 #[allow(non_snake_case)]
-impl KalmanFilterXYWithSensors {
+impl KalmanFilterXyWithSensors {
     /// Correct position using delayed measurement without rewinding `P`.
     /// When a delayed measurement arrives, we calculate the innovation error using the past state vector (`past.pos`).
     /// We calculate the Kalman Gain vectors using the current active P matrix.
@@ -299,7 +299,7 @@ impl KalmanFilterXYWithSensors {
     }
 }
 
-impl KalmanFilterXYWithSensors {
+impl KalmanFilterXyWithSensors {
     /// Caches the current state of the filter into our history ring buffer.
     /// Run this at the very end of EVERY IMU time update step.
     pub fn push_snapshot(&mut self, acc_raw: Vector2f32, dt: f32) {
@@ -392,8 +392,8 @@ mod test_traits {
 
     #[test]
     fn normal_types() {
-        is_full::<KalmanFilterXYWithSensors>();
-        is_full::<KalmanFilterXYWithSensorsf32>();
+        is_full::<KalmanFilterXyWithSensors>();
+        is_full::<KalmanFilterXyWithSensorsf32>();
         is_full::<Snapshot>();
     }
 }
@@ -410,7 +410,7 @@ mod tests_delayed {
 
     #[test]
     fn test_delayed_position_tracking() {
-        let mut filter = KalmanFilterXYWithSensors::new();
+        let mut filter = KalmanFilterXyWithSensors::new();
 
         let dt = 0.01; // 100Hz internal state update loop
         let r_gps = Vector2f32 { x: 2.25, y: 2.25 }; // Sensor variance
@@ -511,7 +511,7 @@ mod tests_downsampled {
 
     #[test]
     fn test_downsampled_history_tracking() {
-        let mut filter = KalmanFilterXYWithSensors::new();
+        let mut filter = KalmanFilterXyWithSensors::new();
 
         let dt = 0.01; // 100Hz internal state update loop
         let r_gps = Vector2f32 { x: 2.25, y: 2.25 };

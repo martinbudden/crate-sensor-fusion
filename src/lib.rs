@@ -52,11 +52,11 @@ pub use kalman_filter_diagnostics::KalmanFilterDiagnostics;
 pub use kalman_filter_z::{KalmanFilterZ, KalmanFilterZf32};
 pub use kalman_filter_z_with_sensors::{KalmanFilterZWithSensors, KalmanFilterZWithSensorsf32};
 
-pub use kalman_filter_xy::{KalmanFilterXY, KalmanFilterXYf32};
-pub use kalman_filter_xy_with_sensors::{KalmanFilterXYWithSensors, KalmanFilterXYWithSensorsf32};
+pub use kalman_filter_xy::{KalmanFilterXy, KalmanFilterXyf32};
+pub use kalman_filter_xy_with_sensors::{KalmanFilterXyWithSensors, KalmanFilterXyWithSensorsf32};
 
-pub use kalman_filter_xyz::{KalmanFilterXYZ, KalmanFilterXYZf32};
-pub use kalman_filter_xyz_with_sensors::{KalmanFilterXYZWithSensors, KalmanFilterXYZWithSensorsf32};
+pub use kalman_filter_xyz::{KalmanFilterXyz, KalmanFilterXyzf32};
+pub use kalman_filter_xyz_with_sensors::{KalmanFilterXyzWithSensors, KalmanFilterXyzWithSensorsf32};
 
 pub use trilaterate_2d::{Anchor2d, Anchor2df32, Anchor2df64, trilaterate_2d};
 pub use trilaterate_3d::{Anchor3d, Anchor3df32, Anchor3df64, trilaterate_3d_weighted};
