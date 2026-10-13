@@ -252,7 +252,7 @@ impl KalmanFilterXyz {
     ///     PB_new = PB + dt * VB - 0.5 * dt2 * BB
     ///     VB_new = VB - dt * BB
     ///     BB_new = BB
-    /// 
+    ///
     /// The process noise matrix Q
     ///     ┌                               ┐
     ///     │ ⅓·Q_v·dt³  ½·Q_v·dt²       0  │
@@ -260,50 +260,59 @@ impl KalmanFilterXyz {
     ///     │         0          0  Q_b·dt  │
     ///     └                               ┘
     /// ```
-    #[allow(unused)]
     #[allow(non_snake_case)]
     pub fn predict_covariance(&mut self, dt: f32) {
         // =====================================================================
         // PROPAGATE THE COVARIANCE P_new = (F * P_old * Fᵀ)
         // =====================================================================
 
-        let dt2 = dt * dt;
+        // alias self.P for readability.
+        let P = &mut self.P;
 
-        // Avoid taking a copy of self.P by using temporary indices and shadowing them out of scope when they have been used.
-        // This ensures we cannot use an updated value in a subsequent update.
+        // We can update P in place by ensuring RHS of all P assignments refers to P_old.
+        //
+        // We use temporary indices and shadow them out of scope when they have been used.
+        // This ensures we cannot use an updated value in a subsequent update, ie P_new can not be used on RHS.
         let (PP, VP, BP, PV, VV, BV, PB, VB, BB) =
             (Self::PP, Self::VP, Self::BP, Self::PV, Self::VV, Self::BV, Self::PB, Self::VB, Self::BB);
 
         // --- POSITION COLUMNS (PP, VP, BP) ---
-        self.P[PP] = self.P[PP] + (self.P[PV] + self.P[VP]) * dt + self.P[VV] * dt2
-            - (self.P[PB] + self.P[BP]) * (0.5 * dt2)
-            - (self.P[VB] + self.P[BV]) * (0.5 * dt3)
-            + self.P[BB] * (0.25 * dt4);
-        let PP = (); // Prevent P_new[PP] being used in subsequent calculations.
+        P[PP] = P[PP]
+            + dt * (P[PV] + P[VP] + dt * (P[VV] - 0.5 * (P[PB] + P[BP] + dt * (P[VB] + P[BV] - dt * 0.5 * P[BB]))));
+        // Prevent P_new[PP] being accidentally used in subsequent calculations.
+        let PP = ();
+        () = PP;
 
-        self.P[VP] = self.P[VP] + self.P[VV] * dt - self.P[BP] * dt - self.P[BV] * dt2 - self.P[VB] * (0.5 * dt2)
-            + self.P[BB] * (0.5 * dt3);
+        P[VP] = P[VP] + dt * (P[VV] - P[BP] - dt * (P[BV] + 0.5 * (P[VB] - dt * P[BB])));
         let VP = ();
+        () = VP;
 
-        self.P[BP] = self.P[BP] + self.P[BV] * dt - self.P[BB] * (0.5 * dt2);
-        let BP = (); // Stop P_new[BP] being used in subsequent calculations.
+        P[BP] = P[BP] + dt * (P[BV] - dt * 0.5 * P[BB]);
+        let BP = ();
+        () = BP;
 
         // --- VELOCITY COLUMNS (PV, VV, BV) ---
-        self.P[PV] = self.P[PV] + self.P[VV] * dt - self.P[PB] * dt - self.P[VB] * dt2 - self.P[BV] * (0.5 * dt2)
-            + self.P[BB] * (0.5 * dt3);
+        P[PV] = P[PV] + dt * (P[VV] - P[PB] - dt * (P[VB] + 0.5 * (P[BV] - dt * P[BB])));
         let PV = ();
+        () = PV;
 
-        self.P[VV] = self.P[VV] - (self.P[BV] + self.P[VB]) * dt + self.P[BB] * dt2;
+        P[VV] = P[VV] - dt * (P[BV] + P[VB] + dt * P[BB]);
         let VV = ();
+        () = VV;
 
-        self.P[BV] = self.P[BV] - self.P[BB] * dt;
+        P[BV] = P[BV] - dt * P[BB];
         let BV = ();
+        () = BV;
 
         // --- BIAS COLUMNS (PB, VB, BB) ---
-        self.P[PB] = self.P[PB] + self.P[VB] * dt - self.P[BB] * (0.5 * dt2);
+        P[PB] = P[PB] + dt * (P[VB] - dt * 0.5 * P[BB]);
         let PB = ();
+        () = PB;
 
-        self.P[VB] = self.P[VB] - self.P[BB] * dt; // self.P[Self::BB] = self.P[Self::BB]; don't need to update BB.
+        P[VB] = P[VB] - dt * P[BB];
+        let VB = ();
+        () = VB;
+        // P[BB] = P[BB]; so don't need to update BB.
 
         // =====================================================================
         // APPLY PROCESS NOISE (Q)
@@ -311,20 +320,21 @@ impl KalmanFilterXyz {
 
         // Continuous process noise integrated over dt maps to the diagonal variance slots of Velocity and Bias.
         // P += Q
-        let q_pos = (1.0 / 3.0) * self.Q_velocity * dt3;
-        let q_cross = 0.5 * self.Q_velocity * dt2;
         let q_vel = self.Q_velocity * dt;
+        let q_cross = 0.5 * q_vel * dt;
+        let q_pos = (2.0 / 3.0) * q_cross * dt;
         let q_bias = self.Q_bias * dt;
 
-        self.P[Self::PP].add_diagonal_scalar_in_place(q_pos);
-        self.P[Self::PV].add_diagonal_scalar_in_place(q_cross);
-        self.P[Self::VP].add_diagonal_scalar_in_place(q_cross);
-        self.P[Self::VV].add_diagonal_scalar_in_place(q_vel);
+        P[Self::PP].add_diagonal_scalar_in_place(q_pos);
+        P[Self::PV].add_diagonal_scalar_in_place(q_cross);
+        P[Self::VP].add_diagonal_scalar_in_place(q_cross);
+        P[Self::VV].add_diagonal_scalar_in_place(q_vel);
 
         // Random walk bias drift integration
-        self.P[Self::BB].add_diagonal_scalar_in_place(q_bias);
+        P[Self::BB].add_diagonal_scalar_in_place(q_bias);
+
         // Time propagation is highly sensitive to asymmetric shearing, so enforce symmetry on the covariance matrix.
-        self.P.enforce_symmetry();
+        P.enforce_symmetry();
     }
 }
 
