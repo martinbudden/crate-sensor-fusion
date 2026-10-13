@@ -450,7 +450,7 @@ impl KalmanFilterXYZ {
     /// * self.P: 9x9 Column-Major Covariance Matrix
     /// * position: Vector3f32 observation `[x, y, z]`
     /// * R: Vector3f32 diagonal measurement noise variance [R.x, R.y, R.z]
-    pub fn correct_position_standard_form(
+    pub fn correct_position_short_form(
         &mut self,
         measurement: Vector3f32,
         predicted_measurement: Vector3f32,
@@ -522,7 +522,7 @@ impl KalmanFilterXYZ {
 
     /// Joseph's Stabilized Form for the covariance update step:
     ///
-    /// `P{k} = (I - KH) * P{k-1} * (I - KH)ᵀ + KRKᵀ)`.
+    /// `P = (I - KH) * P * (I - KH)ᵀ + KRKᵀ)`.
     ///
     /// While computationally more expensive, it guarantees the result remains positive-definite.
     /// That is it ensures the covariance matrix has positive eigenvalues and remains valid and invertible for future updates.
@@ -536,31 +536,30 @@ impl KalmanFilterXYZ {
         // S = H * P * Hᵀ + R
         let S = self.P[Self::PP].add_diagonal_vector(R);
 
-        // The the Residual Covariance matrix may be non-invertible.
-        // This happens very rarely and is due to rounding errors when the process noise covariance Q is small.
-        let Some(S_inv) = S.try_inverse() else {
+        // S is guaranteed to be positive-definite, since we are using Joseph's Stabilized Form, so we can use a Cholesky solver.
+        let Some(S_cholesky) = S.cholesky() else {
             return KalmanFilterDiagnostics::default();
         };
 
         // Calculate K, the Kalman gain.
         // `K = P * Hᵀ * S⁻¹`
-        let K_pos = self.P[Self::PP] * S_inv;
-        let K_vel = self.P[Self::VP] * S_inv;
-        let K_acc_bias = self.P[Self::BP] * S_inv;
+        let K_pos = S_cholesky.solve_cholesky_matrix_transposed(self.P[Self::PP]);
+        let K_vel = S_cholesky.solve_cholesky_matrix_transposed(self.P[Self::VP]);
+        let K_acc_bias = S_cholesky.solve_cholesky_matrix_transposed(self.P[Self::BP]);
 
         // Calculate the innovation.
         // y = z - H * x
         let innovation = measurement - predicted_measurement;
 
-        // NIS = yᵀ * S⁻¹ * y  (Mahalanobis Distance)
-        // Calculated efficiently as a vector-matrix-vector dot product:
-        let nis = innovation.dot(S_inv * innovation); // Dot product results in a unitless scalar
+        // Normalized Innovation Squared (NIS) = yᵀ * S⁻¹ * y  (aka Mahalanobis Distance)
+        let s_inv_times_innovation = S_cholesky.solve_cholesky_vector(innovation);
+        let nis = innovation.dot(s_inv_times_innovation); // Dot product results in a unitless scalar
         let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP].trace(), nis };
 
         if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_3D
             && self.position_consecutive_rejection_count < KalmanFilterDiagnostics::MAX_CONSECUTIVE_REJECTION_COUNT
         {
-            // If nis > NIS_THRESHOLD_1D, there is less than a 5% chance this is normal sensor noise,
+            // If nis > NIS_THRESHOLD_3D, there is less than a 5% chance this is normal sensor noise,
             // so reject this measurement as an outlier.
             self.position_consecutive_rejection_count += 1;
             return diagnostics;
@@ -629,7 +628,7 @@ impl KalmanFilterXYZ {
         diagnostics
     }
 
-    pub fn correct_position_xy_standard_form(&mut self, position: Vector2f32, past_pos: Vector3f32, R: Vector2f32) {
+    pub fn correct_position_xy_short_form(&mut self, position: Vector2f32, past_pos: Vector3f32, R: Vector2f32) {
         // TODO: implement correct_position_xy_delayed.
         _ = self;
         _ = position;
@@ -745,7 +744,7 @@ impl KalmanFilterXYZ {
     }
 
     pub fn correct_position(&mut self, position: Vector3f32, R: Vector3f32) {
-        self.correct_position_standard_form(position, self.state.pos, R);
+        self.correct_position_short_form(position, self.state.pos, R);
     }
 
     pub fn correct_position_joseph(&mut self, position: Vector3f32, R: Vector3f32) -> KalmanFilterDiagnostics {
@@ -753,7 +752,7 @@ impl KalmanFilterXYZ {
     }
 
     pub fn correct_position_xy(&mut self, position: Vector2f32, R: Vector2f32) {
-        self.correct_position_xy_standard_form(position, self.state.pos, R);
+        self.correct_position_xy_short_form(position, self.state.pos, R);
     }
 }
 

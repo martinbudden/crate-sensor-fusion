@@ -191,7 +191,7 @@ impl KalmanFilterXY {
     ///
     ///
     /// R is measurement noise covariance.
-    pub fn correct_position_standard_form(
+    pub fn correct_position_short_form(
         &mut self,
         measurement: Vector2f32,
         predicted_measurement: Vector2f32,
@@ -349,7 +349,7 @@ impl KalmanFilterXY {
     }
 
     pub fn correct_position(&mut self, position: Vector2f32, R: Vector2f32) {
-        self.correct_position_standard_form(position, self.state.pos, R);
+        self.correct_position_short_form(position, self.state.pos, R);
     }
 
     pub fn correct_position_joseph(&mut self, position: Vector2f32, R: Vector2f32) {

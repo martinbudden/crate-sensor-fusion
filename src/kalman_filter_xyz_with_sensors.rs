@@ -190,14 +190,18 @@ impl KalmanFilterXYZWithSensors {
         // Calculate S, the Residual Covariance matrix using the PRESENT P.
         // S = H * P * Hᵀ + R
         let S = P_pos.add_diagonal_vector(R);
-        let Some(S_inv) = S.try_inverse() else {
+        // let Some(S_inv) = S.try_inverse() else {
+        let Some(S_cholesky) = S.cholesky() else {
             return;
         };
 
         // Calculate K, the Kalman Gain using the PRESENT P.
-        let K_pos = P_pos * S_inv;
-        let K_vel = P_vel * S_inv;
-        let K_acc_bias = P_acc_bias * S_inv;
+        // let K_pos = P_pos * S_inv;
+        // let K_vel = P_vel * S_inv;
+        // let K_acc_bias = P_acc_bias * S_inv;*/
+        let K_pos = S_cholesky.solve_cholesky_matrix_transposed(P_pos);
+        let K_vel = S_cholesky.solve_cholesky_matrix_transposed(P_vel);
+        let K_acc_bias = S_cholesky.solve_cholesky_matrix_transposed(P_acc_bias);
 
         // Find the past state matching the sensor timestamp
         let Some((past, _)) = self.find_snapshot(sensor_time, dt) else {
