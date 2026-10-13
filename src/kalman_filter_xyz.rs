@@ -288,8 +288,6 @@ impl KalmanFilterXYZ {
         // =====================================================================
 
         let dt2 = dt * dt;
-        let dt3 = dt2 * dt;
-        let dt4 = dt2 * dt2;
 
         // Avoid taking a copy of self.P by using temporary indices and shadowing them out of scope when they have been used.
         // This ensures we cannot use an updated value in a subsequent update.

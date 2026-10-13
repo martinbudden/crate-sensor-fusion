@@ -1,102 +1,82 @@
-use num_traits::{ConstOne, ConstZero, float::FloatCore};
-use vqm::{MathMethods, Matrix3x3Math};
-
-use crate::{KalmanFilterZf32, KalmanFilterZf64};
-
 use super::KalmanFilterZ;
 
-/// `f32` variant of `AltitudeKalmanFilter`.
-pub type KalmanFilterZWithSensorsf32 = KalmanFilterZWithSensors<f32>;
-/// `f64` variant of `AltitudeKalmanFilter`.
-pub type KalmanFilterZWithSensorsf64 = KalmanFilterZWithSensors<f64>;
+/// `f32` variant of `PositionKalmanFilterExtended`.
+pub type KalmanFilterZWithSensorsf32 = KalmanFilterZWithSensors;
 
+/*
+Desired Physical Noise (σ)            Equivalent R Variance Code Value (σ²)
+5 cm (Ultra-accurate UWB / Laser)     0.0025
+10 cm (High-end Barometer)            0.01
+20 cm (Standard Barometer)            0.04
+50 cm (Precision RTK GPS)             0.25
+1.0 meter (Good Commercial GPS)       1.0
+2.0 meters (Standard Multi-path GPS)  4.0
+*/
+#[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct KalmanFilterZWithSensors<T> {
-    pub base: KalmanFilterZ<T>,
-    /// Barometer measurement variance.
-    r_barometer: T,
-    /// Rangefinder measurement variance.
-    r_rangefinder: T,
-    /// GPS vertical measurement variance.
-    r_gps: T,
+pub struct KalmanFilterZWithSensors {
+    pub base: KalmanFilterZ,
+    // measurement noise covariance Matrix `R`
+    /// Absolute Measurement Noise variance for vertical GPS channels.
+    pub R_gps_vertical: f32,
+    /// Absolute Measurement Noise variance for barometric pressure altimeter.
+    pub R_barometer: f32,
+    /// Absolute Measurement Noise variance for rangefinder.
+    pub R_rangefinder: f32,
+    /// Absolute Measurement Noise variance for optical flow.
+    pub R_ultra_wideband: f32,
 }
 
-impl Default for KalmanFilterZWithSensorsf32 {
+impl Default for KalmanFilterZWithSensors {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Default for KalmanFilterZWithSensorsf64 {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl KalmanFilterZWithSensorsf32 {
+impl KalmanFilterZWithSensors {
     /// Constructor.
     #[must_use]
-    pub const fn new() -> Self {
-        Self { base: KalmanFilterZf32::new(), r_barometer: 0.03, r_rangefinder: 0.03, r_gps: 9.0 }
+    pub fn new() -> Self {
+        Self {
+            base: KalmanFilterZ::new(),
+            // Commercial GPS modules are typically accurate to within 1.5 to 3.0 meters horizontally, less vertically.
+            R_gps_vertical: 9.0,
+            // Vertical variance in meters squared
+            // A standard barometric pressure sensor (e.g., BMP280, MS5611) typically has an RMS noise of around 10 to 20 centimeters
+            // which corresponds to a variance of 0.01 to 0.04 m². However, the actual noise can vary based on environmental conditions and sensor quality.
+            R_barometer: 0.03,
+            R_rangefinder: 0.03,
+            // 1cm to 10cm typical accuracy, use 10cm = 0.10m, = 0.01 variance for cheap modules.
+            R_ultra_wideband: 0.01,
+        }
     }
 }
 
-impl KalmanFilterZWithSensorsf64 {
-    /// Constructor.
-    #[must_use]
-    pub const fn new() -> Self {
-        Self { base: KalmanFilterZf64::new(), r_barometer: 0.03, r_rangefinder: 0.03, r_gps: 9.0 }
-    }
-}
-
-impl<T: Copy> KalmanFilterZWithSensors<T> {
+impl KalmanFilterZWithSensors {
     #[inline]
     #[must_use]
-    pub fn pos(&self) -> T {
-        self.base.pos()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn vel(&self) -> T {
-        self.base.vel()
+    pub fn pos(&self) -> f32 {
+        self.base.state.pos
     }
 
     #[inline]
     #[must_use]
-    pub fn acc_bias(&self) -> T {
-        self.base.acc_bias()
-    }
-}
-
-impl<T> KalmanFilterZWithSensors<T>
-where
-    T: Copy + ConstZero + ConstOne + FloatCore + MathMethods + Matrix3x3Math,
-{
-    pub fn predict(&mut self, acceleration_measurement: T, delta_t: T) {
-        self.base.predict(acceleration_measurement, delta_t);
-    }
-}
-
-impl<T> KalmanFilterZWithSensors<T>
-where
-    T: Copy + ConstZero + ConstOne + FloatCore + Matrix3x3Math,
-{
-    /// Phase 2: Correct altitude using the barometer measurement.
-    #[inline]
-    pub fn correct_altitude_using_barometer(&mut self, altitude: T) {
-        self.base.correct_altitude(altitude, self.r_barometer);
+    pub fn vel(&self) -> f32 {
+        self.base.state.vel
     }
 
-    /// Phase 2: Correct altitude using the rangefinder measurement.
     #[inline]
-    pub fn correct_altitude_using_rangefinder(&mut self, altitude: T) {
-        self.base.correct_altitude(altitude, self.r_barometer);
+    #[must_use]
+    pub fn acc_bias(&self) -> f32 {
+        self.base.state.acc_bias
     }
-    /// Phase 2: Correct altitude using GPS vertical measurement.
-    #[inline]
-    pub fn correct_altitude_using_gps(&mut self, altitude: T) {
-        self.base.correct_altitude(altitude, self.r_gps);
+
+    pub fn predict_state(&mut self, acc_measurement: f32, dt: f32) {
+        self.base.predict_state(acc_measurement, dt);
+    }
+
+    pub fn predict_covariance(&mut self, dt: f32) {
+        self.base.predict_covariance(dt);
     }
 }
 
@@ -108,7 +88,7 @@ mod test_traits {
 
     #[test]
     fn normal_types() {
+        is_full::<KalmanFilterZWithSensors>();
         is_full::<KalmanFilterZWithSensorsf32>();
-        is_full::<KalmanFilterZWithSensorsf64>();
     }
 }
