@@ -172,9 +172,9 @@ impl SensorFusionMath for f32 {
             let xy_common = 2.0 * (q.w * q.w + q.z * q.z - 1.0 + 2.0 * wz_common + a.z);
             Quaternion {
                 w: q.w * wz_common + q.y * a.x - q.x * a.y,
+                z: q.z * wz_common - q.x * a.x - q.y * a.y,
                 x: q.x * xy_common - q.z * a.x - q.w * a.y,
                 y: q.y * xy_common + q.w * a.x - q.z * a.y,
-                z: q.z * wz_common - q.x * a.x - q.y * a.y,
             }
         }
     }
@@ -307,9 +307,9 @@ impl SensorFusionMath for f64 {
         let xy_common = 2.0 * (q.w * q.w + q.z * q.z - 1.0 + 2.0 * wz_common + a.z);
         Quaternion {
             w: q.w * wz_common + q.y * a.x - q.x * a.y,
+            z: q.z * wz_common - q.x * a.x - q.y * a.y,
             x: q.x * xy_common - q.z * a.x - q.w * a.y,
             y: q.y * xy_common + q.w * a.x - q.z * a.y,
-            z: q.z * wz_common - q.x * a.x - q.y * a.y,
         }
     }
 
