@@ -247,6 +247,18 @@ Further optimizations include:
 2. collapsing `Q` from a 9x9 matrix into the two scalars `Q_velocity` and `Q_bias`.
 3. don't explicitly create the matrix `H`: rather directly select the relevant submatrices when calculating `H·P·Hᵀ`, `P·Hᵀ·S⁻¹` and `H·x`.
 
+### Kalman filter numerical stability
+
+The Kalman filter equations themselves are mathematically well behaved, however errors can accumulate when implemented with f32 precision.
+To mitigate these errors this implementation:
+
+1. Explicitly restores symmetry to the covariance matrix (by setting `P = ½(P + Pᵀ)`).
+2. Uses numerically stable Joseph form for covariance updates.
+3. Uses Cholesky factorization of the innovation covariance matrix `S` (rather than taking the inverse of S).
+
+I plan to scale the states and measurements so their scales are broadly comparable, but this has not been implemented yet.
+(Floating-point arithmetic may lose precision when operations combine quantities with very different scales.)
+
 ## Madgwick Filter Optimization {#opt}
 
 Classically, the calculation of the Madgwick gradient descent corrective step involves multiplication of a vector by a matrix,

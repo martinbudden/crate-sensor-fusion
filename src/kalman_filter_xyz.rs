@@ -519,22 +519,23 @@ impl KalmanFilterXyz {
         let S = self.P[Self::PP].add_diagonal_vector(R);
 
         // S is guaranteed to be positive-definite, since we are using Joseph's Stabilized Form, so we can use a Cholesky solver.
+        // 14 arithmetic operations, matrix inverse takes 39 multiplications, 19 additions/subtractions and 1 division (1 div ~= 4 mul)
         let Some(S_cholesky) = S.cholesky() else {
             return KalmanFilterDiagnostics::default();
         };
 
         // Calculate K, the Kalman gain.
         // `K = P * Hᵀ * S⁻¹`
-        let K_pos = S_cholesky.solve_cholesky_matrix_transposed(self.P[Self::PP]);
-        let K_vel = S_cholesky.solve_cholesky_matrix_transposed(self.P[Self::VP]);
-        let K_acc_bias = S_cholesky.solve_cholesky_matrix_transposed(self.P[Self::BP]);
+        let K_pos = S_cholesky.solve_matrix(self.P[Self::PP]); // 60 arithmetic operations, matrix multiply is 45
+        let K_vel = S_cholesky.solve_matrix(self.P[Self::VP]);
+        let K_acc_bias = S_cholesky.solve_matrix(self.P[Self::BP]);
 
         // Calculate the innovation.
         // y = z - H * x
         let innovation = measurement - predicted_measurement;
 
         // Normalized Innovation Squared (NIS) = yᵀ * S⁻¹ * y  (aka Mahalanobis Distance)
-        let s_inv_times_innovation = S_cholesky.solve_cholesky_vector(innovation);
+        let s_inv_times_innovation = S_cholesky.solve_vector(innovation);
         // Dot product results in a unitless scalar
         let nis = innovation.dot(s_inv_times_innovation);
         let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP].trace(), nis };
