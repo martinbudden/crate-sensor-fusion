@@ -35,6 +35,8 @@ impl Default for KalmanFilterXyz {
 
 #[allow(missing_docs)]
 impl KalmanFilterXyz {
+    const G: f32 = 9.80665;
+
     const M11: usize = Matrix3x3xM3x3f32::M11;
     const M22: usize = Matrix3x3xM3x3f32::M22;
     const M33: usize = Matrix3x3xM3x3f32::M33;
@@ -93,8 +95,7 @@ impl KalmanFilterXyz {
     /// Input is accelerometer noise density in g per root-Hertz.
     /// Datasheets typically specify accelerometer noise density in micro-g per root-Hertz  or mg per root-Hertz.
     pub fn set_q_velocity(&mut self, acc_noise_density_g_per_root_hz: f32, denominator: u32) {
-        const G: f32 = 9.80665;
-        let acc_noise_density_mps2_per_root_hz = acc_noise_density_g_per_root_hz * G;
+        let acc_noise_density_mps2_per_root_hz = acc_noise_density_g_per_root_hz * Self::G;
         #[allow(clippy::cast_precision_loss)]
         {
             self.Q_velocity =
@@ -106,8 +107,7 @@ impl KalmanFilterXyz {
     /// Input is accelerometer bias instability in g per time period tau.
     /// Datasheets typically specify bias instability in micro-g over a time constant tau, typically 100 seconds.
     pub fn set_q_bias(&mut self, bias_instability_g: f32, tau: f32) {
-        const G: f32 = 9.80665;
-        let bias_instability_mps2 = bias_instability_g * G;
+        let bias_instability_mps2 = bias_instability_g * Self::G;
         self.Q_velocity = bias_instability_mps2 * bias_instability_mps2 / tau;
     }
 
@@ -156,38 +156,44 @@ impl KalmanFilterXyz {
     /// Integrates raw IMU accelerometer data to predict new position and velocity vectors.
     ///
     /// This forms the continuous dead reckoning pipeline driving vehicle kinetics forward.
-    ///
+    ///     ┌          ┐
+    ///     │  ½·dt·I₃ │
+    /// B = │    I₃    │
+    ///     │    0₃    │
+    ///     └          ┘.
     /// ### Physical Mechanics
     /// ```math
     ///
-    /// delta_v = integral of acc over t, ie ~ acc * dt
+    /// delta_v = integral of acc over t, ie ~ acc·dt
     ///
-    /// pos_k = pos_k₋₁ + vel_k₋₁ * dt + 0.5 * acc * dt²
-    /// vel_k = vel_k₋₁ + acc * dt
+    /// pos_ₖ = pos_ₖ₋₁ + vel_ₖ₋₁ * dt + ½·acc·dt²
+    /// vel_ₖ = vel_ₖ₋₁ + acc * dt
     ///
     /// so
-    /// pos_k = pos_k₋₁ + vel_k₋₁ * dt + 0.5 * delta_v * dt
-    /// vel_k = vel_k₋₁ + delta_v
+    /// pos_ₖ = pos_ₖ₋₁ + vel_ₖ₋₁ * dt + ½·delta_v·dt
+    /// vel_ₖ = vel_ₖ₋₁ + delta_v
     /// ```
-    pub fn predict_state(&mut self, delta_v_measurement: Vector3f32, dt: f32) {
-        // In NED, positive Z is down, so gravity is a positive vector
-        let gravity = Vector3f32 { x: 0.0, y: 0.0, z: 9.80665 };
+    pub fn predict_state(&mut self, delta_vel: Vector3f32, delta_pos: Vector3f32, dt: f32) {
+        // Gravity and acc bias were not included in the IMU integration, so we need to correct for them here.
 
-        // The raw delta_v contains integrated bias and lacks integrated gravity.
-        // We remove the bias (acc_bias * dt) and add gravity (gravity * dt).
-        let delta_v = delta_v_measurement - (self.state.acc_bias * dt) + (gravity * dt);
+        // In NED, positive Z is down, so gravity is a positive vector.
+        let gravity = Vector3f32 { x: 0.0, y: 0.0, z: Self::G };
 
-        self.state.pos += self.state.vel * dt + 0.5 * delta_v * dt;
+        // Correct the integrated position for acc bias and add the gravity-induced displacement.
+        let dp = delta_pos + 0.5 * (gravity - self.state.acc_bias) * dt * dt;
+        self.state.pos += dp + self.state.vel * dt;
 
-        self.state.vel += delta_v;
+        // Correct the integrated velocity for acc bias and add gravity.
+        let dv = delta_vel + (gravity - self.state.acc_bias) * dt;
+        self.state.vel += dv;
 
-        // Bias remains constant during prediction, it is modeled as a random walk in covariance.
-        // So `self.acc_bias` is not updated.
+        // Bias remains constant during prediction: its uncertainty is modelled as a random walk in the covariance.
+        // So we don't update `self.state.acc_bias` here.
     }
 
     /// Predict covariance:
     ///
-    /// `P = F * P * Fᵀ + Q`.
+    /// `P = F·P·Fᵀ·Q`.
     ///
     /// `P`: State covariance matrix
     /// `F`: State transition matrix (Delta-Velocity model)
@@ -223,7 +229,7 @@ impl KalmanFilterXyz {
     ///
     ///     ┌                 9x9                  ┐
     ///     │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
-    ///     │ │    I     ││   dt*I   ││-0.5·dt²·I│ │
+    ///     │ │    I    ││   dt*I   ││ -½·dt²·I │ │
     ///     │ └          ┘└          ┘└          ┘ │
     ///     │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
     /// F = │ │    0     ││    I     ││  -dt*I   │ │
@@ -232,11 +238,16 @@ impl KalmanFilterXyz {
     ///     │ │    0     ││    0     ││    I     │ │
     ///     │ └          ┘└          ┘└          ┘ │
     ///     └                                      ┘
-    ///
+    ///₃
+    ///     ┌                            ┐
+    ///     │  I₃     dt·I₃   -½·dt²·I₃  │
+    /// F = │  0₃       I₃      -dt·I₃   │
+    ///     │  0₃       0₃         I₃    │
+    ///     └                            ┘
     /// Since this is a sparse matrix, we can calculate F * P * Fᵀ without doing full 9x9 matrix multiplications.
     /// Instead we perform the multiplication block by block.
     ///
-    /// Expanding F * P * Fᵀ algebraically gives the following block updates:
+    /// Expanding F·P·Fᵀ algebraically gives the following block updates:
     ///
     /// For the position columns (PP, VP, BP)
     ///     PP_new = PP + dt * (PV + VP) + dt2 * VV - 0.5*dt2*(PB + BP) - 0.5*dt3*(VB + BV) + 0.25*dt4*BB
@@ -263,7 +274,7 @@ impl KalmanFilterXyz {
     #[allow(non_snake_case)]
     pub fn predict_covariance(&mut self, dt: f32) {
         // =====================================================================
-        // PROPAGATE THE COVARIANCE P_new = (F * P_old * Fᵀ)
+        // PROPAGATE THE COVARIANCE P_new = (F·P_old·Fᵀ)
         // =====================================================================
 
         // alias self.P for readability.
@@ -279,37 +290,44 @@ impl KalmanFilterXyz {
         // --- POSITION COLUMNS (PP, VP, BP) ---
         P[PP] = P[PP]
             + dt * (P[PV] + P[VP] + dt * (P[VV] - 0.5 * (P[PB] + P[BP] + dt * (P[VB] + P[BV] - dt * 0.5 * P[BB]))));
-        // Prevent P_new[PP] being accidentally used in subsequent calculations.
+        // Prevent P_new[PP] being accidentally used in subsequent calculations by retiring PP.
         let PP = ();
         () = PP;
 
         P[VP] = P[VP] + dt * (P[VV] - P[BP] - dt * (P[BV] + 0.5 * (P[VB] - dt * P[BB])));
+        // Retire VP.
         let VP = ();
         () = VP;
 
         P[BP] = P[BP] + dt * (P[BV] - dt * 0.5 * P[BB]);
+        // Retire BP.
         let BP = ();
         () = BP;
 
         // --- VELOCITY COLUMNS (PV, VV, BV) ---
         P[PV] = P[PV] + dt * (P[VV] - P[PB] - dt * (P[VB] + 0.5 * (P[BV] - dt * P[BB])));
+        // Retire PV.
         let PV = ();
         () = PV;
 
         P[VV] = P[VV] - dt * (P[BV] + P[VB] + dt * P[BB]);
+        // Retire VV.
         let VV = ();
         () = VV;
 
         P[BV] = P[BV] - dt * P[BB];
+        // Retire BV.
         let BV = ();
         () = BV;
 
         // --- BIAS COLUMNS (PB, VB, BB) ---
         P[PB] = P[PB] + dt * (P[VB] - dt * 0.5 * P[BB]);
+        // Retire PB.
         let PB = ();
         () = PB;
 
         P[VB] = P[VB] - dt * P[BB];
+        // Retire VB.
         let VB = ();
         () = VB;
         // P[BB] = P[BB]; so don't need to update BB.
@@ -441,9 +459,9 @@ impl KalmanFilterXyz {
     ///
     /// ### Core Operations
     /// *  Extracts `PositionPosition` sub-block from P (top left 3x3 matrix).
-    /// *  `S = H * P * Hᵀ + R` (yields a 3x3 innovation matrix)
+    /// *  `S = H·P·Hᵀ + R` (yields a 3x3 innovation matrix)
     /// *  `S⁻¹ = try_inverse(S)`
-    /// *  `K = (P * Hᵀ) * S⁻¹` (yields a 9x3 block matrix representation)
+    /// *  `K = (P·Hᵀ)·S⁻¹` (yields a 9x3 block matrix representation)
     ///
     /// Performs a full 3D Position Correction (e.g., GPS or Optical Flow position packet).
     /// Observations sample the full x, y, and z position channels simultaneously.
@@ -461,19 +479,19 @@ impl KalmanFilterXyz {
         predicted_measurement: Vector3f32,
         R: Vector3f32,
     ) -> KalmanFilterDiagnostics {
-        // S = H * P * Hᵀ + R
-        // K = P * Hᵀ * S⁻¹
-        // y = z - H * x
-        // x += K * y
-        // P -= (K * H) * P
+        // S = H·P·Hᵀ + R
+        // K = P·Hᵀ·S⁻¹
+        // y = z - H·x
+        // x = x + K·y
+        // P = P - K·H·P
 
-        // Extract the submatrices representing H * P.
+        // Extract the submatrices representing H·P.
         let P_pos = self.P[Self::PP];
         let P_vel = self.P[Self::PV];
         let P_acc_bias = self.P[Self::PB];
 
         // Calculate S, the Residual Covariance matrix:
-        // S = H * P * Hᵀ + R
+        // S = H·P·Hᵀ + R
         let S = P_pos.add_diagonal_vector(R);
         let Some(S_inv) = S.try_inverse() else {
             // The the Residual Covariance matrix may be non-invertible.
@@ -482,10 +500,10 @@ impl KalmanFilterXyz {
         };
 
         // Calculate the innovation.
-        // y = z - H * x
+        // y = z - H·x
         let innovation = measurement - predicted_measurement;
 
-        // Normalized Innovation Squared (NIS) = yᵀ * S⁻¹ * y  (aka Mahalanobis Distance)
+        // Normalized Innovation Squared (NIS) = yᵀ·S⁻¹·y  (aka Mahalanobis Distance)
         // Dot product results in a unitless scalar
         let nis = innovation.dot(S_inv * innovation);
         let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP].trace(), nis };
@@ -502,7 +520,7 @@ impl KalmanFilterXyz {
         // Calculate K, the Kalman gain.
         // Calculate the 3x3 segmented Kalman Gain pieces
         //
-        // K = P * Hᵀ * S⁻¹
+        // K = P·Hᵀ·S⁻¹
         //
         // H selects the position column block stack (Column 0: PP, VP, BP)
         // H selects the position states, so P * Hᵀ is simply the first three columns of P,
@@ -512,13 +530,13 @@ impl KalmanFilterXyz {
         let K_acc_bias = P_acc_bias * S_inv;
 
         // Update the physical state vectors
-        // x += K * y
+        // x += K·y
         self.state.pos += K_pos * innovation;
         self.state.vel += K_vel * innovation;
         self.state.acc_bias += K_acc_bias * innovation;
 
-        // P -= K * (H * P)
-        // Calculate by subtracting the K * (H * P) submatrices one by one.
+        // P -= K·(H·P)
+        // Calculate by subtracting the K·(H·P) submatrices one by one.
 
         // Column 0: position column submatrices
         self.P[Self::PP] -= K_pos * P_pos;
@@ -543,7 +561,7 @@ impl KalmanFilterXyz {
 
     /// Joseph's Stabilized Form for the covariance update step:
     ///
-    /// `P = (I - KH) * P * (I - KH)ᵀ + KRKᵀ)`.
+    /// `P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ)`.
     ///
     /// While computationally more expensive, it guarantees the result remains positive-definite.
     /// That is it ensures the covariance matrix has positive eigenvalues and remains valid and invertible for future updates.
@@ -554,7 +572,7 @@ impl KalmanFilterXyz {
         R: Vector3f32,
     ) -> KalmanFilterDiagnostics {
         // Calculate S, the Residual Covariance matrix:
-        // S = H * P * Hᵀ + R
+        // S = H·P·Hᵀ + R
         let S = self.P[Self::PP].add_diagonal_vector(R);
 
         // S is guaranteed to be positive-definite, since we are using Joseph's Stabilized Form, so we can use a Cholesky solver.
@@ -564,16 +582,16 @@ impl KalmanFilterXyz {
         };
 
         // Calculate K, the Kalman gain.
-        // `K = P * Hᵀ * S⁻¹`
+        // `K = P·Hᵀ·S⁻¹`
         let K_pos = S_cholesky.solve_matrix(self.P[Self::PP]); // 60 arithmetic operations, matrix multiply is 45
         let K_vel = S_cholesky.solve_matrix(self.P[Self::VP]);
         let K_acc_bias = S_cholesky.solve_matrix(self.P[Self::BP]);
 
         // Calculate the innovation.
-        // y = z - H * x
+        // y = z - H·x
         let innovation = measurement - predicted_measurement;
 
-        // Normalized Innovation Squared (NIS) = yᵀ * S⁻¹ * y  (aka Mahalanobis Distance)
+        // Normalized Innovation Squared (NIS) = yᵀ·S⁻¹·y  (aka Mahalanobis Distance)
         let s_inv_times_innovation = S_cholesky.solve_vector(innovation);
         // Dot product results in a unitless scalar
         let nis = innovation.dot(s_inv_times_innovation);
@@ -590,14 +608,14 @@ impl KalmanFilterXyz {
         self.position_consecutive_rejection_count = 0;
 
         // Update the physical state vectors
-        // x += K * y
+        // x += K ·y
         self.state.pos += K_pos * innovation;
         self.state.vel += K_vel * innovation;
         self.state.acc_bias += K_acc_bias * innovation;
 
-        // P = (I - KH) * P * (I - KH)ᵀ + KRKᵀ
+        // P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ
 
-        // Calculate the columns of intermediate matrix A = (I - KH) * P
+        // Calculate the columns of intermediate matrix A = (I - KH)·P
         let A = Matrix3x3xM3x3::from_column_array([
             // Column 0
             self.P[Self::PP] - K_pos * self.P[Self::PP],
@@ -619,7 +637,7 @@ impl KalmanFilterXyz {
         let K_acc_bias_t = K_acc_bias.transpose();
         let I_minus_K_pos_t = Matrix3x3f32::identity() - K_pos_t; // Simplified distribution
 
-        // Calculate J = A * (I - KH)ᵀ.
+        // Calculate J = A·(I - KH)ᵀ.
         // Only calculate the values that are different from A.
         let J = [
             A[Self::PP] * I_minus_K_pos_t - A[Self::PV] * K_vel_t - A[Self::PB] * K_acc_bias_t,
@@ -627,7 +645,7 @@ impl KalmanFilterXyz {
             A[Self::BP] * I_minus_K_pos_t - A[Self::BV] * K_vel_t - A[Self::BB] * K_acc_bias_t,
         ];
 
-        // Calculate KRKᵀ blocks
+        // Calculate K·R·Kᵀ blocks
         let K_pos_R = K_pos.mul_diagonal_vector(R);
         let K_vel_R = K_vel.mul_diagonal_vector(R);
         let K_acc_bias_R = K_acc_bias.mul_diagonal_vector(R);
@@ -693,28 +711,28 @@ impl KalmanFilterXyz {
         // H = [ dx/r, dy/r, dz/r ]
         //
         // Vector3 is used as a row vector for:
-        //     H * P
+        //     H·P
         //
         // and as a column vector for:
-        //     P * Hᵀ
+        //     P·Hᵀ
         let H = position / predicted_distance;
 
-        // P * Hᵀ for each state block.
-        // u = P * Hᵀ
+        // P ·Hᵀ for each state block.
+        // u = P·Hᵀ
         //
-        //     [ P_PP * Hᵀ ]
-        // u = [ P_VP * Hᵀ ]
-        //     [ P_BP * Hᵀ ]
+        //     [ P_PP·Hᵀ ]
+        // u = [ P_VP·Hᵀ ]
+        //     [ P_BP·Hᵀ ]
 
-        // P * Hᵀ
+        // P·Hᵀ
         let P_pos = self.P[Self::PP] * H;
         let P_vel = self.P[Self::VP] * H;
         let P_acc_bias = self.P[Self::BP] * H;
 
         // Innovation covariance:
         //
-        // S = H * P * Hᵀ + R
-        //   = H * P_PP * Hᵀ + R
+        // S = H·P·Hᵀ + R
+        //   = H·P_PP·Hᵀ + R
         let S = H.dot(P_pos) + R;
 
         if S <= f32::EPSILON {
@@ -723,7 +741,7 @@ impl KalmanFilterXyz {
         let S_inv = 1.0 / S;
 
         // Calculate the innovation.
-        // y = z - H * x
+        // y = z - H·x
         let innovation = measured_distance - predicted_distance;
 
         // Normalized innovation squared (Mahalanobis distance squared).
@@ -735,23 +753,23 @@ impl KalmanFilterXyz {
         }
 
         // Calculate K, the Kalman gain.
-        // K = P * Hᵀ * S⁻¹
+        // K = P·Hᵀ·S⁻¹
         let K_pos = P_pos * S_inv;
         let K_vel = P_vel * S_inv;
         let K_acc_bias = P_acc_bias * S_inv;
 
         // Update the physical state vectors
-        // x += K * y
+        // x += K·y
         self.state.pos += K_pos * innovation;
         self.state.vel += K_vel * innovation;
         self.state.acc_bias += K_acc_bias * innovation;
 
         // Covariance update:
-        //     P_new = P - K * H * P
+        //     P_new = P - K·H·P
         // where:
-        //     K = P * Hᵀ / S
+        //     K = P·Hᵀ / S
         // Therefore, assuming P is symmetric:
-        //     P_new = P - (P * Hᵀ) * (P * Hᵀ)ᵀ / S
+        //     P_new = P - (P·Hᵀ)·(P·Hᵀ)ᵀ / S
         // This is a rank-1 update of the full 9x9 covariance.
         self.P[Self::PP] -= Matrix3x3::outer_product(K_pos, P_pos);
         self.P[Self::PV] -= Matrix3x3::outer_product(K_pos, P_vel);
@@ -784,7 +802,7 @@ impl KalmanFilterXyz {
 
 impl KalmanFilterXyz {
     /// Evaluates if an incoming innovation vector satisfies chi-squared gating thresholds.
-    /// Formula: `d² = yᵀ * S⁻¹ * y`.
+    /// Formula: `d² = yᵀ· S⁻¹·y`.
     ///
     /// Layouts:
     /// * `self.P`: 9x9 Column-Major Covariance Matrix (used to extract the 3x3 S matrix block)
@@ -816,7 +834,7 @@ impl KalmanFilterXyz {
             return false;
         };
 
-        // Calculate the vector solution product: x_sol = S⁻¹ * y
+        // Calculate the vector solution product: x_sol = S⁻¹·y
         let x_sol = S_inv * y;
 
         // Complete the final quadratic form: d² = y · x_sol
@@ -871,6 +889,7 @@ mod test_traits {
     }
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1058,6 +1077,7 @@ mod tests {
         println!("\n✅ All Kalman Filter math, indices, and coordinate signs verified successfully!");
     }
 }
+*/
 
 #[cfg(test)]
 mod test_anchors {

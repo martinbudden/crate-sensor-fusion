@@ -11,7 +11,7 @@ The filter tracks a 9-dimensional kinematic state vector split into three 3D spa
 ```text
          ⎡ Position  (x, y, z) ⎤
      x = ⎢ Velocity  (x, y, z) ⎥
-         ⎣ IMU Bias  (x, y, z) ⎦
+         ⎣ Acc bias  (x, y, z) ⎦
 ```
 
 In code, this mapping is managed via zero-cost abstractions by destructuring `Vector3f32` structures.
@@ -37,9 +37,9 @@ This filter splits the prediction and correction cycles into modular functions:
 ## 3. Architectural Rule: The Accelerometer is NOT a Measurement Update
 
 A common point of confusion is searching for an `update_accelerometer` function.
-In a kinematic navigation filter, the accelerometer acts as the **Control Input (u)**
+In a kinematic navigation filter, the accelerometer acts as the **Control Input (`u`)**
 during the time-propagation step, pushing the physics model forward. Absolute reference sensors
-(**GPS, Barometer**) act as **Measurements (z)** to strip away the integration drift.
+(**GPS, Barometer**) act as **Measurements (`z`)** to strip away the integration drift.
 
 ## 4. Matrix Transformations
 
@@ -71,20 +71,20 @@ S = H·P·Hᵀ + R = ⎢ P₂₁  P₂₂  P₂₃ ⎥ + ⎢    0     R_horiz   
 
 <https://thekalmanfilter.com/kalman-filter-explained-simply/>
 
-|   | Description                     | Type         | Notes                                       |
-| - | ------------------------------- | ------------ | ------------------------------------------- |
-|   | **predict**<br>`x = F·x`<br>`P = F·P·Fᵀ + Q` | |                                             |
-| x | estimated state vector          | n x 1 vector | Output                                      |
-| F | state transition matrix         | n x n matrix | derived from system dynamics                |
-| P | state covariance matrix         | n x n matrix | estimated uncertainty                       |
-| Q | process noise covariance matrix | n x n matrix | how noisy is control vector (eg IMU)        |
-|   | **correct**<br>`S = H·P·Hᵀ + R`<br>`K = P·Hᵀ·S⁻¹`<br>`y = z - H·x`<br>`x = x + K·y` | |      |
-| y | measurement innovation          | n x 1 vector | difference between measurement and estimate |
-| z | measurement vector              | m x 1 vector | input                                       |
-| H | measurement matrix              | m x n matrix | derived from system dynamics                |
-| R | measurement noise covariance    | m x m matrix | how noisy/accurate is sensor (eg GPS)       |
-| S | innovation covariance matrix    | n x n matrix |                                             |
-| K | Kalman gain matrix              | n x m        |                                             |
+|     | Description                     | Type         | Notes                                       |
+| :-- | :------------------------------ | :----------- | :------------------------------------------ |
+|     | **predict**<br>`x = F·x + B·u`<br>`P = F·P·Fᵀ + Q` | |                                       |
+| `x` | estimated state vector          | n x 1 vector | Output                                      |
+| `F` | state transition matrix         | n x n matrix | derived from system dynamics                |
+| `P` | state covariance matrix         | n x n matrix | estimated uncertainty                       |
+| `Q` | process noise covariance matrix | n x n matrix | how noisy is control vector (eg IMU)        |
+|     | **correct**<br>`S = H·P·Hᵀ + R`<br>`K = P·Hᵀ·S⁻¹`<br>`y = z - H·x`<br>`x = x + K·y` | |      |
+| `y` | measurement innovation          | n x 1 vector | difference between measurement and estimate |
+| `z` | measurement vector              | m x 1 vector | input                                       |
+| `H` | measurement matrix              | m x n matrix | derived from system dynamics                |
+| `R` | measurement noise covariance    | m x m matrix | how noisy/accurate is sensor (eg GPS)       |
+| `S` | innovation covariance matrix    | n x n matrix |                                             |
+| `K` | Kalman gain matrix              | n x m        |                                             |
 
 Alternate terms used in the literature and implementations
 
@@ -101,20 +101,20 @@ For a 3D KalmanFilter n = 9, m = 3,
 
 Note n = 3*m, since we have {pos, velocity, acc_bias} for each dimension.
 
-|       |type          | 1D  | 2D  | 2D opt    | 3D  | 3D opt    | explanation |
-| ----- | ------------ | --- | --- | ----------| --- | --------- | ----------- |
-|       | **predict**  |     |     |           |     |           |             |
-| **x** | n x 1 vector | 1x1 | 2x1 | V2        | 3x1 | V3        |             |
-| **F** | n x n matrix | 3x3 | 6x6 | M3x3xM2x2 | 9x9 | M3x3xM3x3 | sparse      |
-| **P** | n x n matrix | 3x3 | 6x6 | M3x3xM2x2 | 9x9 | M3x3xM3x3 | sparse      |
-| **Q** | n x n matrix | 3x3 | 6x6 | 2x1       | 9x9 | 2x1       | vel, bias   |
-|       | **correct**  |     |     |           |     |           |             |
-| **y** | n x 1 vector | 1x1 | 2x1 | V2        | 3x1 | V3        |             |
-| **z** | m x 1 vector | 1x1 | 2x1 | V2        | 3x1 | V3        |             |
-| **H** | m x n matrix | 1x3 | 2x6 | virtual   | 3x9 | virtual   | sparse      |
-| **R** | m x m matrix | 1x1 | 2x2 | 2x1       | 3x3 | V3        | diagonal    |
-| **S** | n x n matrix | 3x3 | 6x6 | M2x2      | 9x9 | M3x3      |             |
-| **K** | n x m matrix | 3x1 | 6x2 | 3xM2x2    | 9x3 | 3xM3x3    |             |
+|     | type         | 1D  | 2D  | 2D opt    | 3D  | 3D opt    | explanation |
+| :-- | :----------- | :-- | :-- | :---------| :-- | :-------- | :---------- |
+|     | **predict**  |     |     |           |     |           |             |
+| `x` | n x 1 vector | 1x1 | 2x1 | V2        | 3x1 | V3        |             |
+| `F` | n x n matrix | 3x3 | 6x6 | M3x3xM2x2 | 9x9 | M3x3xM3x3 | sparse      |
+| `P` | n x n matrix | 3x3 | 6x6 | M3x3xM2x2 | 9x9 | M3x3xM3x3 | sparse      |
+| `Q` | n x n matrix | 3x3 | 6x6 | 2x1       | 9x9 | 2x1       | vel, bias   |
+|     | **correct**  |     |     |           |     |           |             |
+| `y` | n x 1 vector | 1x1 | 2x1 | V2        | 3x1 | V3        |             |
+| `z` | m x 1 vector | 1x1 | 2x1 | V2        | 3x1 | V3        |             |
+| `H` | m x n matrix | 1x3 | 2x6 | virtual   | 3x9 | virtual   | sparse      |
+| `R` | m x m matrix | 1x1 | 2x2 | 2x1       | 3x3 | V3        | diagonal    |
+| `S` | n x n matrix | 3x3 | 6x6 | M2x2      | 9x9 | M3x3      |             |
+| `K` | n x m matrix | 3x1 | 6x2 | 3xM2x2    | 9x3 | 3xM3x3    |             |
 
 In the optimized form the following is used
 For 3D:
@@ -129,24 +129,24 @@ For 3D:
 
 ### Predict Equations (Time Update)
 
-| Step | Equation | Description |
-| :--- | :--- | :--- |
-| **Predicted State** | x = F x + B u | Projects the state estimate ahead |
-| **Predicted Covariance** | P = F P Fᵀ + Q | Projects the error covariance ahead |
+| Step                     | Equation         | Description                         |
+| :----------------------- | :--------------- | :---------------------------------- |
+| **Predicted State**      | `x = F·x + B·u`  | Projects the state estimate ahead   |
+| **Predicted Covariance** | `P = F·P·Fᵀ + Q` | Projects the error covariance ahead |
 
 ### Correct Equations (Measurement Update)
 
-| Step | Equation | Description |
-| :--- | :--- | :--- |
-| **Innovation** | y = z - H x | Computes the measurement residual |
-| **Innovation Covariance** | S = H P Hᵀ + R | Computes the residual covariance |
-| **Kalman Gain** | K = P Hᵀ S⁻¹ | Computes the optimal gain matrix |
-| **Updated State** | x = x + K y | Updates state estimate with measurement |
-| **Updated Covariance** | P = (I - K H) P | Updates the error covariance matrix |
+| Step                      | Equation          | Description                               |
+| :------------------------ | :---------------- | :---------------------------------------- |
+| **Innovation**            | `y = z - H·x`     | Calculates the measurement residual       |
+| **Innovation Covariance** | `S = H·P·Hᵀ + R`  | Calculates the residual covariance        |
+| **Kalman Gain**           | `K = P·Hᵀ·S⁻¹`    | Calculates the optimal gain matrix        |
+| **Updated State**         | `x = x + K·y`     | Updates state estimate with measurement   |
+| **Updated Covariance**    | `P = (I - K·H)·P` | Updates the error covariance matrix       |
 
 The measurement residual is the difference between the actual sensor reading and what your filter expected the sensor to read.
 
-- The Equation: y = z - H x
+- The Equation: `y = z - H·x`
 - In Plain English: Residual = (Actual Sensor Measurement) - (Predicted Sensor Measurement)
 - If the residual is zero, the sensor read exactly what the physics model predicted. The filter is perfectly on track.
 If the residual is large, something unexpected happened (eg the vehicle hit a pothole, or the sensor experienced a sudden glitch).
@@ -154,7 +154,7 @@ If the residual is large, something unexpected happened (eg the vehicle hit a po
 The residual covariance (denoted as S) measures the total expected uncertainty of that measurement residual.
 It is the sum of all errors coming from both your physics model and your physical sensor.
 
-- The Equation: S = H P Hᵀ + R
+- The Equation: `S = H·P·Hᵀ + R`
 - In plain English: Total Uncertainty = (Uncertainty of our internal prediction) + (Uncertainty/Noise of the sensor itself).
   It defines a boundary for what a "reasonable" surprise is.
 - If your sensor is known to be very noisy (R is large), or your physics prediction is highly uncertain (P is large), S will be large.
@@ -163,7 +163,7 @@ It is the sum of all errors coming from both your physics model and your physica
 How They Work Together: The Kalman Gain Matrix
 
 The filter divides the residual by the residual covariance to calculate the Kalman Gain (K):
-K = P Hᵀ S⁻¹
+`K = P·Hᵀ·S⁻¹`
 By doing this, the Kalman filter calculates a ratio: "Is this surprise (y) caused by a real change in the world, or is it just random sensor noise (S)?"
 
 - If S is dominated by sensor noise (R), the filter assumes the surprise is just a glitch.
@@ -173,22 +173,22 @@ By doing this, the Kalman filter calculates a ratio: "Is this surprise (y) cause
 
 ## Variable Definitions
 
-- **x̂**: Estimated state vector
-- **P**: State covariance matrix (estimated uncertainty)
-- **F**: State transition matrix (derived from system dynamics)
-- **B**: Control input matrix
-- **u**: Control input vector
-- **Q**: Process noise covariance matrix
-- **z**: Measurement vector
-- **H**: Measurement matrix
-- **R**: Measurement noise covariance matrix
-- **K**: Kalman gain matrix
-- **I**: Identity matrix
+- `x̂`: Estimated state vector
+- `P`: State covariance matrix (estimated uncertainty)
+- `F`: State transition matrix (derived from system dynamics)
+- `B`: Control input matrix
+- `u`: Control input vector
+- `Q`: Process noise covariance matrix
+- `z`: Measurement vector
+- `H`: Measurement matrix
+- `R`: Measurement noise covariance matrix
+- `K`: Kalman gain matrix
+- `I`: Identity matrix
 
-### B- the Control Input Matrix
+### B - the Control Input Matrix
 
-The B matrix is formally called the Control Input Matrix.
-In the predict equation (x̂ₖ|ₖ₋₁ = Fₖ x̂ₖ₋₁|ₖ₋₁ + Bₖ uₖ), its job is to map known external forces or control inputs onto the system's state variables.
+The `B` matrix is formally called the Control Input Matrix.
+In the predict equation `(x̂ₖ|ₖ₋₁ = Fₖ x̂ₖ₋₁|ₖ₋₁ + Bₖ uₖ)`, its job is to map known external forces or control inputs onto the system's state variables.
 It translates the real-world actions you are taking into the changes they cause in your system.
 
 #### How it Works (A Simple Example)
@@ -250,8 +250,8 @@ The F matrix captures these exact relationships:
 
 ### H - the Measurement Matrix
 
-The H matrix is formally called the Measurement Matrix (or Observation Matrix).
-In the subscript-less correct equation (y = z - H x), its job is to bridge the gap between your internal state variables and your physical sensor readings.
+The `H` matrix is formally called the Measurement Matrix (or Observation Matrix).
+In the subscript-less correct equation (`y = z - H·x`), its job is to bridge the gap between your internal state variables and your physical sensor readings.
 It maps the hidden variables you are tracking inside your code into the exact dimensions and units that your hardware sensors can actually see.
 
 #### How it Works (Using the Same Vehicle Example)
@@ -283,7 +283,7 @@ Now, the math can easily compute the innovation: y = altitude_measurement - Z_po
 #### Core Traits
 
 - The Multilingual Translator: Your internal state might track values you have absolutely no way of measuring directly (like your accelerometer biases).
-  The H matrix tells the filter how those hidden internal variables are expected to manifest themselves in the sensors you do have.
+  The `H` matrix tells the filter how those hidden internal variables are expected to manifest themselves in the sensors you do have.
 - Shape Dynamics: The dimensions of H are completely flexible. Its number of rows always matches the number of incoming sensor channels,
   and its number of columns always matches your internal state size. (eg for a 3D GPS measuring X, Y, and Z, H expands to 3 rows and 9 columns [1]).
 - Bypassed in Code: As you implemented in your correct_altitude function, because H is so sparse (mostly zeros and ones),
@@ -292,7 +292,7 @@ Now, the math can easily compute the innovation: y = altitude_measurement - Z_po
 
 ### R - the Measurement Noise Covariance Matrix
 
-In the correct phase equation (S = H P Hᵀ + R), its job is to quantify the trustworthiness and accuracy of your physical sensors.
+In the correct phase equation (`S = H·P·Hᵀ + R`), its job is to quantify the trustworthiness and accuracy of your physical sensors.
 It explicitly tells the Kalman filter how much random noise, electrical interference, or environmental vibration is polluting your incoming sensor readings.
 
 #### How it Works (Using the Multi-Sensor Example)
@@ -355,7 +355,7 @@ Correct:
     P = P - (K·H)·P
     or
     Joseph's Stabilized Form for the covariance update step, computationally more expensive, numerically stabler
-    P = (I - KH)·P·(I - KH)ᵀ + KRKᵀ
+    P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ
 ```
 
 ```text
@@ -375,8 +375,8 @@ Correct:
 
 If the filter output looks laggy or sluggish (clinging too closely to the old path and trailing behind rapid movements),
 you need to trust the physics model less and the sensors more:
-Action: Increase Q or Decrease R.
+Action: Increase `Q` or Decrease `R`.
 
 If the filter output looks jittery or nervous (shaking whenever the sensor outputs minor noise spikes),
 you are trusting the noisy sensors too heavily over the smooth physics predictions:
-Action: Decrease Q or Increase R.
+Action: Decrease `Q` or Increase `R`.

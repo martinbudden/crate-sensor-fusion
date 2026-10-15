@@ -1,30 +1,30 @@
 # Kalman filter equations
 
-These are the unabbreviated forms of the Kalman equations.
+Unabbreviated forms of the Kalman equations and explanations.
 
 ## Notation
 
 In estimation theory and signal processing, the following notation is used:
 
 The "hat" symbol ( ^ ) placed over a variable denotes an estimate of that variable, rather than its true, exact value.
-**x̂** reads as "x-hat".
+`x̂` reads as "x-hat".
 
-The subscript **k|k-1** denotes a conditional relationship,
-reads as "at time step **k**, given all information up to time step **k-1**".
+The subscript `k|k-1` denotes a conditional relationship,
+reads as "at time step `k`, given all information up to time step `k-1`".
 
 It highlights the difference between a prediction and an updated estimate:
 
-- The Left Side **k**: the specific point in time you are currently predicting or analyzing.
-- The Vertical Bar **|**: means "given" or "conditioned upon" (exactly like conditional probability notation).
-- The Right Side **k-1**: the point in time representing the last available measurement data.
+- The Left Side `k`: the specific point in time you are currently predicting or analyzing.
+- The Vertical Bar `|`: means "given" or "conditioned upon" (exactly like conditional probability notation).
+- The Right Side `k-1`: the point in time representing the last available measurement data.
 
 | Notation    | Type                        | Plain English Meaning                                                                                    |
 | :---------- | :-------------------------- | :------------------------------------------------------------------------------------------------------- |
-| **x̂ₖ\|ₖ₋₁** | *A Priori* (Prediction)     | Our best guess for the state at step **k**, based solely on what we knew up to step **k-1**              |
-| **x̂ₖ\|ₖ**   | *A Posteriori* (Correction) | Our corrected state estimate at step **k**, now that we have factored in the measurement from step **k** |
+| `x̂ₖ\|ₖ₋₁` | *A Priori* (Prediction)     | Our best guess for the state at step `k`, based solely on what we knew up to step `k-1`              |
+| `x̂ₖ\|ₖ`   | *A Posteriori* (Correction) | Our corrected state estimate at step `k`, now that we have factored in the measurement from step `k` |
 
-- **x̂ₖ|ₖ₋₁** reads as "x-hat of k, given k minus one" or "the a priori state estimate at step k".
-- **x̂ₖ|ₖ** reads as "x-hat of k, given k" or "the a posteriori state estimate at step k".
+- `x̂ₖ|ₖ₋₁` reads as "x-hat of k, given k minus one" or "the a priori state estimate at step k".
+- `x̂ₖ|ₖ` reads as "x-hat of k, given k" or "the a posteriori state estimate at step k".
 
 ## Predict Equations (Time Update)
 
@@ -45,16 +45,57 @@ It highlights the difference between a prediction and an updated estimate:
 
 ## Variable Definitions
 
-- **u**: Control vector
-- **x̂**: Estimated state vector
-- **z**: Measurement vector
-- **y**: Measurement innovation
+- `u`: Control vector
+- `x̂`: Estimated state vector
+- `z`: Measurement vector
+- `y`: Measurement innovation
 
-- **P**: State covariance matrix (estimated uncertainty)
-- **F**: State transition matrix (derived from system dynamics)
-- **B**: Control input matrix
-- **Q**: Process noise covariance matrix
-- **H**: Measurement matrix
-- **R**: Measurement noise covariance matrix
-- **K**: Kalman gain matrix
-- **I**: Identity matrix
+- `P`: State covariance matrix (estimated uncertainty)
+- `F`: State transition matrix (derived from system dynamics)
+- `B`: Control input matrix
+- `Q`: Process noise covariance matrix
+- `H`: Measurement matrix
+- `R`: Measurement noise covariance matrix
+- `K`: Kalman gain matrix
+- `I`: Identity matrix
+
+## Matrix representations
+
+```text
+x = [x, y, z, vx, vy, vz, bx, by, bz]
+
+for acceleration as u
+    ┌            ┐
+    │  ½·dt²·I₃  │
+B = │    dt·I₃   │
+    │     0₃     │
+    └            ┘
+
+for delta_v as u
+    ┌           ┐
+    │  ½·dt·I₃  │
+B = │    I₃     │
+    │    0₃     │
+    └           ┘
+
+for delta_v as u:
+
+    ┌                                           ┐
+    │  1  0  0   dt   0   0   -½dt     0     0  |
+    │  0  1  0    0  dt   0      0  -½dt     0  |
+    │  0  0  1    0   0  dt      0     0  -½dt  |
+    |                                           |
+    │  0  0  0    1   0   0    -dt     0     0  |
+F = │  0  0  0    0   1   0      0   -dt     0  |
+    │  0  0  0    0   0   1      0     0   -dt  |
+    |                                     |
+    │  0  0  0    0   0   0      1     0    0   |
+    │  0  0  0    0   0   0      0     1    0   |
+    │  0  0  0    0   0   0      0    0     1   |
+    └                                           ┘
+    ┌                            ┐
+    │  I₃     dt·I₃   -½·dt²·I₃  │
+F = │  0₃       I₃      -dt·I₃   │
+    │  0₃       0₃         I₃    │
+    └                            ┘
+```

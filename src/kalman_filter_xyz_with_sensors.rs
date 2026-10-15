@@ -87,9 +87,9 @@ impl KalmanFilterXyzWithSensors {
     }
 
     /// Called inside the main IMU execution loop (eg `gyro_pid` loop).
-    pub fn predict(&mut self, acc: Vector3f32, dt: f32) {
+    pub fn predict(&mut self, delta_vel: Vector3f32, delta_pos: Vector3f32, dt: f32) {
         // Integrate physical kinematics forward (deterministic)
-        self.predict_state(acc, dt);
+        self.predict_state(delta_vel, delta_pos, dt);
 
         // Propagate covariance uncertainty blocks forward (stochastic)
         self.predict_covariance(dt);
@@ -97,8 +97,8 @@ impl KalmanFilterXyzWithSensors {
         self.push_snapshot(dt);
     }
 
-    pub fn predict_state(&mut self, acc_measurement: Vector3f32, dt: f32) {
-        self.base.predict_state(acc_measurement, dt);
+    pub fn predict_state(&mut self, delta_vel: Vector3f32, delta_pos: Vector3f32, dt: f32) {
+        self.base.predict_state(delta_vel, delta_pos, dt);
     }
 
     pub fn predict_covariance(&mut self, dt: f32) {

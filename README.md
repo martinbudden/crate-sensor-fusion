@@ -163,30 +163,35 @@ Since the calculation of attitude is non-linear, the Kalman filter would need to
 [Jacobians](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant)
 as well as multiplying and inverting these large matrices.
 
-A better approach is to remove the responsibility for calculating the orientation from the Kalman filter
-and use a another sensor fusion filter (ie a Mahony or Madgwick) filter to do this:
+A computationally less expensive approach is to remove the responsibility for calculating the orientation from
+the Kalman filter and use a another sensor fusion filter (ie a Mahony or Madgwick) filter to do this:
 
 ```text
-                    ┌──────────┐  Orientation
- ┌─────┐  Acc/Gyro  | MADGWICK |  Quaternion       ┌────────────┐
- │ IMU ├───────────►│ FILTER   ├──────────────────►| FLIGHT     |
- └─────┘  Acc       └──────────┘                   | CONTROLLER |
-    │─────────────────────────────────────────────►|            |
-┌────────────┐                                     └────────────┘
-│ INTEGRATOR |
+ ┌─────┐           Acc Vector                      ┌────────────┐
+ │     │──────────────────────────────────────────▶│ FLIGHT     │
+ │ IMU │            ┌──────────┐                   │ CONTROLLER │
+ │     │───────────▶│ MADGWICK ├──────────────────▶│            │
+ └─────┘  Acc/Gyro  │ FILTER   │  Orientation      └────────────┘
+    │               └──────────┘  Quaternion
+    │                   │
+    ▼ Acc               ▼ Orientation
+    │                   │
+┌────────────┐          │
+│ INTEGRATOR │────◀─────┘
 └────────────┘
-    |               ┌──────────┐  Position Vector
-  delta V           | POSITION |  Velocity Vector  ┌───────────┐
-    └─────────────► │ KALMAN   ├──────────────────►| AUTOPILOT |
-                    | FILTER   |                   └───────────┘
+    │
+  delta_pos         ┌──────────┐  Position Vector
+  delta_vel         │ POSITION │  Velocity Vector  ┌───────────┐
+    └──────────────▶│ KALMAN   ├──────────────────▶│ AUTOPILOT │
+                    │ FILTER   │                   └───────────┘
                     └──────────┘
                          │
-  GPS, Barometer, etc ─►─┘
+  GPS, Barometer, etc ─▶─┘
 ```
 
 This reduces the covariance matrix to more manageable size of 9x9 for 3D (and 6x6 for 2D) and avoids the need to calculate Jacobians.
 
-Note that we integrate the accelerometer output from the IMU to give a `delta_v` value since
+Note that we integrate the accelerometer output from the IMU to give `delta_pos` and `delta_vel` values since
 the Kalman filter runs at a lower rate than the IMU (the IMU can run at up to 8kHz, the Kalman
 filter typically runs at 500Hz or less).
 
@@ -196,12 +201,14 @@ A naïve implementation of a 3D position Kalman filter is computationally very e
 
 |     | Description                     | Type         | Notes                                       |
 | --- | ------------------------------- | ------------ | ------------------------------------------- |
-|     | **predict**<br>`x = F·x`<br>`P = F·P·Fᵀ + Q` | |                                             |
+|     | **predict**<br>`x = F·x + B.u`<br>`P = F·P·Fᵀ + Q` | |                                       |
 | `x` | estimated state vector          | 3 x vector3  | position x,y,z; velocity x,y,z; bias x,y,z  |
+| `u` | control input vector            | vector3      | acceleration x,y,z                          |
 | `F` | state transition matrix         | 9 x 9 matrix | derived from system dynamics                |
+| `B` | control input matrix            | 9 x 3 matrix | derived from system dynamics                |
 | `P` | state covariance matrix         | 9 x 9 matrix | estimated uncertainty                       |
 | `Q` | process noise covariance matrix | 9 x 9 matrix | how noisy is control vector (eg IMU)        |
-|     | **correct**<br>`S = H·P·Hᵀ + R`<br>`K = P·Hᵀ·S⁻¹`<br>`y = z - H·x`<br>`x = x + K·y` | |      |
+|     | **correct**<br>`S = H·P·Hᵀ + R`<br>`K = P·Hᵀ·S⁻¹`<br>`y = z - H·x`<br>`x = x + K·y`<br>`P = P - K·H·P` | | |
 | `y` | measurement innovation          | 3 x vector3  | difference between measurement and estimate |
 | `z` | measurement vector              | vector3      | input                                       |
 | `H` | measurement matrix              | 3 x 9 matrix | derived from system dynamics                |
@@ -255,7 +262,7 @@ The Kalman filter equations themselves are mathematically well behaved, however 
 To mitigate these errors this implementation:
 
 1. Explicitly restores symmetry to the covariance matrix (by setting `P = ½(P + Pᵀ)`).
-2. Uses numerically stable Joseph form for covariance updates.
+2. Uses numerically stable Joseph form for covariance updates ( `P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ` rather than `P = P - K·H·P`)
 3. Uses Cholesky factorization of the innovation covariance matrix `S` (rather than taking the inverse of S).
 
 I plan to scale the states and measurements so their scales are broadly comparable, but this has not been implemented yet.
