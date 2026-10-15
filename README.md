@@ -155,14 +155,16 @@ Each sensor will have its matrix `R`. So there will be separate matrices `R gps`
 It would be possible to create a Kalman filter that takes accelerometer and gyroscope values as control inputs
 and from those estimates orientation, position and velocity.
 
-However this would be computationally very expensive: in 3D the Kalman filter would need a massive 15x15 covariance matrix,
-even in 2D a 10x10 covariance matrix would be needed.
+However this would be computationally very expensive: in 3D the Kalman filter would need a massive 15x15 covariance matrix
+(position, velocity, attitude, accelerometer bias, and gyroscope bias each of those being 3D vectors).
+Even in 2D a 10x10 covariance matrix would be needed.
 
-Then the Kalman filter would need to calculate [Jacobians](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant)
+Since the calculation of attitude is non-linear, the Kalman filter would need to calculate
+[Jacobians](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant)
 as well as multiplying and inverting these large matrices.
 
 A better approach is to remove the responsibility for calculating the orientation from the Kalman filter
-and use a another sensor fusion filter (ie a Mahony or Madgwick) filter to do this.
+and use a another sensor fusion filter (ie a Mahony or Madgwick) filter to do this:
 
 ```text
                     ┌──────────┐  Orientation
@@ -186,7 +188,7 @@ This reduces the covariance matrix to more manageable size of 9x9 for 3D (and 6x
 
 Note that we integrate the accelerometer output from the IMU to give a `delta_v` value since
 the Kalman filter runs at a lower rate than the IMU (the IMU can run at up to 8kHz, the Kalman
-filter typically runs at 1kHz or less).
+filter typically runs at 500Hz or less).
 
 ### Kalman Filter Optimization
 
@@ -257,6 +259,8 @@ To mitigate these errors this implementation:
 3. Uses Cholesky factorization of the innovation covariance matrix `S` (rather than taking the inverse of S).
 
 I plan to scale the states and measurements so their scales are broadly comparable, but this has not been implemented yet.
+Scaling brings state values and uncertainties to closer to O(1) (order one), improving numerical conditioning
+without changing the underlying physical problem.
 (Floating-point arithmetic may lose precision when operations combine quantities with very different scales.)
 
 ## Madgwick Filter Optimization {#opt}
