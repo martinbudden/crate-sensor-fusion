@@ -889,6 +889,7 @@ mod test_traits {
     }
 }
 
+
 /*
 #[cfg(test)]
 mod tests {
@@ -910,36 +911,37 @@ mod tests {
         let r_gps = Vector3f32 { x: 2.25, y: 2.25, z: 9.0 };
 
         // Define the ground-truth physical state parameters
-        let mut true_pos = Vector3f32 { x: 10.0, y: -5.0, z: 0.0 }; // Start at an offset
-        let mut true_vel = Vector3f32::default();
-        let true_bias = Vector3f32 { x: -0.03, y: 0.04, z: 0.01 }; // System accelerometer bias
-        let gravity = Vector3f32 { x: 0.0, y: 0.0, z: 9.80665 }; // NED gravity
+        let mut true_pos_m = Vector3f32 { x: 10.0, y: -5.0, z: 0.0 }; // Start at an offset
+        let mut true_vel_mps = Vector3f32::default();
+        let true_bias_mps2 = Vector3f32 { x: -0.03, y: 0.04, z: 0.01 }; // System accelerometer bias
+        let gravity_mps2 = Vector3f32 { x: 0.0, y: 0.0, z: 9.80665 }; // NED gravity
 
         // Prime the filter's initial position guess to match our starting point
-        filter.state.pos = true_pos;
+        filter.state.pos_m = true_pos_m;
 
         println!("\n--- PHASE 1: STATIONARY GPS LOCK (1 SECOND) ---");
         #[allow(clippy::cast_possible_truncation)]
         let loops_stationary = (1.0 / dt) as i32;
         for _ in 0..loops_stationary {
             // Raw IMU reading = Kinematic Acc (0) + Bias - Gravity Reaction Force
-            let acc_measurement = Vector3f32::default() + true_bias - gravity;
+            #[allow(unused)]
+            let acc_measurement_m = Vector3f32::default() + true_bias_mps2 - gravity_mps2;
 
-            filter.predict_state(acc_measurement, dt);
+            // TODO: filter.predict_state(acc_measurement_m, dt);
             filter.predict_covariance(dt);
 
             //filter.correct_position(true_pos, r_gps);
-            _ = filter.correct_position(true_pos, r_gps);
+            _ = filter.correct_position(true_pos_m, r_gps);
         }
 
         // --- PHASE 1 AUDIT LOGS ---
-        println!("Stationary -> True Pos X: {:.4}, Estimated Pos X: {:.4}", true_pos.x, filter.pos().x);
-        println!("Stationary -> True Vel X: {:.4}, Estimated Vel X: {:.4}", true_vel.x, filter.vel().x);
-        println!("Stationary -> True Bias X: {:.4}, Estimated Bias X: {:.4}", true_bias.x, filter.acc_bias().x);
+        println!("Stationary -> True Pos X: {:.4}, Estimated Pos X: {:.4}", true_pos_m.x, filter.pos_m().x);
+        println!("Stationary -> True Vel X: {:.4}, Estimated Vel X: {:.4}", true_vel_mps.x, filter.vel_mps().x);
+        println!("Stationary -> True Bias X: {:.4}, Estimated Bias X: {:.4}", true_bias_mps2.x, filter.acc_bias_mps2().x);
 
         // Verification assertions for Phase 1
-        assert!((filter.pos().x - true_pos.x).abs() < 0.05, "Position drifted while stationary!");
-        assert!((filter.vel().x - true_vel.x).abs() < 0.05, "Velocity accumulated noise while stationary!");
+        assert!((filter.pos_m().x - true_pos_m.x).abs() < 0.05, "Position drifted while stationary!");
+        assert!((filter.vel_mps().x - true_vel_mps.x).abs() < 0.05, "Velocity accumulated noise while stationary!");
 
         // Ensure covariance has shrunk significantly below the starting bounds
         let post_stat_p_pos_x = filter.P[KalmanFilterXyz::PP][KalmanFilterXyz::M11];
@@ -953,29 +955,30 @@ mod tests {
 
         for _ in 0..loops_maneuver {
             // Update truth kinematics using the exact model equations (Trapezoidal Rule)
-            true_pos += (true_vel + 0.5 * true_acc_kinematic * dt) * dt;
-            true_vel += true_acc_kinematic * dt;
+            true_pos_m += (true_vel_mps + 0.5 * true_acc_kinematic * dt) * dt;
+            true_vel_mps += true_acc_kinematic * dt;
 
             // Raw IMU specific force generation
-            let acc_measurement = true_acc_kinematic + true_bias - gravity;
+            #[allow(unused)]
+            let acc_measurement = true_acc_kinematic + true_bias_mps2 - gravity_mps2;
 
-            filter.predict_state(acc_measurement, dt);
+            // TODO: filter.predict_state(acc_measurement, dt);
             filter.predict_covariance(dt);
 
-            _ = filter.correct_position(true_pos, r_gps);
+            _ = filter.correct_position(true_pos_m, r_gps);
         }
 
         // --- PHASE 2 AUDIT LOGS ---
-        println!("Maneuver -> True Final Pos X: {:.4}, Estimated Final Pos X: {:.4}", true_pos.x, filter.pos().x);
-        println!("Maneuver -> True Final Pos Y: {:.4}, Estimated Final Pos Y: {:.4}", true_pos.y, filter.pos().y);
-        println!("Maneuver -> True Final Vel X: {:.4}, Estimated Final Vel X: {:.4}", true_vel.x, filter.vel().x);
-        println!("Maneuver -> True Final Vel Y: {:.4}, Estimated Final Vel Y: {:.4}", true_vel.y, filter.vel().y);
+        println!("Maneuver -> True Final Pos X: {:.4}, Estimated Final Pos X: {:.4}", true_pos_m.x, filter.pos_m().x);
+        println!("Maneuver -> True Final Pos Y: {:.4}, Estimated Final Pos Y: {:.4}", true_pos_m.y, filter.pos_m().y);
+        println!("Maneuver -> True Final Vel X: {:.4}, Estimated Final Vel X: {:.4}", true_vel_mps.x, filter.vel_mps().x);
+        println!("Maneuver -> True Final Vel Y: {:.4}, Estimated Final Vel Y: {:.4}", true_vel_mps.y, filter.vel_mps().y);
 
         // Tracking precision assertions
-        assert!((filter.pos().x - true_pos.x).abs() < 0.1, "Filter missed true physical X position track!");
-        assert!((filter.pos().y - true_pos.y).abs() < 0.1, "Filter missed true physical Y position track!");
-        assert!((filter.vel().x - true_vel.x).abs() < 0.1, "Filter velocity tracking tracking failed on X axis!");
-        assert!((filter.vel().y - true_vel.y).abs() < 0.1, "Filter velocity tracking tracking failed on Y axis!");
+        assert!((filter.pos_m().x - true_pos_m.x).abs() < 0.1, "Filter missed true physical X position track!");
+        assert!((filter.pos_m().y - true_pos_m.y).abs() < 0.1, "Filter missed true physical Y position track!");
+        assert!((filter.vel_mps().x - true_vel_mps.x).abs() < 0.1, "Filter velocity tracking tracking failed on X axis!");
+        assert!((filter.vel_mps().y - true_vel_mps.y).abs() < 0.1, "Filter velocity tracking tracking failed on Y axis!");
 
         println!("\n✅ 3D position state propagation and measurement updates verified successfully!");
     }
@@ -984,22 +987,22 @@ mod tests {
         let mut filter = KalmanFilterXyz::new();
 
         // Capture the initial uncertainty bounds
-        let initial_p_pos = filter.P[KalmanFilterXyz::PP][KalmanFilterXyz::M33];
-        // let initial_p_vel = filter.P[PositionKalmanFilter::VV][PositionKalmanFilter::M33];
+        let initial_p_pos_m = filter.P[KalmanFilterXyz::PP][KalmanFilterXyz::M33];
+        // let initial_p_vel_mps = filter.P[PositionKalmanFilter::VV][PositionKalmanFilter::M33];
 
         // Define simulation parameters
         let dt = 0.01; // 100 Hz simulation step
         let r_baro = 0.04; // 20cm variance for our barometer
 
         // True Physical States (Sim truths to compare against)
-        let mut true_pos = Vector3f32::default();
-        let mut true_vel = Vector3f32::default();
+        let mut true_pos_m = Vector3f32::default();
+        let mut true_vel_mps = Vector3f32::default();
 
         // Explicitly track a constant real accelerometer bias in the hardware
-        let true_bias = Vector3f32 { x: 0.02, y: -0.01, z: 0.05 };
+        let true_bias_mps2 = Vector3f32 { x: 0.02, y: -0.01, z: 0.05 };
 
         // Aerospace NED Gravity vector (Positive down)
-        let gravity = Vector3f32 { x: 0.0, y: 0.0, z: 9.80665 };
+        let gravity_mps2 = Vector3f32 { x: 0.0, y: 0.0, z: 9.80665 };
 
         println!("\n--- PHASE 1: STATIONARY BENCH TEST (2 SECONDS) ---");
         // During this phase, an IMU resting horizontally on the ground in an NED frame
@@ -1009,15 +1012,16 @@ mod tests {
 
         for step in 0..sim_loops_stationary {
             // Raw sensor reading = True Kinematic Acc (0) + Bias + Upward Reaction Force (-gravity)
-            let acc_measurement = Vector3f32::default() + true_bias - gravity;
+            #[allow(unused)]
+            let acc_measurement = Vector3f32::default() + true_bias_mps2 - gravity_mps2;
 
             // Step A: Time Update
-            filter.predict_state(acc_measurement, dt);
+            // TODO: filter.predict_state(acc_measurement, dt);
             filter.predict_covariance(dt);
 
             // Step B: Measurement Update (Simulate stationary altitude updates)
             // Injecting a fixed R variance value
-            _ = filter.correct_altitude(true_pos.z, r_baro);
+            _ = filter.correct_altitude(true_pos_m.z, r_baro);
             // Print out the Z-variance tracking elements every 50 steps
             if step % 50 == 0 {
                 println!(
@@ -1031,17 +1035,17 @@ mod tests {
         }
 
         // --- VERIFICATIONS FOR PHASE 1 ---
-        println!("True Pos Z: {:.4}, Estimated Pos Z: {:.4}", true_pos.z, filter.pos().z);
-        println!("True Vel Z: {:.4}, Estimated Vel Z: {:.4}", true_vel.z, filter.vel().z);
-        println!("True Bias Z: {:.4}, Estimated Bias Z: {:.4}", true_bias.z, filter.acc_bias().z);
+        println!("True Pos Z: {:.4}, Estimated Pos Z: {:.4}", true_pos_m.z, filter.pos_m().z);
+        println!("True Vel Z: {:.4}, Estimated Vel Z: {:.4}", true_vel_mps.z, filter.vel_mps().z);
+        println!("True Bias Z: {:.4}, Estimated Bias Z: {:.4}", true_bias_mps2.z, filter.acc_bias_mps2().z);
 
         // Assertions: The filter should remain near zero despite raw measurements reading ~ -9.81
-        assert!((filter.pos().z - true_pos.z).abs() < 0.05, "Position drifted significantly while resting!");
-        assert!((filter.vel().z - true_vel.z).abs() < 0.05, "Velocity accumulated phantom motion!");
+        assert!((filter.pos_m().z - true_pos_m.z).abs() < 0.05, "Position drifted significantly while resting!");
+        assert!((filter.vel_mps().z - true_vel_mps.z).abs() < 0.05, "Velocity accumulated phantom motion!");
 
         // Assertions: Covariance bounds MUST contract if the sensor math is operating properly
         let post_stationary_p_pos = filter.P[KalmanFilterXyz::PP][KalmanFilterXyz::M33];
-        assert!(post_stationary_p_pos < initial_p_pos, "Covariance failed to contract with sensor updates!");
+        assert!(post_stationary_p_pos < initial_p_pos_m, "Covariance failed to contract with sensor updates!");
 
         println!("\n--- PHASE 2: UNIFORM CLIMB TEST (3 SECONDS) ---");
         // Vehicle climbs downward/upward. Let's simulate a downward acceleration in NED (+Z)
@@ -1052,27 +1056,28 @@ mod tests {
 
         for _ in 0..sim_loops_ascent {
             // Update physical truths using the exact kinematic laws inside our test harness
-            true_pos += (true_vel + 0.5 * true_acc_kinematic * dt) * dt;
-            true_vel += true_acc_kinematic * dt;
+            true_pos_m += (true_vel_mps + 0.5 * true_acc_kinematic * dt) * dt;
+            true_vel_mps += true_acc_kinematic * dt;
 
             // Generate sensor reading: Kinematic Acc + Bias - Upward Reaction Force
-            let acc_measurement = true_acc_kinematic + true_bias - gravity;
+            #[allow(unused)]
+            let acc_measurement = true_acc_kinematic + true_bias_mps2 - gravity_mps2;
 
             // Step A: Time Update
-            filter.predict_state(acc_measurement, dt);
+            // TODO: filter.predict_state(acc_measurement, dt);
             filter.predict_covariance(dt);
 
             // Step B: Measurement Update with simulated moving barometer data
-            _ = filter.correct_altitude(true_pos.z, r_baro);
+            _ = filter.correct_altitude(true_pos_m.z, r_baro);
         }
 
         // --- VERIFICATIONS FOR PHASE 2 ---
-        println!("True Final Pos Z: {:.4}, Estimated Final Pos Z: {:.4}", true_pos.z, filter.pos().z);
-        println!("True Final Vel Z: {:.4}, Estimated Final Vel Z: {:.4}", true_vel.z, filter.vel().z);
+        println!("True Final Pos Z: {:.4}, Estimated Final Pos Z: {:.4}", true_pos_m.z, filter.pos_m().z);
+        println!("True Final Vel Z: {:.4}, Estimated Final Vel Z: {:.4}", true_vel_mps.z, filter.vel_mps().z);
 
         // The filter tracking error should be tight
-        assert!((filter.pos().z - true_pos.z).abs() < 0.1, "Filter failed to track dynamic trajectory accurately!");
-        assert!((filter.vel().z - true_vel.z).abs() < 0.1, "Filter velocity tracking diverged during climb!");
+        assert!((filter.pos_m().z - true_pos_m.z).abs() < 0.1, "Filter failed to track dynamic trajectory accurately!");
+        assert!((filter.vel_mps().z - true_vel_mps.z).abs() < 0.1, "Filter velocity tracking diverged during climb!");
 
         println!("\n✅ All Kalman Filter math, indices, and coordinate signs verified successfully!");
     }
