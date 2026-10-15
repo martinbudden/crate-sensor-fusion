@@ -70,26 +70,26 @@ impl KalmanFilterXyzWithSensors {
 impl KalmanFilterXyzWithSensors {
     #[inline]
     #[must_use]
-    pub fn pos(&self) -> Vector3f32 {
-        self.base.state.pos
+    pub fn pos_m(&self) -> Vector3f32 {
+        self.base.state.pos_m
     }
 
     #[inline]
     #[must_use]
-    pub fn vel(&self) -> Vector3f32 {
-        self.base.state.vel
+    pub fn vel_mps(&self) -> Vector3f32 {
+        self.base.state.vel_mps
     }
 
     #[inline]
     #[must_use]
-    pub fn acc_bias(&self) -> Vector3f32 {
-        self.base.state.acc_bias
+    pub fn acc_bias_mps2(&self) -> Vector3f32 {
+        self.base.state.acc_bias_mps2
     }
 
     /// Called inside the main IMU execution loop (eg `gyro_pid` loop).
-    pub fn predict(&mut self, delta_vel: Vector3f32, delta_pos: Vector3f32, dt: f32) {
+    pub fn predict(&mut self, delta_vel_mps: Vector3f32, delta_pos_m: Vector3f32, dt: f32) {
         // Integrate physical kinematics forward (deterministic)
-        self.predict_state(delta_vel, delta_pos, dt);
+        self.predict_state(delta_vel_mps, delta_pos_m, dt);
 
         // Propagate covariance uncertainty blocks forward (stochastic)
         self.predict_covariance(dt);
@@ -97,8 +97,8 @@ impl KalmanFilterXyzWithSensors {
         self.push_snapshot(dt);
     }
 
-    pub fn predict_state(&mut self, delta_vel: Vector3f32, delta_pos: Vector3f32, dt: f32) {
-        self.base.predict_state(delta_vel, delta_pos, dt);
+    pub fn predict_state(&mut self, delta_vel_mps: Vector3f32, delta_pos_m: Vector3f32, dt: f32) {
+        self.base.predict_state(delta_vel_mps, delta_pos_m, dt);
     }
 
     pub fn predict_covariance(&mut self, dt: f32) {
@@ -107,37 +107,37 @@ impl KalmanFilterXyzWithSensors {
 
     /// Correct altitude using supplied R.
     #[inline]
-    pub fn correct_altitude(&mut self, altitude: f32, r: f32) -> KalmanFilterDiagnostics {
-        self.base.correct_altitude(altitude, r)
+    pub fn correct_altitude(&mut self, altitude_m: f32, r: f32) -> KalmanFilterDiagnostics {
+        self.base.correct_altitude(altitude_m, r)
     }
 
     /// Correct altitude using the barometer measurement.
     #[inline]
-    pub fn correct_altitude_using_barometer(&mut self, altitude: f32) -> KalmanFilterDiagnostics {
-        self.base.correct_altitude(altitude, self.R_barometer)
+    pub fn correct_altitude_using_barometer(&mut self, altitude_m: f32) -> KalmanFilterDiagnostics {
+        self.base.correct_altitude(altitude_m, self.R_barometer)
     }
 
     /// Correct altitude using the rangefinder measurement.
     #[inline]
-    pub fn correct_altitude_using_rangefinder(&mut self, altitude: f32) -> KalmanFilterDiagnostics {
-        self.base.correct_altitude(altitude, self.R_rangefinder)
+    pub fn correct_altitude_using_rangefinder(&mut self, altitude_m: f32) -> KalmanFilterDiagnostics {
+        self.base.correct_altitude(altitude_m, self.R_rangefinder)
     }
 
     /// Correct altitude using GPS vertical measurement.
     #[inline]
-    pub fn correct_altitude_using_gps(&mut self, altitude: f32) -> KalmanFilterDiagnostics {
-        self.base.correct_altitude(altitude, self.R_gps_vertical)
+    pub fn correct_altitude_using_gps(&mut self, altitude_m: f32) -> KalmanFilterDiagnostics {
+        self.base.correct_altitude(altitude_m, self.R_gps_vertical)
     }
 
     /// Correct position using GPS position measurement (typically at a 1Hz to 10Hz rate).
-    pub fn correct_position_using_gps(&mut self, position: Vector3f32) -> KalmanFilterDiagnostics {
+    pub fn correct_position_using_gps(&mut self, position_m: Vector3f32) -> KalmanFilterDiagnostics {
         let r_gps = Vector3f32 { x: self.R_gps_horizontal, y: self.R_gps_horizontal, z: self.R_gps_vertical };
-        self.base.correct_position(position, r_gps)
+        self.base.correct_position(position_m, r_gps)
     }
 
     /// Correct position using optical flow position measurement.
-    pub fn correct_position_using_optical_flow(&mut self, position: Vector2f32) -> KalmanFilterDiagnostics {
-        self.base.correct_position_xy(position, self.R_optical_flow)
+    pub fn correct_position_using_optical_flow(&mut self, position_m: Vector2f32) -> KalmanFilterDiagnostics {
+        self.base.correct_position_xy(position_m, self.R_optical_flow)
     }
 }
 
@@ -162,7 +162,7 @@ impl KalmanFilterXyzWithSensors {
     /// We correct the current state vector directly.
     pub fn correct_position_delayed(
         &mut self,
-        measurement: Vector3f32,
+        measurement_m: Vector3f32,
         R: Vector3f32,
         sensor_time: f32,
         dt: f32,
@@ -171,8 +171,8 @@ impl KalmanFilterXyzWithSensors {
         let Some((past, _)) = self.find_snapshot(sensor_time, dt) else {
             return KalmanFilterDiagnostics::default();
         };
-        let predicted_measurement = past.pos;
-        self.base.correct_position_short_form(measurement, predicted_measurement, R)
+        let predicted_measurement_m = past.pos_m;
+        self.base.correct_position_short_form(measurement_m, predicted_measurement_m, R)
     }
 }
 
@@ -188,7 +188,7 @@ impl KalmanFilterXyzWithSensors {
         self.history.system_time += dt;
 
         let snapshot =
-            Snapshot { time_stamp: self.history.system_time, pos: self.pos(), gps_pos: None, baro_alt: None };
+            Snapshot { time_stamp: self.history.system_time, pos_m: self.pos_m(), gps_pos_m: None, baro_alt_m: None };
 
         self.history.head_idx = (self.history.head_idx + 1) % self.history.snapshot.len();
         self.history.snapshot[self.history.head_idx] = snapshot;
@@ -198,12 +198,12 @@ impl KalmanFilterXyzWithSensors {
     }
 
     pub fn register_gps_event(&mut self, gps_pos: Vector3f32) {
-        self.history.snapshot[self.history.head_idx].gps_pos = Some(gps_pos);
+        self.history.snapshot[self.history.head_idx].gps_pos_m = Some(gps_pos);
     }
 
     /// Flags that a fresh Barometric Altitude measurement occurred at the current step.
     pub fn register_baro_event(&mut self, altitude: f32) {
-        self.history.snapshot[self.history.head_idx].baro_alt = Some(altitude);
+        self.history.snapshot[self.history.head_idx].baro_alt_m = Some(altitude);
     }
 
     /// Retrieves a historical snapshot of the filter state at a given index.
@@ -239,9 +239,9 @@ impl KalmanFilterXyzWithSensors {
 pub struct Snapshot {
     pub time_stamp: f32,
 
-    pub pos: Vector3f32,
-    pub gps_pos: Option<Vector3f32>,
-    pub baro_alt: Option<f32>,
+    pub pos_m: Vector3f32,
+    pub gps_pos_m: Option<Vector3f32>,
+    pub baro_alt_m: Option<f32>,
 }
 
 impl Default for Snapshot {
@@ -252,7 +252,7 @@ impl Default for Snapshot {
 
 impl Snapshot {
     pub const fn new() -> Self {
-        Self { time_stamp: 0.0, pos: Vector3f32::ZERO, gps_pos: None, baro_alt: None }
+        Self { time_stamp: 0.0, pos_m: Vector3f32::ZERO, gps_pos_m: None, baro_alt_m: None }
     }
 }
 #[allow(non_snake_case)]

@@ -55,33 +55,33 @@ impl KalmanFilterZWithSensors {
 impl KalmanFilterZWithSensors {
     #[inline]
     #[must_use]
-    pub fn pos(&self) -> f32 {
-        self.base.state.pos
+    pub fn pos_m(&self) -> f32 {
+        self.base.state.pos_m
     }
 
     #[inline]
     #[must_use]
-    pub fn vel(&self) -> f32 {
-        self.base.state.vel
+    pub fn vel_mps(&self) -> f32 {
+        self.base.state.vel_mps
     }
 
     #[inline]
     #[must_use]
-    pub fn acc_bias(&self) -> f32 {
-        self.base.state.acc_bias
+    pub fn acc_bias_mps2(&self) -> f32 {
+        self.base.state.acc_bias_mps2
     }
 
     /// Called inside the main IMU execution loop (eg `gyro_pid` loop).
-    pub fn predict(&mut self, acc: f32, dt: f32) {
+    pub fn predict(&mut self, acc_mps2: f32, dt: f32) {
         // Integrate physical kinematics forward (deterministic)
-        self.predict_state(acc, dt);
+        self.predict_state(acc_mps2, dt);
 
         // Propagate covariance uncertainty blocks forward (stochastic)
         self.predict_covariance(dt);
     }
 
-    pub fn predict_state(&mut self, acc_measurement: f32, dt: f32) {
-        self.base.predict_state(acc_measurement, dt);
+    pub fn predict_state(&mut self, acc_mps2: f32, dt: f32) {
+        self.base.predict_state(acc_mps2, dt);
     }
 
     pub fn predict_covariance(&mut self, dt: f32) {
@@ -89,8 +89,8 @@ impl KalmanFilterZWithSensors {
     }
     /// Correct altitude using supplied R.
     #[inline]
-    pub fn correct_altitude(&mut self, altitude: f32, r: f32) -> KalmanFilterDiagnostics {
-        self.base.correct_altitude(altitude, r)
+    pub fn correct_altitude(&mut self, altitude_m: f32, r: f32) -> KalmanFilterDiagnostics {
+        self.base.correct_altitude(altitude_m, r)
     }
 
     /// Correct altitude using the barometer measurement.
@@ -107,8 +107,8 @@ impl KalmanFilterZWithSensors {
 
     /// Correct altitude using GPS vertical measurement.
     #[inline]
-    pub fn correct_altitude_using_gps(&mut self, altitude: f32) -> KalmanFilterDiagnostics {
-        self.base.correct_altitude(altitude, self.R_gps_vertical)
+    pub fn correct_altitude_using_gps(&mut self, altitude_m: f32) -> KalmanFilterDiagnostics {
+        self.base.correct_altitude(altitude_m, self.R_gps_vertical)
     }
 }
 

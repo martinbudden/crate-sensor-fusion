@@ -83,20 +83,20 @@ impl KalmanFilterXy {
 impl KalmanFilterXy {
     #[inline]
     #[must_use]
-    pub fn pos(&self) -> Vector2f32 {
-        self.state.pos
+    pub fn pos_m(&self) -> Vector2f32 {
+        self.state.pos_m
     }
 
     #[inline]
     #[must_use]
-    pub fn vel(&self) -> Vector2f32 {
-        self.state.vel
+    pub fn vel_mps(&self) -> Vector2f32 {
+        self.state.vel_mps
     }
 
     #[inline]
     #[must_use]
-    pub fn acc_bias(&self) -> Vector2f32 {
-        self.state.acc_bias
+    pub fn acc_bias_mps2(&self) -> Vector2f32 {
+        self.state.acc_bias_mps2
     }
 }
 
@@ -114,12 +114,12 @@ impl KalmanFilterXy {
     /// pos_k = pos_k₋₁ + vel_k₋₁ * dt + 0.5 * acc * dt²
     /// vel_k = vel_k₋₁ + acc * dt
     /// ```
-    pub fn predict_state(&mut self, acc_measurement: Vector2f32, dt: f32) {
+    pub fn predict_state(&mut self, acc_mps2: Vector2f32, dt: f32) {
         // Physical mechanics
         // s = ut + 0.5 * a * t²
-        self.state.pos += (self.state.vel + 0.5 * acc_measurement * dt) * dt;
+        self.state.pos_m += (self.state.vel_mps + 0.5 * acc_mps2 * dt) * dt;
         // v = u + a * t
-        self.state.vel += acc_measurement * dt;
+        self.state.vel_mps += acc_mps2 * dt;
         // Bias remains constant during prediction, it is modeled as a random walk in covariance.
         // So `self.acc_bias` not updated.
     }
@@ -195,8 +195,8 @@ impl KalmanFilterXy {
     /// R is measurement noise covariance.
     pub fn correct_position_short_form(
         &mut self,
-        measurement: Vector2f32,
-        predicted_measurement: Vector2f32,
+        measurement_m: Vector2f32,
+        predicted_measurement_m: Vector2f32,
         R: Vector2f32,
     ) -> KalmanFilterDiagnostics {
         // Extract the submatrices representing H * P.
@@ -216,7 +216,7 @@ impl KalmanFilterXy {
 
         // Calculate the innovation.
         // y = z - H * x
-        let innovation = measurement - predicted_measurement;
+        let innovation_m = measurement_m - predicted_measurement_m;
 
         // Calculate K, the Kalman gain.
         // Calculate the 3x3 segmented Kalman Gain pieces
@@ -232,9 +232,9 @@ impl KalmanFilterXy {
 
         // Update the physical state vectors
         // x += K * y
-        self.state.pos += K_pos * innovation;
-        self.state.vel += K_vel * innovation;
-        self.state.acc_bias += K_acc_bias * innovation;
+        self.state.pos_m += K_pos * innovation_m;
+        self.state.vel_mps += K_vel * innovation_m;
+        self.state.acc_bias_mps2 += K_acc_bias * innovation_m;
 
         // P -= K * (H * P)
         // Calculate by subtracting the K * (H * P) submatrices one by one.
@@ -268,8 +268,8 @@ impl KalmanFilterXy {
     /// That is it ensures the covariance matrix has positive eigenvalues and remains valid and invertible for future updates.
     pub fn correct_position_joseph_stabilized_form(
         &mut self,
-        measurement: Vector2f32,
-        predicted_measurement: Vector2f32,
+        measurement_m: Vector2f32,
+        predicted_measurement_m: Vector2f32,
         R: Vector2f32,
     ) -> KalmanFilterDiagnostics {
         // Calculate S, the Residual Covariance matrix:
@@ -290,13 +290,13 @@ impl KalmanFilterXy {
 
         // Calculate the innovation.
         // y = z - H * x
-        let innovation = measurement - predicted_measurement;
+        let innovation_m = measurement_m - predicted_measurement_m;
 
         // Update the physical state vectors
         // x += K * y
-        self.state.pos += K_pos * innovation;
-        self.state.vel += K_vel * innovation;
-        self.state.acc_bias += K_acc_bias * innovation;
+        self.state.pos_m += K_pos * innovation_m;
+        self.state.vel_mps += K_vel * innovation_m;
+        self.state.acc_bias_mps2 += K_acc_bias * innovation_m;
 
         // P = (I - KH) * P * (I - KH)ᵀ + KRKᵀ
 
@@ -354,12 +354,12 @@ impl KalmanFilterXy {
         KalmanFilterDiagnostics::default()
     }
 
-    pub fn correct_position(&mut self, position: Vector2f32, R: Vector2f32) -> KalmanFilterDiagnostics {
-        self.correct_position_short_form(position, self.state.pos, R)
+    pub fn correct_position(&mut self, position_m: Vector2f32, R: Vector2f32) -> KalmanFilterDiagnostics {
+        self.correct_position_short_form(position_m, self.state.pos_m, R)
     }
 
-    pub fn correct_position_joseph(&mut self, position: Vector2f32, R: Vector2f32) -> KalmanFilterDiagnostics {
-        self.correct_position_joseph_stabilized_form(position, self.state.pos, R)
+    pub fn correct_position_joseph(&mut self, position_m: Vector2f32, R: Vector2f32) -> KalmanFilterDiagnostics {
+        self.correct_position_joseph_stabilized_form(position_m, self.state.pos_m, R)
     }
 }
 
@@ -367,12 +367,12 @@ impl KalmanFilterXy {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanStateXy {
     // 3D Kinematic State Vectors
-    /// Position {x, y}.
-    pub pos: Vector2f32,
-    /// Velocity {x, y}.
-    pub vel: Vector2f32,
-    /// Accelerometer Bias {x, y}.
-    pub acc_bias: Vector2f32,
+    /// Position {x, y}, meters.
+    pub pos_m: Vector2f32,
+    /// Velocity {x, y}, meters per second.
+    pub vel_mps: Vector2f32,
+    /// Accelerometer Bias {x, y}, meters per second squared.
+    pub acc_bias_mps2: Vector2f32,
 }
 
 impl Default for KalmanStateXy {
@@ -386,9 +386,9 @@ impl KalmanStateXy {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            pos: Vector2f32 { x: 0.0, y: 0.0 },
-            vel: Vector2f32 { x: 0.0, y: 0.0 },
-            acc_bias: Vector2f32 { x: 0.0, y: 0.0 },
+            pos_m: Vector2f32 { x: 0.0, y: 0.0 },
+            vel_mps: Vector2f32 { x: 0.0, y: 0.0 },
+            acc_bias_mps2: Vector2f32 { x: 0.0, y: 0.0 },
         }
     }
 }
@@ -432,7 +432,7 @@ mod tests {
         let true_bias = Vector2f32 { x: -0.03, y: 0.04 }; // System accelerometer bias
 
         // Prime the filter's initial position guess to match our starting point
-        filter.state.pos = true_pos;
+        filter.state.pos_m = true_pos;
 
         println!("\n--- PHASE 1: STATIONARY GPS LOCK (1 SECOND) ---");
         #[allow(clippy::cast_possible_truncation)]
@@ -449,13 +449,13 @@ mod tests {
         }
 
         // --- PHASE 1 AUDIT LOGS ---
-        println!("Stationary -> True Pos X: {:.4}, Estimated Pos X: {:.4}", true_pos.x, filter.pos().x);
-        println!("Stationary -> True Vel X: {:.4}, Estimated Vel X: {:.4}", true_vel.x, filter.vel().x);
-        println!("Stationary -> True Bias X: {:.4}, Estimated Bias X: {:.4}", true_bias.x, filter.acc_bias().x);
+        println!("Stationary -> True Pos X: {:.4}, Estimated Pos X: {:.4}", true_pos.x, filter.pos_m().x);
+        println!("Stationary -> True Vel X: {:.4}, Estimated Vel X: {:.4}", true_vel.x, filter.vel_mps().x);
+        println!("Stationary -> True Bias X: {:.4}, Estimated Bias X: {:.4}", true_bias.x, filter.acc_bias_mps2().x);
 
         // Verification assertions for Phase 1
-        assert!((filter.pos().x - true_pos.x).abs() < 0.05, "Position drifted while stationary!");
-        assert!((filter.vel().x - true_vel.x).abs() < 0.05, "Velocity accumulated noise while stationary!");
+        assert!((filter.pos_m().x - true_pos.x).abs() < 0.05, "Position drifted while stationary!");
+        assert!((filter.vel_mps().x - true_vel.x).abs() < 0.05, "Velocity accumulated noise while stationary!");
 
         // Ensure covariance has shrunk significantly below the starting bounds
         let post_stat_p_pos_x = filter.P[KalmanFilterXy::PP][KalmanFilterXy::M11];
@@ -482,16 +482,16 @@ mod tests {
         }
 
         // --- PHASE 2 AUDIT LOGS ---
-        println!("Maneuver -> True Final Pos X: {:.4}, Estimated Final Pos X: {:.4}", true_pos.x, filter.pos().x);
-        println!("Maneuver -> True Final Pos Y: {:.4}, Estimated Final Pos Y: {:.4}", true_pos.y, filter.pos().y);
-        println!("Maneuver -> True Final Vel X: {:.4}, Estimated Final Vel X: {:.4}", true_vel.x, filter.vel().x);
-        println!("Maneuver -> True Final Vel Y: {:.4}, Estimated Final Vel Y: {:.4}", true_vel.y, filter.vel().y);
+        println!("Maneuver -> True Final Pos X: {:.4}, Estimated Final Pos X: {:.4}", true_pos.x, filter.pos_m().x);
+        println!("Maneuver -> True Final Pos Y: {:.4}, Estimated Final Pos Y: {:.4}", true_pos.y, filter.pos_m().y);
+        println!("Maneuver -> True Final Vel X: {:.4}, Estimated Final Vel X: {:.4}", true_vel.x, filter.vel_mps().x);
+        println!("Maneuver -> True Final Vel Y: {:.4}, Estimated Final Vel Y: {:.4}", true_vel.y, filter.vel_mps().y);
 
         // Tracking precision assertions
-        assert!((filter.pos().x - true_pos.x).abs() < 0.1, "Filter missed true physical X position track!");
-        assert!((filter.pos().y - true_pos.y).abs() < 0.1, "Filter missed true physical Y position track!");
-        assert!((filter.vel().x - true_vel.x).abs() < 0.1, "Filter velocity tracking tracking failed on X axis!");
-        assert!((filter.vel().y - true_vel.y).abs() < 0.1, "Filter velocity tracking tracking failed on Y axis!");
+        assert!((filter.pos_m().x - true_pos.x).abs() < 0.1, "Filter missed true physical X position track!");
+        assert!((filter.pos_m().y - true_pos.y).abs() < 0.1, "Filter missed true physical Y position track!");
+        assert!((filter.vel_mps().x - true_vel.x).abs() < 0.1, "Filter velocity tracking tracking failed on X axis!");
+        assert!((filter.vel_mps().y - true_vel.y).abs() < 0.1, "Filter velocity tracking tracking failed on Y axis!");
 
         println!("\n✅ 2D position state propagation and measurement updates verified successfully!");
     }

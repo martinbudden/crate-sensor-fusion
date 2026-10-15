@@ -97,8 +97,8 @@ impl KalmanFilterZ {
         self.Q_velocity = bias_instability_mps2 * bias_instability_mps2 / tau;
     }
 
-    pub fn set_initial_position(&mut self, initial_position: f32) {
-        self.state.pos = initial_position;
+    pub fn set_initial_position(&mut self, initial_position_m: f32) {
+        self.state.pos_m = initial_position_m;
 
         // --- Define Initial Uncertainties (Variances) ---
         let p_pos_init = 25.0; // ±5 meters initial position uncertainty, typical of GPS
@@ -118,19 +118,19 @@ impl KalmanFilterZ {
 impl KalmanFilterZ {
     #[inline]
     #[must_use]
-    pub fn pos(&self) -> f32 {
+    pub fn pos_m(&self) -> f32 {
         self.P[Self::PP]
     }
 
     #[inline]
     #[must_use]
-    pub fn vel(&self) -> f32 {
+    pub fn vel_mps(&self) -> f32 {
         self.P[Self::VV]
     }
 
     #[inline]
     #[must_use]
-    pub fn acc_bias(&self) -> f32 {
+    pub fn acc_bias_mps2(&self) -> f32 {
         self.P[Self::BB]
     }
 }
@@ -149,20 +149,20 @@ impl KalmanFilterZ {
     /// pos_k = pos_k₋₁ + vel_k₋₁ * dt + 0.5 * acc * dt²
     /// vel_k = vel_k₋₁ + acc * dt
     /// ```
-    pub fn predict_state(&mut self, acc_measurement: f32, dt: f32) {
+    pub fn predict_state(&mut self, acc_mps2: f32, dt: f32) {
         // In NED, positive Z is down, so gravity is a positive vector
-        let gravity = 9.80665;
+        let gravity_mps2 = 9.80665;
 
         // Calculate true physical acceleration by removing bias and adding gravity
         // Note: in a NED frame, gravity is a positive vector pointing downwards, so it is added to the accelerometer measurement.
-        let acc = acc_measurement - self.state.acc_bias + gravity;
+        let acc_mps2 = acc_mps2 - self.state.acc_bias_mps2 + gravity_mps2;
 
         // Physical mechanics
         // s = ut + 0.5 * a * t²
-        self.state.pos += (self.state.vel + 0.5 * acc * dt) * dt;
+        self.state.pos_m += (self.state.vel_mps + 0.5 * acc_mps2 * dt) * dt;
 
         // v = u + a * t
-        self.state.vel += acc * dt;
+        self.state.vel_mps += acc_mps2 * dt;
 
         // Bias remains constant during prediction, it is modeled as a random walk in covariance.
         // So `self.acc_bias` is not updated.
@@ -301,7 +301,7 @@ impl KalmanFilterZ {
            let K_vel = self.P[Self::VP].column(2) * S_inv;
            let K_acc_bias = self.P[Self::BP].column(2) * S_inv;
     */
-    pub fn correct_altitude(&mut self, altitude_measurement: f32, R: f32) -> KalmanFilterDiagnostics {
+    pub fn correct_altitude(&mut self, altitude_m: f32, R: f32) -> KalmanFilterDiagnostics {
         // The altitude measurement directly observes position.z.
         //
         // H = [0 0 1   0 0 0   0 0 0]
@@ -339,10 +339,10 @@ impl KalmanFilterZ {
         let K_acc_bias = P_acc_bias * S_inv;
 
         // The innovation(y) is a scalar.
-        let innovation = altitude_measurement - self.state.pos;
+        let innovation_m = altitude_m - self.state.pos_m;
 
         // NIS = yᵀ * S⁻¹ * y.
-        let nis = (innovation * innovation) * S_inv;
+        let nis = (innovation_m * innovation_m) * S_inv;
         let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP], nis };
         if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_1D
             && self.consecutive_rejection_count < KalmanFilterDiagnostics::MAX_CONSECUTIVE_REJECTION_COUNT
@@ -355,9 +355,9 @@ impl KalmanFilterZ {
         self.consecutive_rejection_count = 0;
 
         // Update state using vector scaling
-        self.state.pos += K_pos * innovation;
-        self.state.vel += K_vel * innovation;
-        self.state.acc_bias += K_acc_bias * innovation;
+        self.state.pos_m += K_pos * innovation_m;
+        self.state.vel_mps += K_vel * innovation_m;
+        self.state.acc_bias_mps2 += K_acc_bias * innovation_m;
 
         // Covariance update
         //
@@ -383,8 +383,8 @@ impl KalmanFilterZ {
 
     pub fn correct_position(
         &mut self,
-        measurement: f32,
-        predicted_measurement: f32,
+        measurement_m: f32,
+        predicted_measurement_m: f32,
         R: f32,
     ) -> KalmanFilterDiagnostics {
         // S = H * P * Hᵀ + R
@@ -408,10 +408,10 @@ impl KalmanFilterZ {
 
         // Calculate the innovation.
         // y = z - H * x
-        let innovation = measurement - predicted_measurement;
+        let innovation_m = measurement_m - predicted_measurement_m;
 
         // NIS = yᵀ * S⁻¹ * y.
-        let nis = (innovation * innovation) * S_inv;
+        let nis = (innovation_m * innovation_m) * S_inv;
         let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP], nis };
         if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_1D
             && self.consecutive_rejection_count < KalmanFilterDiagnostics::MAX_CONSECUTIVE_REJECTION_COUNT
@@ -437,9 +437,9 @@ impl KalmanFilterZ {
 
         // Update the physical state vectors
         // x += K * y
-        self.state.pos += K_pos * innovation;
-        self.state.vel += K_vel * innovation;
-        self.state.acc_bias += K_acc_bias * innovation;
+        self.state.pos_m += K_pos * innovation_m;
+        self.state.vel_mps += K_vel * innovation_m;
+        self.state.acc_bias_mps2 += K_acc_bias * innovation_m;
 
         // P -= K * (H * P)
         // Calculate by subtracting the K * (H * P) submatrices one by one.
@@ -469,12 +469,12 @@ impl KalmanFilterZ {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanStateZ {
     // 3D Kinematic State Vectors
-    /// Position.
-    pub pos: f32,
-    /// Velocity.
-    pub vel: f32,
-    /// Accelerometer Bias.
-    pub acc_bias: f32,
+    /// Position, meters.
+    pub pos_m: f32,
+    /// Velocity, meters per second.
+    pub vel_mps: f32,
+    /// Accelerometer Bias, meters per second squared.
+    pub acc_bias_mps2: f32,
 }
 
 impl Default for KalmanStateZ {
@@ -487,7 +487,7 @@ impl KalmanStateZ {
     /// Constructor.
     #[must_use]
     pub const fn new() -> Self {
-        Self { pos: 0.0, vel: 0.0, acc_bias: 0.0 }
+        Self { pos_m: 0.0, vel_mps: 0.0, acc_bias_mps2: 0.0 }
     }
 }
 
