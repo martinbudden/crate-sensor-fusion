@@ -7,14 +7,18 @@ pub type MadgwickFilterf32 = MadgwickFilter<f32>;
 /// Madgwick filter for `f64`<br><br>
 pub type MadgwickFilterf64 = MadgwickFilter<f64>;
 
-pub trait ConstFour {
-    const FOUR: Self;
+pub trait ConstFourGMps {
+    const G_MPS2: Self;
+    const FOUR_G_MPS2: Self;
 }
-impl ConstFour for f32 {
-    const FOUR: Self = 4.0;
+
+impl ConstFourGMps for f32 {
+    const G_MPS2: f32 = 9.80665;
+    const FOUR_G_MPS2: Self = 4.0 * Self::G_MPS2;
 }
-impl ConstFour for f64 {
-    const FOUR: Self = 4.0;
+impl ConstFourGMps for f64 {
+    const G_MPS2: f64 = 9.80665;
+    const FOUR_G_MPS2: Self = 4.0 * Self::G_MPS2;
 }
 
 /// [Madgwick filter](https://ahrs.readthedocs.io/en/latest/filters/madgwick.html).
@@ -32,7 +36,7 @@ pub struct MadgwickFilter<T> {
 
 impl<T> Default for MadgwickFilter<T>
 where
-    T: Copy + ConstZero + ConstOne + ConstFour,
+    T: Copy + ConstZero + ConstOne + ConstFourGMps,
 {
     fn default() -> Self {
         Self::new()
@@ -41,14 +45,14 @@ where
 
 impl<T> MadgwickFilter<T>
 where
-    T: Copy + ConstZero + ConstOne + ConstFour,
+    T: Copy + ConstZero + ConstOne + ConstFourGMps,
 {
     /// Constructor.
     #[must_use]
     pub const fn new() -> Self {
         MadgwickFilter {
             q: Quaternion { w: T::ONE, x: T::ZERO, y: T::ZERO, z: T::ZERO },
-            max_acc_magnitude_squared: T::FOUR,
+            max_acc_magnitude_squared: T::FOUR_G_MPS2,
             beta: T::ONE,
             beta_yaw: T::ZERO,
         }
@@ -120,9 +124,9 @@ where
     }
 
     /// Fuses accelerometer and gyroscope readings to give the orientation quaternion.
-    fn fuse_acc_gyro(&mut self, acc: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> Quaternion<T> {
+    fn fuse_acc_gyro(&mut self, acc_mps2: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> Quaternion<T> {
         // Calculate the corrective step.
-        let step = SensorFusionMath::madgwick_step_acc(self.q, acc, self.max_acc_magnitude_squared);
+        let step = SensorFusionMath::madgwick_step_acc(self.q, acc_mps2, self.max_acc_magnitude_squared);
 
         // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate and subtract the corrective step.
         let q_dot = SensorFusionMath::derivative(self.q, gyro_rps) - step * self.beta;
@@ -138,13 +142,13 @@ where
     /// Fuses accelerometer, gyroscope, and magnetometer readings to give the orientation quaternion.
     fn fuse_acc_gyro_mag(
         &mut self,
-        acc: Vector3<T>,
+        acc_mps2: Vector3<T>,
         gyro_rps: Vector3<T>,
         mag: Vector3<T>,
         delta_t: T,
     ) -> Quaternion<T> {
         // Calculate the corrective step.
-        let step = SensorFusionMath::madgwick_step_acc_mag(self.q, acc, mag, self.max_acc_magnitude_squared);
+        let step = SensorFusionMath::madgwick_step_acc_mag(self.q, acc_mps2, mag, self.max_acc_magnitude_squared);
 
         // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate and subtract the corrective step.
         let q_dot = SensorFusionMath::derivative(self.q, gyro_rps) - step * self.beta;
@@ -243,10 +247,10 @@ mod tests {
         let mut madgwick_filter = MadgwickFilterf32::default();
 
         let dt: f32 = 0.001;
-        let acc = Vector3f32::default();
+        let acc_mps2 = Vector3f32::default();
         let gyro_rps = Vector3f32::default();
 
-        let orientation = madgwick_filter.fuse_acc_gyro(acc, gyro_rps, dt);
+        let orientation = madgwick_filter.fuse_acc_gyro(acc_mps2, gyro_rps, dt);
         //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
         assert!(orientation.is_near_one(1.2e-4));
     }
@@ -260,10 +264,10 @@ mod tests {
         madgwick_filter.set_beta(1.0);
 
         let delta_t: f32 = 0.0;
-        let acc = Vector3f32::default();
+        let acc_mps2 = Vector3f32::default();
         let gyro_rps = Vector3f32::default();
 
-        let orientation = madgwick_filter.fuse_acc_gyro(acc, gyro_rps, delta_t);
+        let orientation = madgwick_filter.fuse_acc_gyro(acc_mps2, gyro_rps, delta_t);
         //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
         assert!(orientation.is_near_one(1.2e-4));
     }
@@ -273,10 +277,10 @@ mod tests {
         let mut madgwick_filter = MadgwickFilterf32::default();
 
         let delta_t: f32 = 0.0;
-        let acc = Vector3f32::default();
+        let acc_mps2 = Vector3f32::default();
         let gyro_rps = Vector3f32::default();
 
-        let orientation = (acc, gyro_rps).fuse_acc_gyro_using(&mut madgwick_filter, delta_t);
+        let orientation = (acc_mps2, gyro_rps).fuse_acc_gyro_using(&mut madgwick_filter, delta_t);
         //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
         assert!(orientation.is_near_one(1.2e-4));
     }

@@ -30,7 +30,7 @@ impl SensorFusionMath for f32 {
     }
 
     #[inline(always)]
-    fn derivative(q: Quaternion<Self>, gyro: Vector3<Self>) -> Quaternion<Self> {
+    fn derivative(q: Quaternion<Self>, gyro_rps: Vector3<Self>) -> Quaternion<Self> {
         #[cfg(feature = "simd")]
         {
             /*// Load q: [w, x, y, z]
@@ -73,7 +73,7 @@ impl SensorFusionMath for f32 {
 
             unsafe { core::mem::transmute(q_dot) }*/
             let q_v = f32x4::from(q);
-            let g_raw = f32x4::from(gyro);
+            let g_raw = f32x4::from(gyro_rps);
 
             // Shift [x, y, z, pad] to [0, x, y, z] and zero the w lane
             let g_v = simd_swizzle!(g_raw, [3, 0, 1, 2]) * f32x4::from_array([0.0, 1.0, 1.0, 1.0]);
@@ -100,10 +100,10 @@ impl SensorFusionMath for f32 {
         #[cfg(not(feature = "simd"))]
         {
             Quaternion {
-                w: (-q.x * gyro.x - q.y * gyro.y - q.z * gyro.z) * 0.5,
-                x: f32::midpoint(q.w * gyro.x - q.z * gyro.y, q.y * gyro.z),
-                y: (q.z * gyro.x + q.w * gyro.y - q.x * gyro.z) * 0.5,
-                z: (-q.y * gyro.x + q.x * gyro.y + q.w * gyro.z) * 0.5,
+                w: (-q.x * gyro_rps.x - q.y * gyro_rps.y - q.z * gyro_rps.z) * 0.5,
+                x: f32::midpoint(q.w * gyro_rps.x - q.z * gyro_rps.y, q.y * gyro_rps.z),
+                y: (q.z * gyro_rps.x + q.w * gyro_rps.y - q.x * gyro_rps.z) * 0.5,
+                z: (-q.y * gyro_rps.x + q.x * gyro_rps.y + q.w * gyro_rps.z) * 0.5,
             }
         }
     }
@@ -120,14 +120,14 @@ impl SensorFusionMath for f32 {
     ///    meaning this whole function could resolve in under 15 clock cycles.
     ///
     #[inline(always)]
-    fn madgwick_step_acc(q: Quaternion<Self>, acc: Vector3<Self>, max_acc_magnitude_squared: Self) -> Quaternion<Self> {
+    fn madgwick_step_acc(q: Quaternion<Self>, acc_mps2: Vector3<Self>, max_acc_magnitude_squared: Self) -> Quaternion<Self> {
         use num_traits::Zero;
         use vqm::MathMethods;
 
-        let acc_magnitude_squared = acc.norm_squared();
+        let acc_magnitude_squared = acc_mps2.norm_squared();
         // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
         // so exclude it from the calculation in these cases
-        let mut a = acc;
+        let mut a = acc_mps2;
         if acc_magnitude_squared > max_acc_magnitude_squared || acc_magnitude_squared == 0.0 {
             a = Vector3::zero();
         } else {
@@ -182,17 +182,17 @@ impl SensorFusionMath for f32 {
     #[inline(always)]
     fn madgwick_step_acc_mag(
         q: Quaternion<Self>,
-        acc: Vector3<Self>,
+        acc_mps2: Vector3<Self>,
         mag: Vector3<Self>,
         max_acc_magnitude_squared: Self,
     ) -> Quaternion<Self> {
         use num_traits::Zero;
         use vqm::MathMethods;
 
-        let acc_magnitude_squared = acc.norm_squared();
+        let acc_magnitude_squared = acc_mps2.norm_squared();
         // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
         // so exclude it from the calculation in these cases
-        let mut a = acc;
+        let mut a = acc_mps2;
         if acc_magnitude_squared > max_acc_magnitude_squared || acc_magnitude_squared == 0.0 {
             a = Vector3::zero();
         } else {
@@ -290,14 +290,14 @@ impl SensorFusionMath for f64 {
     }
 
     #[inline(always)]
-    fn madgwick_step_acc(q: Quaternion<Self>, acc: Vector3<Self>, max_acc_magnitude_squared: Self) -> Quaternion<Self> {
+    fn madgwick_step_acc(q: Quaternion<Self>, acc_mps2: Vector3<Self>, max_acc_magnitude_squared: Self) -> Quaternion<Self> {
         use num_traits::Zero;
         use vqm::MathMethods;
 
-        let acc_magnitude_squared = acc.norm_squared();
+        let acc_magnitude_squared = acc_mps2.norm_squared();
         // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
         // so exclude it from the calculation in these cases
-        let mut a = acc;
+        let mut a = acc_mps2;
         if acc_magnitude_squared > max_acc_magnitude_squared || acc_magnitude_squared == 0.0 {
             a = Vector3::zero();
         } else {
@@ -317,7 +317,7 @@ impl SensorFusionMath for f64 {
     #[inline(always)]
     fn madgwick_step_acc_mag(
         q: Quaternion<Self>,
-        _acc: Vector3<Self>,
+        _acc_mps2: Vector3<Self>,
         _mag: Vector3<Self>,
         _max_acc_magnitude_squared: Self,
     ) -> Quaternion<Self> {

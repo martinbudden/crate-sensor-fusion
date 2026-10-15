@@ -76,15 +76,15 @@ where
     }
 
     /// Fuses accelerometer and gyroscope readings to give the orientation quaternion.
-    fn fuse_acc_gyro(&mut self, acc: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> Quaternion<T> {
+    fn fuse_acc_gyro(&mut self, acc_mps2: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> Quaternion<T> {
         // Normalize acceleration
-        let acc = acc.normalize();
+        let acc = acc_mps2.normalize();
 
         // Calculate estimated direction of gravity in the sensor coordinate frame
-        let gravity = self.q.gravity();
+        let gravity_mps2 = self.q.gravity();
 
         // Error is the cross product between direction measured by acceleration and estimated direction of gravity
-        let error = acc.cross(gravity);
+        let error = acc.cross(gravity_mps2);
 
         // Quadratic Interpolation (From Attitude Representation and Kinematic Propagation for Low-Cost UAVs by Robert T. Casey, Equation 14)
         // See https://docs.rosflight.org/v1.3/algorithms/estimator/#modifications-to-original-passive-filter for a publicly available explanation
