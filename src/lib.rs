@@ -24,6 +24,8 @@ mod complementary_filter;
 mod madgwick_filter;
 mod mahony_filter;
 
+mod imu_integrator;
+
 mod kalman_filter_diagnostics;
 
 mod kalman_filter_z;
@@ -47,6 +49,8 @@ pub use mahony_filter::{MahonyFilter, MahonyFilterf32, MahonyFilterf64};
 
 pub use sensor_fusion::{FuseAccGyro, FuseAccGyroMag, SensorFusion};
 pub use sensor_fusion_math::SensorFusionMath;
+
+pub use imu_integrator::{ImuIntegral, ImuIntegrator};
 
 pub use kalman_filter_diagnostics::KalmanFilterDiagnostics;
 pub use kalman_filter_z::{KalmanFilterZ, KalmanFilterZf32};

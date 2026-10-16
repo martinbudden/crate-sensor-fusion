@@ -167,24 +167,24 @@ A computationally less expensive approach is to remove the responsibility for ca
 the Kalman filter and use a another sensor fusion filter (ie a Mahony or Madgwick) filter to do this:
 
 ```text
- ┌─────┐           Acc Vector                      ┌────────────┐
- │     │──────────────────────────────────────────▶│ FLIGHT     │
- │ IMU │            ┌──────────┐                   │ CONTROLLER │
- │     │───────────▶│ MADGWICK ├──────────────────▶│            │
- └─────┘  Acc/Gyro  │ FILTER   │  Orientation      └────────────┘
-    │               └──────────┘  Quaternion
-    │                   │
-    ▼ Acc               ▼ Orientation
-    │                   │
-┌────────────┐          │
-│ INTEGRATOR │────◀─────┘
-└────────────┘
+ ┌─────┐                   Acc                 ┌────────────┐
+ │     ├────────────────────▶──────────────────┤ FLIGHT     │
+ │ IMU │    Acc     ┌──────────┐               │ CONTROLLER │
+ │     ├──────▶─────│ MADGWICK ├──────▶────────┤            │
+ └──┬──┘    Gyro    │ FILTER   │  Orientation  └────────────┘
+    │               └───┬──────┘
+    ▼ Acc(unfiltered)   │
+    │                   ▼ Orientation
+┌───┴────────┐          │
+│    IMU     ├────◀─────┘
+│ INTEGRATOR │
+└───┬────────┘
     │
-  delta_pos         ┌──────────┐  Position Vector
-  delta_vel         │ POSITION │  Velocity Vector  ┌───────────┐
-    └──────────────▶│ KALMAN   ├──────────────────▶│ AUTOPILOT │
-                    │ FILTER   │                   └───────────┘
-                    └──────────┘
+  delta_pos
+  delta_vel         ┌────────┐     Position    ┌───────────┐
+    └──────────────▶┤ KALMAN ├─────────▶───────┤ AUTOPILOT │
+                    │ FILTER │     Velocity    └───────────┘
+                    └────┬───┘
                          │
   GPS, Barometer, etc ─▶─┘
 ```
