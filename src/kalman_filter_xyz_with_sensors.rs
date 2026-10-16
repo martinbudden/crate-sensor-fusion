@@ -197,13 +197,13 @@ impl KalmanFilterXyzWithSensors {
         self.history.tick_counter = 0;
     }
 
-    pub fn register_gps_event(&mut self, gps_pos: Vector3f32) {
-        self.history.snapshot[self.history.head_idx].gps_pos_m = Some(gps_pos);
+    pub fn register_gps_event(&mut self, gps_pos_m: Vector3f32) {
+        self.history.snapshot[self.history.head_idx].gps_pos_m = Some(gps_pos_m);
     }
 
     /// Flags that a fresh Barometric Altitude measurement occurred at the current step.
-    pub fn register_baro_event(&mut self, altitude: f32) {
-        self.history.snapshot[self.history.head_idx].baro_alt_m = Some(altitude);
+    pub fn register_baro_event(&mut self, altitude_m: f32) {
+        self.history.snapshot[self.history.head_idx].baro_alt_m = Some(altitude_m);
     }
 
     /// Retrieves a historical snapshot of the filter state at a given index.

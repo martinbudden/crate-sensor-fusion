@@ -120,7 +120,11 @@ impl SensorFusionMath for f32 {
     ///    meaning this whole function could resolve in under 15 clock cycles.
     ///
     #[inline(always)]
-    fn madgwick_step_acc(q: Quaternion<Self>, acc_mps2: Vector3<Self>, max_acc_magnitude_squared: Self) -> Quaternion<Self> {
+    fn madgwick_step_acc(
+        q: Quaternion<Self>,
+        acc_mps2: Vector3<Self>,
+        max_acc_magnitude_squared: Self,
+    ) -> Quaternion<Self> {
         use num_traits::Zero;
         use vqm::MathMethods;
 
@@ -290,7 +294,11 @@ impl SensorFusionMath for f64 {
     }
 
     #[inline(always)]
-    fn madgwick_step_acc(q: Quaternion<Self>, acc_mps2: Vector3<Self>, max_acc_magnitude_squared: Self) -> Quaternion<Self> {
+    fn madgwick_step_acc(
+        q: Quaternion<Self>,
+        acc_mps2: Vector3<Self>,
+        max_acc_magnitude_squared: Self,
+    ) -> Quaternion<Self> {
         use num_traits::Zero;
         use vqm::MathMethods;
 

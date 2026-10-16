@@ -111,8 +111,8 @@ impl KalmanFilterXyz {
         self.Q_velocity = bias_instability_mps2 * bias_instability_mps2 / tau;
     }
 
-    pub fn set_initial_position(&mut self, initial_position: Vector3f32) {
-        self.state.pos_m = initial_position;
+    pub fn set_initial_position(&mut self, initial_position_m: Vector3f32) {
+        self.state.pos_m = initial_position_m;
 
         // --- Define Initial Uncertainties (Variances) ---
         let p_pos_init = 25.0; // ±5 meters initial position uncertainty, typical of GPS
@@ -152,26 +152,13 @@ impl KalmanFilterXyz {
 // **** Predict ****
 
 impl KalmanFilterXyz {
-    // Propagates the state vector forward using IMU acceleration inputs.
-    /// Integrates raw IMU accelerometer data to predict new position and velocity vectors.
-    ///
-    /// This forms the continuous dead reckoning pipeline driving vehicle kinetics forward.
+    /// Propagates the state vector forward using `delta_vel` and `delta_pos` from the IMU integrator.
+    /// ```text
     ///     ┌          ┐
     ///     │  ½·dt·I₃ │
     /// B = │    I₃    │
     ///     │    0₃    │
     ///     └          ┘.
-    /// ### Physical Mechanics
-    /// ```math
-    ///
-    /// delta_v = integral of acc over t, ie ~ acc·dt
-    ///
-    /// pos_ₖ = pos_ₖ₋₁ + vel_ₖ₋₁ * dt + ½·acc·dt²
-    /// vel_ₖ = vel_ₖ₋₁ + acc * dt
-    ///
-    /// so
-    /// pos_ₖ = pos_ₖ₋₁ + vel_ₖ₋₁ * dt + ½·delta_v·dt
-    /// vel_ₖ = vel_ₖ₋₁ + delta_v
     /// ```
     pub fn predict_state(&mut self, delta_vel_mps: Vector3f32, delta_pos_m: Vector3f32, dt: f32) {
         // Gravity and acc bias were not included in the IMU integration, so we need to correct for them here.
@@ -192,18 +179,17 @@ impl KalmanFilterXyz {
     }
 
     /// Predict covariance:
+    /// ```text
+    /// P = F·P·Fᵀ·Q
     ///
-    /// `P = F·P·Fᵀ·Q`.
-    ///
-    /// `P`: State covariance matrix
-    /// `F`: State transition matrix (Delta-Velocity model)
-    /// `Q`: Process noise covariance.
+    /// P: State covariance matrix
+    /// F: State transition matrix
+    /// Q: Process noise covariance.
     ///
     /// A full 9x9 matrix multiplication involves 729 individual arithmetic operations.
     /// Instead the matrix is divided into 9 separate 3x3 sub-matrices (blocks),
     /// and each block is processed separately.
     ///
-    /// ```text
     /// ┌                 9x9                  ┐
     /// │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
     /// │ │ Position ││ Position ││ Position │ │
@@ -238,7 +224,7 @@ impl KalmanFilterXyz {
     ///     │ │    0     ││    0     ││    I     │ │
     ///     │ └          ┘└          ┘└          ┘ │
     ///     └                                      ┘
-    ///₃
+    ///
     ///     ┌                            ┐
     ///     │  I₃     dt·I₃   -½·dt²·I₃  │
     /// F = │  0₃       I₃      -dt·I₃   │
@@ -274,7 +260,7 @@ impl KalmanFilterXyz {
     #[allow(non_snake_case)]
     pub fn predict_covariance(&mut self, dt: f32) {
         // =====================================================================
-        // PROPAGATE THE COVARIANCE P_new = (F·P_old·Fᵀ)
+        // PROPAGATE THE COVARIANCE P_new = F·P_old·Fᵀ
         // =====================================================================
 
         // alias self.P for readability.
@@ -410,12 +396,11 @@ impl KalmanFilterXyz {
         let K_acc_bias = P_acc_bias * S_inv;
 
         // The innovation(y) is a scalar.
-        let innovation = altitude_m - self.state.pos_m.z;
+        let innovation_m = altitude_m - self.state.pos_m.z;
 
         // NIS = yᵀ * S⁻¹ * y.
-        let nis = (innovation * innovation) * S_inv;
+        let nis = (innovation_m * innovation_m) * S_inv;
         let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP].trace(), nis };
-
         if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_1D
             && self.altitude_consecutive_rejection_count < KalmanFilterDiagnostics::MAX_CONSECUTIVE_REJECTION_COUNT
         {
@@ -427,13 +412,13 @@ impl KalmanFilterXyz {
         self.altitude_consecutive_rejection_count = 0;
 
         // Update state using vector scaling
-        self.state.pos_m += K_pos * innovation;
-        self.state.vel_mps += K_vel * innovation;
-        self.state.acc_bias_mps2 += K_acc_bias * innovation;
+        self.state.pos_m += K_pos * innovation_m;
+        self.state.vel_mps += K_vel * innovation_m;
+        self.state.acc_bias_mps2 += K_acc_bias * innovation_m;
 
         // Covariance update (rank-1 outer product)
         //
-        // P -= (P Hᵀ)(H P) / S
+        // P -= (P·Hᵀ)(H·P) / S
         //
         self.P[Self::PP] -= Matrix3x3f32::outer_product(K_pos, P_pos);
         self.P[Self::PV] -= Matrix3x3f32::outer_product(K_pos, P_vel);
@@ -501,11 +486,11 @@ impl KalmanFilterXyz {
 
         // Calculate the innovation.
         // y = z - H·x
-        let innovation = measurement - predicted_measurement;
+        let innovation_m = measurement - predicted_measurement;
 
         // Normalized Innovation Squared (NIS) = yᵀ·S⁻¹·y  (aka Mahalanobis Distance)
         // Dot product results in a unitless scalar
-        let nis = innovation.dot(S_inv * innovation);
+        let nis = innovation_m.dot(S_inv * innovation_m);
         let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP].trace(), nis };
 
         if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_3D
@@ -517,6 +502,7 @@ impl KalmanFilterXyz {
             return diagnostics;
         }
         self.position_consecutive_rejection_count = 0;
+
         // Calculate K, the Kalman gain.
         // Calculate the 3x3 segmented Kalman Gain pieces
         //
@@ -531,9 +517,9 @@ impl KalmanFilterXyz {
 
         // Update the physical state vectors
         // x += K·y
-        self.state.pos_m += K_pos * innovation;
-        self.state.vel_mps += K_vel * innovation;
-        self.state.acc_bias_mps2 += K_acc_bias * innovation;
+        self.state.pos_m += K_pos * innovation_m;
+        self.state.vel_mps += K_vel * innovation_m;
+        self.state.acc_bias_mps2 += K_acc_bias * innovation_m;
 
         // P -= K·(H·P)
         // Calculate by subtracting the K·(H·P) submatrices one by one.
@@ -802,7 +788,7 @@ impl KalmanFilterXyz {
 
 impl KalmanFilterXyz {
     /// Evaluates if an incoming innovation vector satisfies chi-squared gating thresholds.
-    /// Formula: `d² = yᵀ· S⁻¹·y`.
+    /// Formula: `d² = yᵀ·S⁻¹·y`.
     ///
     /// Layouts:
     /// * `self.P`: 9x9 Column-Major Covariance Matrix (used to extract the 3x3 S matrix block)
@@ -888,7 +874,6 @@ mod test_traits {
         is_full::<KalmanStateXyz>();
     }
 }
-
 
 /*
 #[cfg(test)]

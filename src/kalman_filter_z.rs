@@ -32,6 +32,8 @@ impl Default for KalmanFilterZ {
 
 #[allow(missing_docs)]
 impl KalmanFilterZ {
+    const G_MPS2: f32 = 9.80665;
+
     const PP: usize = 0;
     const VP: usize = 1;
     const BP: usize = 2;
@@ -47,9 +49,9 @@ impl KalmanFilterZ {
 
 impl KalmanFilterZ {
     /// Constructor.
-    #[allow(non_snake_case)]
     #[must_use]
     pub fn new() -> Self {
+        #[allow(non_snake_case)]
         let mut P = Matrix3x3f32::default();
 
         // Seed initial Position uncertainty (ie, confident within 1 meter)
@@ -79,8 +81,7 @@ impl KalmanFilterZ {
     /// Input is accelerometer noise density in g per root-Hertz.
     /// Datasheets typically specify accelerometer noise density in micro-g per root-Hertz  or mg per root-Hertz.
     pub fn set_q_velocity(&mut self, acc_noise_density_g_per_root_hz: f32, denominator: u32) {
-        const G: f32 = 9.80665;
-        let acc_noise_density_mps2_per_root_hz = acc_noise_density_g_per_root_hz * G;
+        let acc_noise_density_mps2_per_root_hz = acc_noise_density_g_per_root_hz * Self::G_MPS2;
         #[allow(clippy::cast_precision_loss)]
         {
             self.Q_velocity =
@@ -92,8 +93,7 @@ impl KalmanFilterZ {
     /// Input is accelerometer bias instability in g per time period tau.
     /// Datasheets typically specify bias instability in micro-g over a time constant tau, typically 100 seconds.
     pub fn set_q_bias(&mut self, bias_instability_g: f32, tau: f32) {
-        const G: f32 = 9.80665;
-        let bias_instability_mps2 = bias_instability_g * G;
+        let bias_instability_mps2 = bias_instability_g * Self::G_MPS2;
         self.Q_velocity = bias_instability_mps2 * bias_instability_mps2 / tau;
     }
 
@@ -138,139 +138,97 @@ impl KalmanFilterZ {
 // **** Predict ****
 
 impl KalmanFilterZ {
-    // Propagates the state vector forward using IMU acceleration inputs.
-    /// Integrates raw IMU accelerometer data to predict new position and velocity vectors.
-    ///
-    /// This forms the continuous dead reckoning pipeline driving vehicle kinetics forward.
-    ///
-    /// ### Physical Mechanics
-    /// ```math
-    ///
-    /// pos_k = pos_k₋₁ + vel_k₋₁ * dt + 0.5 * acc * dt²
-    /// vel_k = vel_k₋₁ + acc * dt
+    /// Propagates the state vector forward using `delta_vel` and `delta_pos` from the IMU integrator.
+    /// ```text
+    ///     ┌          ┐
+    ///     │  ½·dt·I  │
+    /// B = │    I     │
+    ///     │    0     │
+    ///     └          ┘.
     /// ```
-    pub fn predict_state(&mut self, acc_mps2: f32, dt: f32) {
-        // In NED, positive Z is down, so gravity is a positive vector
-        let gravity_mps2 = 9.80665;
+    pub fn predict_state(&mut self, delta_vel_mps: f32, delta_pos_m: f32, dt: f32) {
+        // Gravity and acc bias were not included in the IMU integration, so we need to correct for them here.
 
-        // Calculate true physical acceleration by removing bias and adding gravity
-        // Note: in a NED frame, gravity is a positive vector pointing downwards, so it is added to the accelerometer measurement.
-        let acc_mps2 = acc_mps2 - self.state.acc_bias_mps2 + gravity_mps2;
+        // Correct the integrated position for acc bias and add the gravity-induced displacement.
+        self.state.pos_m +=
+            delta_pos_m + dt * (self.state.vel_mps + 0.5 * (Self::G_MPS2 - self.state.acc_bias_mps2) * dt);
 
-        // Physical mechanics
-        // s = ut + 0.5 * a * t²
-        self.state.pos_m += (self.state.vel_mps + 0.5 * acc_mps2 * dt) * dt;
+        // Correct the integrated velocity for acc bias and add gravity.
+        self.state.vel_mps += delta_vel_mps + (Self::G_MPS2 - self.state.acc_bias_mps2) * dt;
 
-        // v = u + a * t
-        self.state.vel_mps += acc_mps2 * dt;
-
-        // Bias remains constant during prediction, it is modeled as a random walk in covariance.
-        // So `self.acc_bias` is not updated.
+        // Bias remains constant during prediction: its uncertainty is modelled as a random walk in the covariance.
+        // So we don't update `self.state.acc_bias` here.
     }
 
     /// Predict covariance:
-    ///
-    /// `P = F * P * Fᵀ + Q`.
-    ///
-    /// `P`: State covariance matrix
-    /// `F`: State transition matrix
-    /// `Q`: Process noise covariance.
-    ///
-    /// A full 9x9 matrix multiplication involves 729 individual arithmetic operations.
-    /// Instead the matrix is divided into 9 separate 3x3 sub-matrices (blocks),
-    /// and each block is processed separately.
-    ///
     /// ```text
-    /// ┌                 9x9                  ┐
-    /// │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
-    /// │ │ Position ││ Position ││ Position │ │
-    /// │ │ Position ││ Velocity ││ Bias     │ │
-    /// │ └          ┘└          ┘└          ┘ │
-    /// │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
-    /// │ │ Velocity ││ Velocity ││ Velocity │ │
-    /// │ │ Position ││ Velocity ││ Bias     │ │
-    /// │ └          ┘└          ┘└          ┘ │
-    /// │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
-    /// │ │ Bias     ││ Bias     ││ Bias     │ │
-    /// │ │ Position ││ Velocity ││ Bias     │ │
-    /// │ └          ┘└          ┘└          ┘ │
-    /// └                                      ┘
+    /// P = F·P·Fᵀ·Q
     ///
-    /// In a Kalman filter tracking Position (P), Velocity (V), and an Accelerometer Bias (B)
-    /// over a small time increment (dt), the physical laws of motion give:
-    ///     P_new = P + V * dt
-    ///     V_new = V - B * dt  (Bias is subtracted from acceleration)
-    ///     B_new = B (Bias is modeled as a constant or random walk)
+    /// P: State covariance matrix
+    /// F: State transition matrix
+    /// Q: Process noise covariance
     ///
-    /// Expressed as a 3x3 block state transition matrix, that gives:
-    ///
-    ///     ┌                 9x9                  ┐
-    ///     │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
-    ///     │ │    I     ││   dt*I   ││    0     │ │
-    ///     │ └          ┘└          ┘└          ┘ │
-    ///     │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
-    /// F = │ │    0     ││    I     ││  -dt*I   │ │
-    ///     │ └          ┘└          ┘└          ┘ │
-    ///     │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
-    ///     │ │    0     ││    0     ││    I     │ │
-    ///     │ └          ┘└          ┘└          ┘ │
-    ///     └                                      ┘
-    ///
-    /// Since this is a sparse matrix, we can calculate F * P * Fᵀ without doing full 9x9 matrix multiplications.
-    /// Instead we perform the multiplication block by block.
-    ///
-    /// Expanding F * P * Fᵀ algebraically gives the following block updates:
-    ///
-    /// For the position columns (PP, VP, BP)
-    ///     PP_new = PP + dt * (VP + PV) + dt^2 * VV
-    ///     VP_new = VP + dt * VV - dt * BP - dt^2 * BV
-    ///     BP_new = BP + dt * BV
-    /// For the velocity columns (PV, VV, BV)
-    ///     PV_new = PV + dt * VV - dt * PB - dt^2 * VB
-    ///     VV_new = VV - dt * (BV + VB) + dt^2 * BB
-    ///     BV_new = BV - dt * BB
-    /// For the bias columns (PB, VB, BB)
-    ///     PB_new = PB + dt * VB
-    ///     VB_new = VB - dt * BB
-    ///     BB_new = BB
+    ///     ┌                         ┐
+    ///     │  I     dt·I   -½·dt²·I  │
+    /// F = │  0       I      -dt·I   │
+    ///     │  0       0         I    │
+    ///     └                         ┘
     /// ```
-    #[allow(unused)]
     #[allow(non_snake_case)]
     pub fn predict_covariance(&mut self, dt: f32) {
         // =====================================================================
-        // PROPAGATE THE COVARIANCE P_new = (F * P_old * Fᵀ)
+        // PROPAGATE THE COVARIANCE P_new = (F·P_old·Fᵀ)
         // =====================================================================
 
         let dt2 = dt * dt;
-        let dt3 = dt2 * dt;
-        let dt4 = dt2 * dt2;
+        // alias self.P for readability.
+        let P = &mut self.P;
 
-        // Avoid taking a copy of self.P by using temporary indices and shadowing them out of scope when they have been used.
-        // This ensures we cannot use an updated value in a subsequent update.
+        // We can update P in place by ensuring RHS of all P assignments refers to P_old.
+        //
+        // We use temporary indices and shadow them out of scope when they have been used.
+        // This ensures we cannot use an updated value in a subsequent update, ie P_new can not be used on RHS.
         let (PP, VP, BP, PV, VV, BV, PB, VB, BB) =
             (Self::PP, Self::VP, Self::BP, Self::PV, Self::VV, Self::BV, Self::PB, Self::VB, Self::BB);
 
         // --- POSITION COLUMNS (PP, VP, BP) ---
-        self.P[PP] = (self.P[VP] + self.P[PV]) * dt + self.P[VV] * dt2;
-        let PP = (); // Stop P_new[PP] being used in subsequent calculations.
-        self.P[VP] = self.P[VP] + (self.P[VV] - self.P[BP]) * dt - self.P[BV] * dt2;
-        let VP = (); // Stop P_new[VP] being used in subsequent calculations.
-        self.P[BP] += self.P[BV] * dt;
-        let BP = (); // Stop P_new[BP] being used in subsequent calculations.
+        P[PP] = (P[VP] + P[PV]) * dt + P[VV] * dt2;
+        // Retire PP.
+        let PP = ();
+        () = PP;
+        P[VP] = P[VP] + (P[VV] - P[BP]) * dt - P[BV] * dt2;
+        // Retire VP.
+        let VP = ();
+        () = VP;
+        P[BP] += P[BV] * dt;
+        // Retire BP.
+        let BP = ();
+        () = BP;
 
         // --- VELOCITY COLUMNS (PV, VV, BV) ---
-        self.P[PV] = self.P[PV] + (self.P[VV] - self.P[PB]) * dt - self.P[VB] * dt2;
+        P[PV] = P[PV] + (P[VV] - P[PB]) * dt - P[VB] * dt2;
+        // Retire PV.
         let PV = ();
-        self.P[VV] = self.P[VV] - (self.P[BV] + self.P[VB]) * dt + self.P[BB] * dt2;
+        () = PV;
+        P[VV] = P[VV] - (P[BV] + P[VB]) * dt + P[BB] * dt2;
+        // Retire VV.
         let VV = ();
-        self.P[BV] -= self.P[BB] * dt;
+        () = VV;
+        P[BV] -= P[BB] * dt;
+        // Retire BV.
         let BV = ();
+        () = BV;
 
         // --- BIAS COLUMNS (PB, VB, BB) ---
-        self.P[PB] += self.P[VB] * dt;
+        P[PB] += P[VB] * dt;
+        // Retire PB.
         let PB = ();
-        self.P[VB] -= self.P[BB] * dt;
-        // self.P[Self::BB] = self.P[Self::BB]; don't need to update BB.
+        () = PB;
+        P[VB] -= P[BB] * dt;
+        // Retire BP.
+        let VB = ();
+        () = VB;
+        // P[Self::BB] = P[Self::BB]; don't need to update BB.
 
         // =====================================================================
         // APPLY PROCESS NOISE (Q)
@@ -278,11 +236,11 @@ impl KalmanFilterZ {
 
         // Continuous process noise integrated over dt maps to the diagonal variance slots of Velocity and Bias.
         // P += Q
-        self.P[Self::VV] += self.Q_velocity * dt;
-        self.P[Self::BB] += self.Q_bias * dt;
+        P[Self::VV] += self.Q_velocity * dt;
+        P[Self::BB] += self.Q_bias * dt;
 
         // Time propagation is highly sensitive to asymmetric shearing, so enforce symmetry on the covariance matrix.
-        self.P.enforce_symmetry();
+        P.enforce_symmetry();
     }
 }
 
@@ -387,19 +345,19 @@ impl KalmanFilterZ {
         predicted_measurement_m: f32,
         R: f32,
     ) -> KalmanFilterDiagnostics {
-        // S = H * P * Hᵀ + R
-        // K = P * Hᵀ * S⁻¹
-        // y = z - H * x
-        // x += K * y
-        // P -= (K * H) * P
+        // S = H·P·Hᵀ + R
+        // K = P·Hᵀ·S⁻¹
+        // y = z - H·x
+        // x = x + K·y
+        // P = P - K·H·P
 
-        // Extract the submatrices representing H * P.
+        // Extract the submatrices representing H·P.
         let P_pos = self.P[Self::PP];
         let P_vel = self.P[Self::PV];
         let P_acc_bias = self.P[Self::PB];
 
         // Calculate S, the Residual Covariance matrix:
-        // S = H * P * Hᵀ + R
+        // S = H·P·Hᵀ + R
         let S = P_pos + R;
         if S == 0.0 {
             return KalmanFilterDiagnostics::default();
@@ -407,10 +365,10 @@ impl KalmanFilterZ {
         let S_inv = 1.0 / S;
 
         // Calculate the innovation.
-        // y = z - H * x
+        // y = z - H·x
         let innovation_m = measurement_m - predicted_measurement_m;
 
-        // NIS = yᵀ * S⁻¹ * y.
+        // Normalized Innovation Squared (NIS) = yᵀ·S⁻¹·y  (aka Mahalanobis Distance)
         let nis = (innovation_m * innovation_m) * S_inv;
         let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP], nis };
         if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_1D
@@ -426,7 +384,7 @@ impl KalmanFilterZ {
         // Calculate K, the Kalman gain.
         // Calculate the 3x3 segmented Kalman Gain pieces
         //
-        // K = P * Hᵀ * S⁻¹
+        // K = P·Hᵀ·S⁻¹
         //
         // H selects the position column block stack (Column 0: PP, VP, BP)
         // H selects the position states, so P * Hᵀ is simply the first three columns of P,
@@ -436,13 +394,13 @@ impl KalmanFilterZ {
         let K_acc_bias = P_acc_bias * S_inv;
 
         // Update the physical state vectors
-        // x += K * y
+        // x += K·y
         self.state.pos_m += K_pos * innovation_m;
         self.state.vel_mps += K_vel * innovation_m;
         self.state.acc_bias_mps2 += K_acc_bias * innovation_m;
 
-        // P -= K * (H * P)
-        // Calculate by subtracting the K * (H * P) submatrices one by one.
+        // P -= K·(H·P)
+        // Calculate by subtracting the K·(H·P) submatrices one by one.
 
         // Column 0: position column submatrices
         self.P[Self::PP] -= K_pos * P_pos;
