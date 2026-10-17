@@ -1,5 +1,5 @@
 use core::ops::{Add, AddAssign};
-use num_traits::float::FloatCore;
+use num_traits::{ConstZero, float::FloatCore};
 use vqm::{Matrix2x2, Vector2};
 
 /// 2-dimensional anchor of `f32` values<br><br>
@@ -39,8 +39,12 @@ where
 #[must_use]
 pub fn trilaterate_2d<T>(anchors: &[Anchor2d<T>]) -> Option<Vector2<T>>
 where
-    T: Default + FloatCore + Add<T, Output = T> + AddAssign + vqm::Matrix2x2Math,
+    T: ConstZero + Default + FloatCore + Add<T, Output = T> + AddAssign + vqm::Matrix2x2Math,
 {
+    const A00: usize = 0;
+    const A01: usize = 1;
+    const A11: usize = 2;
+
     if anchors.len() < 3 {
         return None;
     }
@@ -57,16 +61,13 @@ where
     }
 
     let base = anchors[base_idx];
-    let base_norm_squared = base.pos.norm_squared();
-    let base_distance_squared = base.distance * base.distance;
 
-    // Initialize the accumulation structure for the 2x2 matrix ((A^T * A))
-    // Since A^T * A is symmetric we only need to calculate the upper right corner of the matrix.
+    // Initialize the accumulation structure for the 2x2 matrix Aᵀ·A
+    // Since Aᵀ·A is symmetric we only need to calculate the upper right corner of the matrix.
     // [ ata_00  ata_01 ]
     // [         ata_11 ]
-    let mut ata_00 = T::zero();
-    let mut ata_01 = T::zero();
-    let mut ata_11 = T::zero();
+    #[allow(non_snake_case)]
+    let mut ATA: [T; 3] = [T::zero(); 3];
 
     // Initialize the 2x1 vector (atb)
     let mut atb = Vector2::default();
@@ -79,22 +80,19 @@ where
         // Calculate row components for Matrix A
         let a_row = (base.pos - anchor.pos) * (T::one() + T::one());
 
-        // Accumulate into the (A^T * W * A) matrix
-        ata_00 += a_row.x * a_row.x;
-        ata_01 += a_row.x * a_row.y;
-        ata_11 += a_row.y * a_row.y;
+        // Accumulate into the Aᵀ·A matrix
+        ATA[A00] += a_row.x * a_row.x;
+        ATA[A01] += a_row.x * a_row.y;
+        ATA[A11] += a_row.y * a_row.y;
 
-        // Calculate vector B row values
-        let b_row = (anchor.distance * anchor.distance - base_distance_squared)
-            - (anchor.pos.norm_squared() - base_norm_squared);
+        // Calculate vector b row values
+        let b_row = (anchor.distance * anchor.distance - base.distance * base.distance)
+            - (anchor.pos.norm_squared() - base.pos.norm_squared());
         // Accumulate into the 3d vector A^T * B elements
         atb += a_row * b_row;
     }
 
-    let m = Matrix2x2::new([
-        ata_00, ata_01, //
-        ata_01, ata_11, //
-    ]);
+    let m = Matrix2x2::from_lower_triangular_array(ATA);
 
     let (adjugate, determinant) = m.adjugate();
     if determinant.abs() < T::min_positive_value() { None } else { Some((adjugate * atb) / determinant) }

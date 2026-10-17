@@ -332,9 +332,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.190"
+version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
+checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "libm"
@@ -655,7 +655,7 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 [[package]]
 name = "vqm"
 version = "0.1.17"
-source = "git+https://github.com/martinbudden/crate-vector-quaternion-matrix#13b0057053b64ad6329e7efee8efa48e71f42d90"
+source = "git+https://github.com/martinbudden/crate-vector-quaternion-matrix#de147e73e36cbed2775da2ecaf14e6cd44b98512"
 dependencies = [
  "derive_more",
  "libm",
