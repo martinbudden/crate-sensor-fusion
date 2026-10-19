@@ -74,21 +74,23 @@ S = H·P·Hᵀ + R = ⎢ P₂₁  P₂₂  P₂₃ ⎥ + ⎢    0     R_horiz   
 |     | Description                     | Type         | Notes                                       |
 | :-- | :------------------------------ | :----------- | :------------------------------------------ |
 |     | **predict**<br>`x = F·x + B·u`<br>`P = F·P·Fᵀ + Q` | |                                       |
-| `x` | estimated state vector          | n x 1 vector | Output                                      |
+| `u` | control input vector            | n x 1 vector | input                                       |
+| `B` | control input matrix            | n x m matrix | derived from system dynamics                |
 | `F` | state transition matrix         | n x n matrix | derived from system dynamics                |
+| `x` | estimated state vector          | n x 1 vector | output                                      |
 | `P` | state covariance matrix         | n x n matrix | estimated uncertainty                       |
-| `Q` | process noise covariance matrix | n x n matrix | how noisy is control vector (eg IMU)        |
+| `Q` | process noise covariance matrix | n x n matrix | how noisy is control input (eg IMU), derived from datasheet |
 |     | **correct**<br>`S = H·P·Hᵀ + R`<br>`K = P·Hᵀ·S⁻¹`<br>`y = z - H·x`<br>`x = x + K·y` | |      |
-| `y` | measurement innovation          | n x 1 vector | difference between measurement and estimate |
 | `z` | measurement vector              | m x 1 vector | input                                       |
+| `y` | measurement innovation          | n x 1 vector | difference between measurement and estimate |
 | `H` | measurement matrix              | m x n matrix | derived from system dynamics                |
-| `R` | measurement noise covariance    | m x m matrix | how noisy/accurate is sensor (eg GPS)       |
+| `R` | measurement noise covariance    | m x m matrix | how noisy/accurate is sensor (eg GPS), derived from datasheet |
 | `S` | innovation covariance matrix    | n x n matrix |                                             |
 | `K` | Kalman gain matrix              | n x m        |                                             |
 
 Alternate terms used in the literature and implementations
 
-`F` - sometimes represented as `A`
+`F` - sometimes represented as `A` or `Φ` (phi). Sometimes called the *Fundamental* matrix (hence `F`)
 `H` - observation matrix
 `y` - pre-fit residual (or simply residual), error, observation vector
 

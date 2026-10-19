@@ -193,41 +193,30 @@ impl KalmanFilterZ {
 
         // --- POSITION COLUMNS (PP, VP, BP) ---
         P[PP] = (P[VP] + P[PV]) * dt + P[VV] * dt2;
-        // Retire PP.
-        let PP = ();
-        () = PP;
+        retire!(PP);
+
         P[VP] = P[VP] + (P[VV] - P[BP]) * dt - P[BV] * dt2;
-        // Retire VP.
-        let VP = ();
-        () = VP;
+        retire!(VP);
+
         P[BP] += P[BV] * dt;
-        // Retire BP.
-        let BP = ();
-        () = BP;
+        retire!(BP);
 
         // --- VELOCITY COLUMNS (PV, VV, BV) ---
         P[PV] = P[PV] + (P[VV] - P[PB]) * dt - P[VB] * dt2;
-        // Retire PV.
-        let PV = ();
-        () = PV;
+        retire!(PV);
+
         P[VV] = P[VV] - (P[BV] + P[VB]) * dt + P[BB] * dt2;
-        // Retire VV.
-        let VV = ();
-        () = VV;
+        retire!(VV);
+
         P[BV] -= P[BB] * dt;
-        // Retire BV.
-        let BV = ();
-        () = BV;
+        retire!(BV);
 
         // --- BIAS COLUMNS (PB, VB, BB) ---
         P[PB] += P[VB] * dt;
-        // Retire PB.
-        let PB = ();
-        () = PB;
+        retire!(PB);
+
         P[VB] -= P[BB] * dt;
-        // Retire BP.
-        let VB = ();
-        () = VB;
+        retire!(BP);
         // P[Self::BB] = P[Self::BB]; don't need to update BB.
 
         // =====================================================================

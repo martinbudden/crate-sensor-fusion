@@ -243,8 +243,26 @@ Firstly we split the 9x9 matrix `P` into nine 3x3 submatrices:
 ```
 
 Then instead of performing operations on the entire 9x9 matrix, we can perform sub-operations on the submatrices.
-So, for example, the calculation`P = F·P·Fᵀ` is transformed into a number of 3x3 matrix multiplications and additions,
-rather than two 9x9 matrix multiplications and a transposition.
+In our system we have:
+
+```text
+    ┌                                           ┐
+    │  1  0  0   dt   0   0   -½dt     0     0  |
+    │  0  1  0    0  dt   0      0  -½dt     0  |
+    │  0  0  1    0   0  dt      0     0  -½dt  |
+    |                                           |
+    │  0  0  0    1   0   0    -dt     0     0  |
+F = │  0  0  0    0   1   0      0   -dt     0  |
+    │  0  0  0    0   0   1      0     0   -dt  |
+    |                                           |
+    │  0  0  0    0   0   0      1     0     0  |
+    │  0  0  0    0   0   0      0     1     0  |
+    │  0  0  0    0   0   0      0     0     1  |
+    └                                           ┘
+```
+
+So calculating `P = F·P·Fᵀ` directly by matrix multiplication and transposition is clearly extremely wasteful.
+Instead we take advantage of the sparseness of the matrix and operate on the 3x3 submatrices.
 
 In the correct phase we do not need to invert the full 9x9 matrix `S`, instead we invert the relevant submatrix.
 For a 3D measurement correction (eg position from GPS) this means inverting a 3x3 submatrix.
@@ -262,7 +280,7 @@ The Kalman filter equations themselves are mathematically well behaved, however 
 To mitigate these errors this implementation:
 
 1. Explicitly restores symmetry to the covariance matrix (by setting `P = ½(P + Pᵀ)`).
-2. Uses numerically stable Joseph form for covariance updates ( `P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ` rather than `P = P - K·H·P`)
+2. Uses numerically stable Joseph form for covariance updates ( `P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ` rather than `P = P - K·H·P + K·R·Kᵀ`)
 3. Uses Cholesky factorization of the innovation covariance matrix `S` (rather than taking the inverse of S).
 
 I plan to scale the states and measurements so their scales are broadly comparable, but this has not been implemented yet.

@@ -71,25 +71,25 @@ impl KalmanFilterXyzWithSensors {
     #[inline]
     #[must_use]
     pub fn pos_m(&self) -> Vector3f32 {
-        self.base.state.pos_m
+        self.base.state.pos_ned_m
     }
 
     #[inline]
     #[must_use]
     pub fn vel_mps(&self) -> Vector3f32 {
-        self.base.state.vel_mps
+        self.base.state.vel_ned_mps
     }
 
     #[inline]
     #[must_use]
     pub fn acc_bias_mps2(&self) -> Vector3f32 {
-        self.base.state.acc_bias_mps2
+        self.base.state.acc_bias_body_mps2
     }
 
     /// Called inside the main IMU execution loop (eg `gyro_pid` loop).
-    pub fn predict(&mut self, delta_vel_mps: Vector3f32, delta_pos_m: Vector3f32, dt: f32) {
+    pub fn predict(&mut self, delta_vel_ned_mps: Vector3f32, delta_pos_ned_m: Vector3f32, dt: f32) {
         // Integrate physical kinematics forward (deterministic)
-        self.predict_state(delta_vel_mps, delta_pos_m, dt);
+        self.predict_state(delta_vel_ned_mps, delta_pos_ned_m, dt);
 
         // Propagate covariance uncertainty blocks forward (stochastic)
         self.predict_covariance(dt);
@@ -97,8 +97,8 @@ impl KalmanFilterXyzWithSensors {
         self.push_snapshot(dt);
     }
 
-    pub fn predict_state(&mut self, delta_vel_mps: Vector3f32, delta_pos_m: Vector3f32, dt: f32) {
-        self.base.predict_state(delta_vel_mps, delta_pos_m, dt);
+    pub fn predict_state(&mut self, delta_vel_ned_mps: Vector3f32, delta_pos_ned_m: Vector3f32, dt: f32) {
+        self.base.predict_state(delta_vel_ned_mps, delta_pos_ned_m, dt);
     }
 
     pub fn predict_covariance(&mut self, dt: f32) {

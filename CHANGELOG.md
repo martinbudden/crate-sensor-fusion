@@ -20,11 +20,14 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 ### Added
 
 - `KalmanFilterXyzHistory` struct.
+- `_ned` and `_body` qualifiers to state vectors.
+- `retire!` macro.
 
 ### Changed
 
 - renamed `KalmanFilterXY` and related to `KalmanFilterXy`.
 - renamed `KalmanFilterXYZ` and related to `KalmanFilterXyz`.
+- moved Kalman filter tests into tests directory.
 
 ### Removed
 

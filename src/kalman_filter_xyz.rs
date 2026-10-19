@@ -9,7 +9,7 @@ pub type KalmanFilterXyzf32 = KalmanFilterXyz;
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterXyz {
-    /// 3D Kinematic State Vectors.
+    /// 3D Kinematic State Vectors, in the NED frame.
     pub state: KalmanStateXyz,
 
     // Predicted System Uncertainty Covariance Matrix (P).
@@ -37,21 +37,21 @@ impl Default for KalmanFilterXyz {
 impl KalmanFilterXyz {
     const G_MPS2: f32 = 9.80665;
 
-    const M11: usize = Matrix3x3xM3x3f32::M11;
-    const M22: usize = Matrix3x3xM3x3f32::M22;
-    const M33: usize = Matrix3x3xM3x3f32::M33;
+    pub const M11: usize = Matrix3x3xM3x3f32::M11;
+    pub const M22: usize = Matrix3x3xM3x3f32::M22;
+    pub const M33: usize = Matrix3x3xM3x3f32::M33;
 
-    const PP: usize = 0;
-    const VP: usize = 1;
-    const BP: usize = 2;
+    pub const PP: usize = 0;
+    pub const VP: usize = 1;
+    pub const BP: usize = 2;
 
-    const PV: usize = 3;
-    const VV: usize = 4;
-    const BV: usize = 5;
+    pub const PV: usize = 3;
+    pub const VV: usize = 4;
+    pub const BV: usize = 5;
 
-    const PB: usize = 6;
-    const VB: usize = 7;
-    const BB: usize = 8;
+    pub const PB: usize = 6;
+    pub const VB: usize = 7;
+    pub const BB: usize = 8;
 }
 
 impl KalmanFilterXyz {
@@ -112,7 +112,7 @@ impl KalmanFilterXyz {
     }
 
     pub fn set_initial_position(&mut self, initial_position_m: Vector3f32) {
-        self.state.pos_m = initial_position_m;
+        self.state.pos_ned_m = initial_position_m;
 
         // --- Define Initial Uncertainties (Variances) ---
         let p_pos_init = 25.0; // ±5 meters initial position uncertainty, typical of GPS
@@ -133,26 +133,26 @@ impl KalmanFilterXyz {
     #[inline]
     #[must_use]
     pub fn pos_m(&self) -> Vector3f32 {
-        self.state.pos_m
+        self.state.pos_ned_m
     }
 
     #[inline]
     #[must_use]
     pub fn vel_mps(&self) -> Vector3f32 {
-        self.state.vel_mps
+        self.state.vel_ned_mps
     }
 
     #[inline]
     #[must_use]
     pub fn acc_bias_mps2(&self) -> Vector3f32 {
-        self.state.acc_bias_mps2
+        self.state.acc_bias_body_mps2
     }
 }
 
 // **** Predict ****
 
 impl KalmanFilterXyz {
-    /// Propagates the state vector forward using `delta_vel` and `delta_pos` from the IMU integrator.
+    /// Predicts the state vectors using `delta_vel_mps` and `delta_pos_m` from the IMU integrator.
     /// ```text
     ///     ┌          ┐
     ///     │  ½·dt·I₃ │
@@ -160,19 +160,18 @@ impl KalmanFilterXyz {
     ///     │    0₃    │
     ///     └          ┘.
     /// ```
-    pub fn predict_state(&mut self, delta_vel_mps: Vector3f32, delta_pos_m: Vector3f32, dt: f32) {
-        // Gravity and acc bias were not included in the IMU integration, so we need to correct for them here.
+    /// Assumptions:
+    /// - `delta_pos_ned_m` is the integrated displacement contribution from acceleration in NED,
+    ///   including gravity compensation and correction using the estimated accelerometer bias.
+    /// - `delta_vel_ned_mps` is the corresponding integrated velocity increment, with the same corrections.
+    /// - Both increments are expressed in NED.
+    /// - `dt` equals the total integration duration represented by these increments.
+    pub fn predict_state(&mut self, delta_vel_ned_mps: Vector3f32, delta_pos_ned_m: Vector3f32, dt: f32) {
+        // Predict the position using standard kinematics, note we use the value of `state.vel_ned_mps` before it is updated.
+        self.state.pos_ned_m += delta_pos_ned_m + dt * self.state.vel_ned_mps;
 
-        // In NED, positive Z is down, so gravity is a positive vector.
-        let gravity_mps2 = Vector3f32 { x: 0.0, y: 0.0, z: Self::G_MPS2 };
-
-        // Correct the integrated position for acc bias and add the gravity-induced displacement.
-        let dp = delta_pos_m + 0.5 * (gravity_mps2 - self.state.acc_bias_mps2) * dt * dt;
-        self.state.pos_m += dp + self.state.vel_mps * dt;
-
-        // Correct the integrated velocity for acc bias and add gravity.
-        let dv = delta_vel_mps + (gravity_mps2 - self.state.acc_bias_mps2) * dt;
-        self.state.vel_mps += dv;
+        // Predict the velocity, using standard kinematics.
+        self.state.vel_ned_mps += delta_vel_ned_mps;
 
         // Bias remains constant during prediction: its uncertainty is modelled as a random walk in the covariance.
         // So we don't update `self.state.acc_bias` here.
@@ -180,15 +179,17 @@ impl KalmanFilterXyz {
 
     /// Predict covariance:
     /// ```text
-    /// P = F·P·Fᵀ·Q
+    /// P = F·P·Fᵀ + Q
     ///
     /// P: State covariance matrix
     /// F: State transition matrix
     /// Q: Process noise covariance.
     ///
-    /// A full 9x9 matrix multiplication involves 729 individual arithmetic operations.
-    /// Instead the matrix is divided into 9 separate 3x3 sub-matrices (blocks),
-    /// and each block is processed separately.
+    /// A naïve dense 9×9 matrix multiplication requires 729 scalar multiplications and 648 additions.
+    /// Calculating F·P·Fᵀ is even more expensive still.
+    /// Because F is sparse and block structured, the covariance can instead be propagated using explicit 3×3 block equations.
+    ///
+    /// Instead we can divide F into 9 separate 3x3 sub-matrices (blocks) and process each block using 3x3 matrix operations.
     ///
     /// ┌                 9x9                  ┐
     /// │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
@@ -215,39 +216,41 @@ impl KalmanFilterXyz {
     ///
     ///     ┌                 9x9                  ┐
     ///     │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
-    ///     │ │    I    ││   dt*I   ││ -½·dt²·I │ │
+    ///     │ │    I     ││   dt·I   ││ -½·dt²·I │ │
     ///     │ └          ┘└          ┘└          ┘ │
     ///     │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
-    /// F = │ │    0     ││    I     ││  -dt*I   │ │
+    /// F = │ │    0     ││    I     ││  -dt·I   │ │
     ///     │ └          ┘└          ┘└          ┘ │
     ///     │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
     ///     │ │    0     ││    0     ││    I     │ │
     ///     │ └          ┘└          ┘└          ┘ │
     ///     └                                      ┘
     ///
+    /// or (more compactly):
+    ///
     ///     ┌                            ┐
     ///     │  I₃     dt·I₃   -½·dt²·I₃  │
     /// F = │  0₃       I₃      -dt·I₃   │
     ///     │  0₃       0₃         I₃    │
     ///     └                            ┘
-    /// Since this is a sparse matrix, we can calculate F * P * Fᵀ without doing full 9x9 matrix multiplications.
+    /// Since this is a sparse matrix, we can calculate F·P·Fᵀ without doing full 9x9 matrix multiplications.
     /// Instead we perform the multiplication block by block.
     ///
     /// Expanding F·P·Fᵀ algebraically gives the following block updates:
     ///
     /// For the position columns (PP, VP, BP)
-    ///     PP_new = PP + dt * (PV + VP) + dt2 * VV - 0.5*dt2*(PB + BP) - 0.5*dt3*(VB + BV) + 0.25*dt4*BB
-    ///     VP_new = VP + dt * VV - dt * BP - dt2*BV - 0.5*dt2*VB + 0.5*dt3*BB
-    ///     BP_new = BP + dt * BV - 0.5 * dt2 * BB
+    ///     PP_new = PP + dt*(PV + VP) + dt2*(VV - 0.5*(PB + BP)) - 0.5*dt3*(VB + BV) + 0.25*dt4*BB
+    ///     VP_new = VP + dt*(VV - BP) - dt2*(BV + 0.5*VB) +        0.5*dt3*BB
+    ///     BP_new = BP + dt*BV  -       dt2*0.5*BB
     ///
     /// For the velocity columns (PV, VV, BV)
-    ///     PV_new = PV + dt * VV - dt*PB - dt2*VB - 0.5*dt2*BV + 0.5*dt3*BB
-    ///     VV_new = VV - dt * (BV + VB) + dt2*BB
-    ///     BV_new = BV - dt * BB
+    ///     PV_new = PV + dt*(VV - PB) - dt2*(VB + 0.5*BV) + dt3*0.5*BB
+    ///     VV_new = VV - dt*(BV + VB) + dt2*BB
+    ///     BV_new = BV - dt*BB
     ///
     /// For the bias columns (PB, VB, BB)
-    ///     PB_new = PB + dt * VB - 0.5 * dt2 * BB
-    ///     VB_new = VB - dt * BB
+    ///     PB_new = PB + dt*VB - dt2*0.5*BB
+    ///     VB_new = VB - dt*BB
     ///     BB_new = BB
     ///
     /// The process noise matrix Q
@@ -269,7 +272,7 @@ impl KalmanFilterXyz {
         // We can update P in place by ensuring RHS of all P assignments refers to P_old.
         //
         // We use temporary indices and shadow them out of scope when they have been used.
-        // This ensures we cannot use an updated value in a subsequent update, ie P_new can not be used on RHS.
+        // This ensures we cannot use an updated value in a subsequent update, ie P_new cannot be used on RHS.
         let (PP, VP, BP, PV, VV, BV, PB, VB, BB) =
             (Self::PP, Self::VP, Self::BP, Self::PV, Self::VV, Self::BV, Self::PB, Self::VB, Self::BB);
 
@@ -277,45 +280,30 @@ impl KalmanFilterXyz {
         P[PP] = P[PP]
             + dt * (P[PV] + P[VP] + dt * (P[VV] - 0.5 * (P[PB] + P[BP] + dt * (P[VB] + P[BV] - dt * 0.5 * P[BB]))));
         // Prevent P_new[PP] being accidentally used in subsequent calculations by retiring PP.
-        let PP = ();
-        () = PP;
+        retire!(PP);
 
         P[VP] = P[VP] + dt * (P[VV] - P[BP] - dt * (P[BV] + 0.5 * (P[VB] - dt * P[BB])));
-        // Retire VP.
-        let VP = ();
-        () = VP;
+        retire!(VP);
 
         P[BP] = P[BP] + dt * (P[BV] - dt * 0.5 * P[BB]);
-        // Retire BP.
-        let BP = ();
-        () = BP;
+        retire!(BP);
 
         // --- VELOCITY COLUMNS (PV, VV, BV) ---
         P[PV] = P[PV] + dt * (P[VV] - P[PB] - dt * (P[VB] + 0.5 * (P[BV] - dt * P[BB])));
-        // Retire PV.
-        let PV = ();
-        () = PV;
+        retire!(PV);
 
         P[VV] = P[VV] - dt * (P[BV] + P[VB] + dt * P[BB]);
-        // Retire VV.
-        let VV = ();
-        () = VV;
+        retire!(VV);
 
         P[BV] = P[BV] - dt * P[BB];
-        // Retire BV.
-        let BV = ();
-        () = BV;
+        retire!(BV);
 
         // --- BIAS COLUMNS (PB, VB, BB) ---
         P[PB] = P[PB] + dt * (P[VB] - dt * 0.5 * P[BB]);
-        // Retire PB.
-        let PB = ();
-        () = PB;
+        retire!(PB);
 
         P[VB] = P[VB] - dt * P[BB];
-        // Retire VB.
-        let VB = ();
-        () = VB;
+        retire!(VB);
         // P[BB] = P[BB]; so don't need to update BB.
 
         // =====================================================================
@@ -396,7 +384,7 @@ impl KalmanFilterXyz {
         let K_acc_bias = P_acc_bias * S_inv;
 
         // The innovation(y) is a scalar.
-        let innovation_m = altitude_m - self.state.pos_m.z;
+        let innovation_m = altitude_m - self.state.pos_ned_m.z;
 
         // NIS = yᵀ * S⁻¹ * y.
         let nis = (innovation_m * innovation_m) * S_inv;
@@ -412,9 +400,9 @@ impl KalmanFilterXyz {
         self.altitude_consecutive_rejection_count = 0;
 
         // Update state using vector scaling
-        self.state.pos_m += K_pos * innovation_m;
-        self.state.vel_mps += K_vel * innovation_m;
-        self.state.acc_bias_mps2 += K_acc_bias * innovation_m;
+        self.state.pos_ned_m += K_pos * innovation_m;
+        self.state.vel_ned_mps += K_vel * innovation_m;
+        self.state.acc_bias_body_mps2 += K_acc_bias * innovation_m;
 
         // Covariance update (rank-1 outer product)
         //
@@ -464,6 +452,7 @@ impl KalmanFilterXyz {
         predicted_measurement: Vector3f32,
         R: Vector3f32,
     ) -> KalmanFilterDiagnostics {
+        // H = [ I₃   0₃   0₃ ]
         // S = H·P·Hᵀ + R
         // K = P·Hᵀ·S⁻¹
         // y = z - H·x
@@ -475,11 +464,11 @@ impl KalmanFilterXyz {
         let P_vel = self.P[Self::PV];
         let P_acc_bias = self.P[Self::PB];
 
-        // Calculate S, the Residual Covariance matrix:
+        // Calculate S, the Innovation Covariance matrix:
         // S = H·P·Hᵀ + R
         let S = P_pos.add_diagonal_vector(R);
         let Some(S_inv) = S.try_inverse() else {
-            // The the Residual Covariance matrix may be non-invertible.
+            // The the Innovation Covariance matrix may be non-invertible.
             // This happens very rarely and is due to rounding errors when the process noise covariance Q is small.
             return KalmanFilterDiagnostics::default();
         };
@@ -517,9 +506,9 @@ impl KalmanFilterXyz {
 
         // Update the physical state vectors
         // x += K·y
-        self.state.pos_m += K_pos * innovation_m;
-        self.state.vel_mps += K_vel * innovation_m;
-        self.state.acc_bias_mps2 += K_acc_bias * innovation_m;
+        self.state.pos_ned_m += K_pos * innovation_m;
+        self.state.vel_ned_mps += K_vel * innovation_m;
+        self.state.acc_bias_body_mps2 += K_acc_bias * innovation_m;
 
         // P -= K·(H·P)
         // Calculate by subtracting the K·(H·P) submatrices one by one.
@@ -557,7 +546,14 @@ impl KalmanFilterXyz {
         predicted_measurement_m: Vector3f32,
         R: Vector3f32,
     ) -> KalmanFilterDiagnostics {
-        // Calculate S, the Residual Covariance matrix:
+        // H = [ I₃   0₃   0₃ ]
+        // S = H·P·Hᵀ + R
+        // K = P·Hᵀ·S⁻¹
+        // y = z - H·x
+        // x = x + K·y
+        // P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ); equivalent to P - K·H·P
+
+        // Calculate S, the Innovation Covariance matrix:
         // S = H·P·Hᵀ + R
         let S = self.P[Self::PP].add_diagonal_vector(R);
 
@@ -595,9 +591,9 @@ impl KalmanFilterXyz {
 
         // Update the physical state vectors
         // x += K ·y
-        self.state.pos_m += K_pos * innovation_m;
-        self.state.vel_mps += K_vel * innovation_m;
-        self.state.acc_bias_mps2 += K_acc_bias * innovation_m;
+        self.state.pos_ned_m += K_pos * innovation_m;
+        self.state.vel_ned_mps += K_vel * innovation_m;
+        self.state.acc_bias_body_mps2 += K_acc_bias * innovation_m;
 
         // P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ
 
@@ -683,7 +679,7 @@ impl KalmanFilterXyz {
             return KalmanFilterDiagnostics::default();
         }
         // Position relative to the anchor.
-        let position_m = self.state.pos_m - anchor_position_m;
+        let position_m = self.state.pos_ned_m - anchor_position_m;
 
         // Predicted range.
         let predicted_distance_m = position_m.norm();
@@ -746,9 +742,9 @@ impl KalmanFilterXyz {
 
         // Update the physical state vectors
         // x += K·y
-        self.state.pos_m += K_pos * innovation_m;
-        self.state.vel_mps += K_vel * innovation_m;
-        self.state.acc_bias_mps2 += K_acc_bias * innovation_m;
+        self.state.pos_ned_m += K_pos * innovation_m;
+        self.state.vel_ned_mps += K_vel * innovation_m;
+        self.state.acc_bias_body_mps2 += K_acc_bias * innovation_m;
 
         // Covariance update:
         //     P_new = P - K·H·P
@@ -776,11 +772,11 @@ impl KalmanFilterXyz {
     }
 
     pub fn correct_position(&mut self, position_m: Vector3f32, R: Vector3f32) -> KalmanFilterDiagnostics {
-        self.correct_position_joseph_stabilized_form(position_m, self.state.pos_m, R)
+        self.correct_position_joseph_stabilized_form(position_m, self.state.pos_ned_m, R)
     }
 
     pub fn correct_position_xy(&mut self, position_m: Vector2f32, R: Vector2f32) -> KalmanFilterDiagnostics {
-        self.correct_position_xy_joseph_stabilized_form(position_m, self.state.pos_m, R)
+        self.correct_position_xy_joseph_stabilized_form(position_m, self.state.pos_ned_m, R)
     }
 }
 
@@ -835,12 +831,12 @@ impl KalmanFilterXyz {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanStateXyz {
     // 3D Kinematic State Vectors
-    /// Position {x, y, z}, meters.
-    pub pos_m: Vector3f32,
-    /// Velocity {x, y, z}, meters per second.
-    pub vel_mps: Vector3f32,
-    /// Accelerometer Bias {x, y, z}, meters per second squared.
-    pub acc_bias_mps2: Vector3f32,
+    /// Position {x, y, z}, meters, in the NED frame..
+    pub pos_ned_m: Vector3f32,
+    /// Velocity {x, y, z}, meters per second, in the NED frame.
+    pub vel_ned_mps: Vector3f32,
+    /// Accelerometer Bias {x, y, z}, meters per second squared, in the body frame.
+    pub acc_bias_body_mps2: Vector3f32,
 }
 
 impl Default for KalmanStateXyz {
@@ -854,9 +850,9 @@ impl KalmanStateXyz {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            pos_m: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
-            vel_mps: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
-            acc_bias_mps2: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
+            pos_ned_m: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
+            vel_ned_mps: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
+            acc_bias_body_mps2: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
         }
     }
 }
@@ -872,447 +868,5 @@ mod test_traits {
     fn normal_types() {
         is_full::<KalmanFilterXyz>();
         is_full::<KalmanStateXyz>();
-    }
-}
-
-/*
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_3d_position_convergence() {
-        let mut filter = KalmanFilterXyz::new();
-
-        // Capture initial uncertainty variance values from the main diagonal blocks
-        let init_p_pos_x = filter.P[KalmanFilterXyz::PP][KalmanFilterXyz::M11];
-        //let init_p_vel_x = filter.P[PositionKalmanFilter::VV][PositionKalmanFilter::M11];
-
-        // Setup simulation pacing parameters
-        let dt = 0.01; // 100 Hz tracking thread loop
-
-        // Define realistic GPS/UWB measurement noise variances (R)
-        // Tracks ±1.5m horizontal variance and ±3.0m vertical variance
-        let r_gps = Vector3f32 { x: 2.25, y: 2.25, z: 9.0 };
-
-        // Define the ground-truth physical state parameters
-        let mut true_pos_m = Vector3f32 { x: 10.0, y: -5.0, z: 0.0 }; // Start at an offset
-        let mut true_vel_mps = Vector3f32::default();
-        let true_bias_mps2 = Vector3f32 { x: -0.03, y: 0.04, z: 0.01 }; // System accelerometer bias
-        let gravity_mps2 = Vector3f32 { x: 0.0, y: 0.0, z: 9.80665 }; // NED gravity
-
-        // Prime the filter's initial position guess to match our starting point
-        filter.state.pos_m = true_pos_m;
-
-        println!("\n--- PHASE 1: STATIONARY GPS LOCK (1 SECOND) ---");
-        #[allow(clippy::cast_possible_truncation)]
-        let loops_stationary = (1.0 / dt) as i32;
-        for _ in 0..loops_stationary {
-            // Raw IMU reading = Kinematic Acc (0) + Bias - Gravity Reaction Force
-            #[allow(unused)]
-            let acc_measurement_m = Vector3f32::default() + true_bias_mps2 - gravity_mps2;
-
-            // TODO: filter.predict_state(acc_measurement_m, dt);
-            filter.predict_covariance(dt);
-
-            //filter.correct_position(true_pos, r_gps);
-            _ = filter.correct_position(true_pos_m, r_gps);
-        }
-
-        // --- PHASE 1 AUDIT LOGS ---
-        println!("Stationary -> True Pos X: {:.4}, Estimated Pos X: {:.4}", true_pos_m.x, filter.pos_m().x);
-        println!("Stationary -> True Vel X: {:.4}, Estimated Vel X: {:.4}", true_vel_mps.x, filter.vel_mps().x);
-        println!("Stationary -> True Bias X: {:.4}, Estimated Bias X: {:.4}", true_bias_mps2.x, filter.acc_bias_mps2().x);
-
-        // Verification assertions for Phase 1
-        assert!((filter.pos_m().x - true_pos_m.x).abs() < 0.05, "Position drifted while stationary!");
-        assert!((filter.vel_mps().x - true_vel_mps.x).abs() < 0.05, "Velocity accumulated noise while stationary!");
-
-        // Ensure covariance has shrunk significantly below the starting bounds
-        let post_stat_p_pos_x = filter.P[KalmanFilterXyz::PP][KalmanFilterXyz::M11];
-        assert!(post_stat_p_pos_x < init_p_pos_x, "Position covariance failed to contract under GPS track!");
-
-        println!("\n--- PHASE 2: 3D DYNAMIC SLIDE MANEUVER (2 SECONDS) ---");
-        // Simulate a diagonal lateral acceleration profile (+X, +Y)
-        #[allow(clippy::cast_possible_truncation)]
-        let loops_maneuver = (2.0 / dt) as i32;
-        let true_acc_kinematic = Vector3f32 { x: 1.5, y: 2.0, z: 0.0 };
-
-        for _ in 0..loops_maneuver {
-            // Update truth kinematics using the exact model equations (Trapezoidal Rule)
-            true_pos_m += (true_vel_mps + 0.5 * true_acc_kinematic * dt) * dt;
-            true_vel_mps += true_acc_kinematic * dt;
-
-            // Raw IMU specific force generation
-            #[allow(unused)]
-            let acc_measurement = true_acc_kinematic + true_bias_mps2 - gravity_mps2;
-
-            // TODO: filter.predict_state(acc_measurement, dt);
-            filter.predict_covariance(dt);
-
-            _ = filter.correct_position(true_pos_m, r_gps);
-        }
-
-        // --- PHASE 2 AUDIT LOGS ---
-        println!("Maneuver -> True Final Pos X: {:.4}, Estimated Final Pos X: {:.4}", true_pos_m.x, filter.pos_m().x);
-        println!("Maneuver -> True Final Pos Y: {:.4}, Estimated Final Pos Y: {:.4}", true_pos_m.y, filter.pos_m().y);
-        println!("Maneuver -> True Final Vel X: {:.4}, Estimated Final Vel X: {:.4}", true_vel_mps.x, filter.vel_mps().x);
-        println!("Maneuver -> True Final Vel Y: {:.4}, Estimated Final Vel Y: {:.4}", true_vel_mps.y, filter.vel_mps().y);
-
-        // Tracking precision assertions
-        assert!((filter.pos_m().x - true_pos_m.x).abs() < 0.1, "Filter missed true physical X position track!");
-        assert!((filter.pos_m().y - true_pos_m.y).abs() < 0.1, "Filter missed true physical Y position track!");
-        assert!((filter.vel_mps().x - true_vel_mps.x).abs() < 0.1, "Filter velocity tracking tracking failed on X axis!");
-        assert!((filter.vel_mps().y - true_vel_mps.y).abs() < 0.1, "Filter velocity tracking tracking failed on Y axis!");
-
-        println!("\n✅ 3D position state propagation and measurement updates verified successfully!");
-    }
-    #[test]
-    fn test_altitude_convergence() {
-        let mut filter = KalmanFilterXyz::new();
-
-        // Capture the initial uncertainty bounds
-        let initial_p_pos_m = filter.P[KalmanFilterXyz::PP][KalmanFilterXyz::M33];
-        // let initial_p_vel_mps = filter.P[PositionKalmanFilter::VV][PositionKalmanFilter::M33];
-
-        // Define simulation parameters
-        let dt = 0.01; // 100 Hz simulation step
-        let r_baro = 0.04; // 20cm variance for our barometer
-
-        // True Physical States (Sim truths to compare against)
-        let mut true_pos_m = Vector3f32::default();
-        let mut true_vel_mps = Vector3f32::default();
-
-        // Explicitly track a constant real accelerometer bias in the hardware
-        let true_bias_mps2 = Vector3f32 { x: 0.02, y: -0.01, z: 0.05 };
-
-        // Aerospace NED Gravity vector (Positive down)
-        let gravity_mps2 = Vector3f32 { x: 0.0, y: 0.0, z: 9.80665 };
-
-        println!("\n--- PHASE 1: STATIONARY BENCH TEST (2 SECONDS) ---");
-        // During this phase, an IMU resting horizontally on the ground in an NED frame
-        // measures an upward reaction force against gravity.
-        #[allow(clippy::cast_possible_truncation)]
-        let sim_loops_stationary = (2.0 / dt) as i32;
-
-        for step in 0..sim_loops_stationary {
-            // Raw sensor reading = True Kinematic Acc (0) + Bias + Upward Reaction Force (-gravity)
-            #[allow(unused)]
-            let acc_measurement = Vector3f32::default() + true_bias_mps2 - gravity_mps2;
-
-            // Step A: Time Update
-            // TODO: filter.predict_state(acc_measurement, dt);
-            filter.predict_covariance(dt);
-
-            // Step B: Measurement Update (Simulate stationary altitude updates)
-            // Injecting a fixed R variance value
-            _ = filter.correct_altitude(true_pos_m.z, r_baro);
-            // Print out the Z-variance tracking elements every 50 steps
-            if step % 50 == 0 {
-                println!(
-                    "Step {:03} -> P_pos_z: {:e}, P_vel_z: {:e}, P_bias_z: {:e}",
-                    step,
-                    filter.P[KalmanFilterXyz::PP][KalmanFilterXyz::M33],
-                    filter.P[KalmanFilterXyz::VV][KalmanFilterXyz::M33],
-                    filter.P[KalmanFilterXyz::BB][KalmanFilterXyz::M33]
-                );
-            }
-        }
-
-        // --- VERIFICATIONS FOR PHASE 1 ---
-        println!("True Pos Z: {:.4}, Estimated Pos Z: {:.4}", true_pos_m.z, filter.pos_m().z);
-        println!("True Vel Z: {:.4}, Estimated Vel Z: {:.4}", true_vel_mps.z, filter.vel_mps().z);
-        println!("True Bias Z: {:.4}, Estimated Bias Z: {:.4}", true_bias_mps2.z, filter.acc_bias_mps2().z);
-
-        // Assertions: The filter should remain near zero despite raw measurements reading ~ -9.81
-        assert!((filter.pos_m().z - true_pos_m.z).abs() < 0.05, "Position drifted significantly while resting!");
-        assert!((filter.vel_mps().z - true_vel_mps.z).abs() < 0.05, "Velocity accumulated phantom motion!");
-
-        // Assertions: Covariance bounds MUST contract if the sensor math is operating properly
-        let post_stationary_p_pos = filter.P[KalmanFilterXyz::PP][KalmanFilterXyz::M33];
-        assert!(post_stationary_p_pos < initial_p_pos_m, "Covariance failed to contract with sensor updates!");
-
-        println!("\n--- PHASE 2: UNIFORM CLIMB TEST (3 SECONDS) ---");
-        // Vehicle climbs downward/upward. Let's simulate a downward acceleration in NED (+Z)
-        // of 1.0 m/s^2 for a clean mathematical trajectory.
-        #[allow(clippy::cast_possible_truncation)]
-        let sim_loops_ascent = (3.0 / dt) as i32;
-        let true_acc_kinematic = Vector3f32 { x: 0.0, y: 0.0, z: 1.0 };
-
-        for _ in 0..sim_loops_ascent {
-            // Update physical truths using the exact kinematic laws inside our test harness
-            true_pos_m += (true_vel_mps + 0.5 * true_acc_kinematic * dt) * dt;
-            true_vel_mps += true_acc_kinematic * dt;
-
-            // Generate sensor reading: Kinematic Acc + Bias - Upward Reaction Force
-            #[allow(unused)]
-            let acc_measurement = true_acc_kinematic + true_bias_mps2 - gravity_mps2;
-
-            // Step A: Time Update
-            // TODO: filter.predict_state(acc_measurement, dt);
-            filter.predict_covariance(dt);
-
-            // Step B: Measurement Update with simulated moving barometer data
-            _ = filter.correct_altitude(true_pos_m.z, r_baro);
-        }
-
-        // --- VERIFICATIONS FOR PHASE 2 ---
-        println!("True Final Pos Z: {:.4}, Estimated Final Pos Z: {:.4}", true_pos_m.z, filter.pos_m().z);
-        println!("True Final Vel Z: {:.4}, Estimated Final Vel Z: {:.4}", true_vel_mps.z, filter.vel_mps().z);
-
-        // The filter tracking error should be tight
-        assert!((filter.pos_m().z - true_pos_m.z).abs() < 0.1, "Filter failed to track dynamic trajectory accurately!");
-        assert!((filter.vel_mps().z - true_vel_mps.z).abs() < 0.1, "Filter velocity tracking diverged during climb!");
-
-        println!("\n✅ All Kalman Filter math, indices, and coordinate signs verified successfully!");
-    }
-}
-*/
-
-#[cfg(test)]
-mod test_anchors {
-    use super::*;
-    use num_traits::Zero;
-
-    fn v(x: f32, y: f32, z: f32) -> Vector3f32 {
-        Vector3f32 { x, y, z }
-    }
-
-    fn assert_near(actual: f32, expected: f32, epsilon: f32) {
-        assert!(
-            (actual - expected).abs() < epsilon,
-            "expected {}, got {}, error {}",
-            expected,
-            actual,
-            (actual - expected).abs(),
-        );
-    }
-
-    fn assert_vector_near(actual: Vector3f32, expected: Vector3f32, epsilon: f32) {
-        assert_near(actual.x, expected.x, epsilon);
-        assert_near(actual.y, expected.y, epsilon);
-        assert_near(actual.z, expected.z, epsilon);
-    }
-
-    fn assert_matrix_near(actual: Matrix3x3f32, expected: Matrix3x3f32, epsilon: f32) {
-        for row in 0..3 {
-            let a = actual.row(row);
-            let e = expected.row(row);
-
-            assert_near(a.x, e.x, epsilon);
-            assert_near(a.y, e.y, epsilon);
-            assert_near(a.z, e.z, epsilon);
-        }
-    }
-
-    fn make_filter() -> KalmanFilterXyz {
-        KalmanFilterXyz {
-            state: KalmanStateXyz {
-                pos_m: v(3.0, 4.0, 0.0),
-                vel_mps: v(0.0, 0.0, 0.0),
-                acc_bias_mps2: v(0.0, 0.0, 0.0),
-            },
-
-            P: Matrix3x3xM3x3f32::identity(),
-
-            Q_velocity: 0.0,
-            Q_bias: 0.0,
-            altitude_consecutive_rejection_count: 0,
-            position_consecutive_rejection_count: 0,
-        }
-    }
-
-    #[test]
-    fn range_update_basic() {
-        const EPS: f32 = 2.0e-3;
-        let mut kf = make_filter();
-
-        // Position = (3,4,0), anchor = (0,0,0)
-        // Predicted range = 5
-        //
-        // H = [0.6, 0.8, 0]
-        //
-        // Measurement = 6
-        // innovation = +1
-        //
-        // S = 1 + 0.01 = 1.01
-
-        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, 100.0, 0.01);
-
-        let scale = 1.0 / 1.01;
-
-        assert_vector_near(kf.state.pos_m, v(3.0 + 0.6 * scale, 4.0 + 0.8 * scale, 0.0), EPS);
-
-        // No cross covariance, so velocity and bias should not change.
-        assert_vector_near(kf.state.vel_mps, v(0.0, 0.0, 0.0), EPS);
-
-        assert_vector_near(kf.state.acc_bias_mps2, v(0.0, 0.0, 0.0), EPS);
-    }
-
-    #[test]
-    fn range_update_corrects_velocity_through_cross_covariance() {
-        const EPS: f32 = 2.0e-3;
-
-        let identity = Matrix3x3f32::identity();
-        let zero = Matrix3x3f32::zero();
-
-        let cross = Matrix3x3f32::from_diagonal_element(0.5);
-
-        let mut kf = KalmanFilterXyz {
-            state: KalmanStateXyz {
-                pos_m: v(3.0, 4.0, 0.0),
-                vel_mps: v(0.0, 0.0, 0.0),
-                acc_bias_mps2: v(0.0, 0.0, 0.0),
-            },
-
-            P: Matrix3x3xM3x3f32::from_column_array([
-                // PP, VP, BP
-                identity, cross, zero, // PV, VV, BV
-                cross, identity, zero, // PB, VB, BB
-                zero, zero, identity,
-            ]),
-
-            Q_velocity: 0.0,
-            Q_bias: 0.0,
-            altitude_consecutive_rejection_count: 0,
-            position_consecutive_rejection_count: 0,
-        };
-
-        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, 100.0, 0.01);
-
-        // P_VP * H^T:
-        //
-        // [0.5 0   0]   [0.6]   [0.3]
-        // [0   0.5 0] * [0.8] = [0.4]
-        // [0   0   0.5] [0  ]   [0.0]
-        //
-        // S = 1.01
-        //
-        // innovation = 1
-
-        let scale = 1.0 / 1.01;
-
-        assert_vector_near(kf.state.vel_mps, v(0.3 * scale, 0.4 * scale, 0.0), EPS);
-    }
-
-    #[test]
-    fn range_update_corrects_accelerometer_bias_through_cross_covariance() {
-        const EPS: f32 = 2.0e-3;
-
-        let identity = Matrix3x3f32::identity();
-        let zero = Matrix3x3f32::zero();
-
-        let bp = Matrix3x3f32::from_diagonal_array([0.2, 0.3, 0.4]);
-        let pb = bp;
-
-        let mut kf = KalmanFilterXyz {
-            state: KalmanStateXyz {
-                pos_m: v(3.0, 4.0, 0.0),
-                vel_mps: v(0.0, 0.0, 0.0),
-                acc_bias_mps2: v(0.0, 0.0, 0.0),
-            },
-
-            P: Matrix3x3xM3x3f32::from_column_array([
-                // PP, VP, BP
-                identity, zero, bp, // PV, VV, BV
-                zero, identity, zero, // PB, VB, BB
-                pb, zero, identity,
-            ]),
-
-            Q_velocity: 0.0,
-            Q_bias: 0.0,
-            altitude_consecutive_rejection_count: 0,
-            position_consecutive_rejection_count: 0,
-        };
-
-        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, 100.0, 0.01);
-
-        // P_BP * H^T =
-        //
-        // [0.2 * 0.6] = 0.12
-        // [0.3 * 0.8] = 0.24
-        // [0.4 * 0.0] = 0.00
-
-        let scale = 1.0 / 1.01;
-
-        assert_vector_near(kf.state.acc_bias_mps2, v(0.12 * scale, 0.24 * scale, 0.0), EPS);
-    }
-
-    #[test]
-    fn perfect_range_does_not_change_state() {
-        const EPS: f32 = 2.4e-3;
-
-        let mut kf = make_filter();
-
-        let original_pos = kf.state.pos_m;
-        let original_vel = kf.state.vel_mps;
-        let original_bias = kf.state.acc_bias_mps2;
-
-        // Predicted range is exactly 5.
-        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 5.0, 100.0, 0.01);
-
-        assert_vector_near(kf.state.pos_m, original_pos, EPS);
-        assert_vector_near(kf.state.vel_mps, original_vel, EPS);
-        assert_vector_near(kf.state.acc_bias_mps2, original_bias, EPS);
-    }
-
-    #[test]
-    fn outlier_is_rejected_without_changing_filter() {
-        const EPS: f32 = 2.0e-3;
-
-        let mut kf = make_filter();
-
-        let original_pos = kf.state.pos_m;
-        let original_vel = kf.state.vel_mps;
-        let original_bias = kf.state.acc_bias_mps2;
-        let original_p = kf.P;
-
-        // Predicted range = 5.
-        // 100 m is obviously an outlier.
-        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 100.0, 6.63, 0.01);
-
-        assert_vector_near(kf.state.pos_m, original_pos, EPS);
-        assert_vector_near(kf.state.vel_mps, original_vel, EPS);
-        assert_vector_near(kf.state.acc_bias_mps2, original_bias, EPS);
-
-        assert_matrix_near(kf.P[KalmanFilterXyz::PP], original_p[KalmanFilterXyz::PP], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXyz::PV], original_p[KalmanFilterXyz::PV], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXyz::PB], original_p[KalmanFilterXyz::PB], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXyz::VP], original_p[KalmanFilterXyz::VP], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXyz::VV], original_p[KalmanFilterXyz::VV], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXyz::VB], original_p[KalmanFilterXyz::VB], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXyz::BP], original_p[KalmanFilterXyz::BP], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXyz::BV], original_p[KalmanFilterXyz::BV], EPS);
-        assert_matrix_near(kf.P[KalmanFilterXyz::BB], original_p[KalmanFilterXyz::BB], EPS);
-    }
-    #[test]
-    fn range_update_reduces_radial_position_variance() {
-        let mut kf = make_filter();
-
-        let h = v(0.6, 0.8, 0.0);
-
-        let before = h.dot(kf.P[KalmanFilterXyz::PP] * h);
-
-        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 5.0, 100.0, 0.01);
-
-        let after = h.dot(kf.P[KalmanFilterXyz::PP] * h);
-
-        assert!(after < before, "radial variance should decrease: before={before}, after={after}");
-
-        // With identity P and a range-only measurement,
-        // the direction perpendicular to H should retain its
-        // original variance.
-        let perpendicular = v(-0.8, 0.6, 0.0);
-
-        let before_perp = perpendicular.dot(kf.P[KalmanFilterXyz::PP] * perpendicular);
-
-        assert_near(before_perp, 1.0, 2.0e-3);
-
-        // Z is completely unobserved by this range measurement.
-        let z = v(0.0, 0.0, 1.0);
-
-        let z_variance = z.dot(kf.P[KalmanFilterXyz::PP] * z);
-
-        assert_near(z_variance, 1.0, 2.0e-3);
     }
 }
