@@ -16,16 +16,16 @@ pub struct KalmanFilterZ {
 
     // Predicted System Uncertainty Covariance Matrix (P).
     /// `P`: Prediction error covariance (aka state covariance matrix, the system's internal uncertainty).
-    pub P: Matrix3x3f32,
+    P: Matrix3x3f32,
 
     // state transition noise covariance Matrix `Q`
     /// Process Noise spectral density mapping to Velocity variance.
-    pub Q_velocity: f32,
+    Q_velocity: f32,
     /// Process Noise spectral density mapping to Sensor Drift variance.
     /// Units: (m/s³)² / Hz.
-    pub Q_bias: f32,
+    Q_bias: f32,
     /// Count to avoid filter latching.
-    pub consecutive_rejection_count: u32,
+    consecutive_rejection_count: u32,
 }
 
 impl Default for KalmanFilterZ {

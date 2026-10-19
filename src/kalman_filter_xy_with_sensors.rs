@@ -1,7 +1,7 @@
 use num_traits::ConstZero;
 use vqm::Vector2f32;
 
-use super::{KalmanFilterDiagnostics, KalmanFilterXy};
+use super::{KalmanFilterDiagnostics, KalmanFilterXy, KalmanStateXy};
 
 /// `f32` variant of `PositionKalmanFilterExtended`.
 pub type KalmanFilterXyWithSensorsf32 = KalmanFilterXyWithSensors;
@@ -18,7 +18,7 @@ Desired Physical Noise (σ)            Equivalent R Variance Code Value (σ²)
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterXyWithSensors {
-    pub base: KalmanFilterXy,
+    base: KalmanFilterXy,
     // measurement noise covariance Matrix `R`
     /// Absolute Measurement Noise variance for horizontal GPS channels.
     pub R_gps_horizontal: f32,
@@ -67,26 +67,32 @@ impl KalmanFilterXyWithSensors {
 impl KalmanFilterXyWithSensors {
     #[inline]
     #[must_use]
+    pub fn state(&self) -> KalmanStateXy {
+        self.base.state()
+    }
+
+    #[inline]
+    #[must_use]
     pub fn pos_m(&self) -> Vector2f32 {
-        self.base.state.pos_m
+        self.base.pos_m()
     }
 
     #[inline]
     #[must_use]
     pub fn vel_mps(&self) -> Vector2f32 {
-        self.base.state.vel_mps
+        self.base.vel_mps()
     }
 
     #[inline]
     #[must_use]
     pub fn acc_bias_mps2(&self) -> Vector2f32 {
-        self.base.state.acc_bias_mps2
+        self.base.acc_bias_mps2()
     }
 
     /// Called inside the main IMU execution loop (eg `gyro_pid` loop).
-    pub fn predict(&mut self, delta_vel_mps: Vector2f32, delta_pos_m: Vector2f32, dt: f32) {
+    pub fn predict(&mut self, delta_vel_ned_mps: Vector2f32, delta_pos_ned_m: Vector2f32, dt: f32) {
         // Integrate physical kinematics forward (deterministic)
-        self.predict_state(delta_vel_mps, delta_pos_m, dt);
+        self.predict_state(delta_vel_ned_mps, delta_pos_ned_m, dt);
 
         // Propagate covariance uncertainty blocks forward (stochastic)
         self.predict_covariance(dt);
@@ -94,8 +100,8 @@ impl KalmanFilterXyWithSensors {
         self.push_snapshot(dt);
     }
 
-    pub fn predict_state(&mut self, delta_vel_mps: Vector2f32, delta_pos_m: Vector2f32, dt: f32) {
-        self.base.predict_state(delta_vel_mps, delta_pos_m, dt);
+    pub fn predict_state(&mut self, delta_vel_ned_mps: Vector2f32, delta_pos_ned_m: Vector2f32, dt: f32) {
+        self.base.predict_state(delta_vel_ned_mps, delta_pos_ned_m, dt);
     }
 
     pub fn predict_covariance(&mut self, dt: f32) {

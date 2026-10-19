@@ -15,7 +15,7 @@ Desired Physical Noise (σ)            Equivalent R Variance Code Value (σ²)
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterZWithSensors {
-    pub base: KalmanFilterZ,
+    base: KalmanFilterZ,
     // measurement noise covariance Matrix `R`
     /// Absolute Measurement Noise variance for vertical GPS channels.
     pub R_gps_vertical: f32,

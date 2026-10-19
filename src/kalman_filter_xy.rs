@@ -13,17 +13,21 @@ pub type KalmanStateXyf32 = KalmanStateXy;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterXy {
     /// 2D Kinematic State Vectors.
-    pub state: KalmanStateXy,
+    state: KalmanStateXy,
 
     // Predicted System Uncertainty Covariance Matrix (P).
     /// `P`: Prediction error covariance (aka state covariance matrix, the system's internal uncertainty).
-    pub P: Matrix3x3xM2x2f32,
+    P: Matrix3x3xM2x2f32,
 
     // state transition noise covariance Matrix `Q`
     /// Process Noise spectral density mapping to Velocity variance.
-    pub Q_velocity: f32,
+    Q_velocity: f32,
     /// Process Noise spectral density mapping to Sensor Drift variance.
-    pub Q_bias: f32,
+    /// Units: (m/s³)² / Hz.
+    Q_bias: f32,
+    /// Count to avoid filter latching.
+    altitude_consecutive_rejection_count: u32,
+    position_consecutive_rejection_count: u32,
 }
 
 impl Default for KalmanFilterXy {
@@ -36,8 +40,8 @@ impl Default for KalmanFilterXy {
 impl KalmanFilterXy {
     const G_MPS2: f32 = 9.80665;
 
-    const M11: usize = Matrix2x2f32::M11;
-    const M22: usize = Matrix2x2f32::M22;
+    pub const M11: usize = Matrix2x2f32::M11;
+    pub const M22: usize = Matrix2x2f32::M22;
 
     const PP: usize = 0;
     const VP: usize = 1;
@@ -81,6 +85,8 @@ impl KalmanFilterXy {
             // shifting it incrementally over minutes rather than fluctuating on every single vibration loop.
             Q_bias: 1e-4,
             P,
+            altitude_consecutive_rejection_count: 0,
+            position_consecutive_rejection_count: 0,
         }
     }
 
@@ -91,32 +97,34 @@ impl KalmanFilterXy {
         self
     }
 
-    /// Set `Q_velocity`, the spectral density of the acceleration noise.
-    /// Input is accelerometer noise density in g per root-Hertz.
-    /// Datasheets typically specify accelerometer noise density in micro-g per root-Hertz  or mg per root-Hertz.
-    pub fn set_q_velocity(&mut self, acc_noise_density_g_per_root_hz: f32, denominator: u32) {
-        let acc_noise_density_mps2_per_root_hz = acc_noise_density_g_per_root_hz * Self::G_MPS2;
-        #[allow(clippy::cast_precision_loss)]
-        {
-            self.Q_velocity =
-                acc_noise_density_mps2_per_root_hz * acc_noise_density_mps2_per_root_hz / (denominator as f32);
-        }
+    /// Set the state covariance matrix of a newly constructed `KalmanFilterXyz`.
+    #[must_use]
+    pub fn with_p(mut self, p: Matrix3x3xM2x2f32) -> Self {
+        self.P = p;
+        self
     }
 
-    /// Set `Q_bias`, the spectral density of the acceleration bias random walk.
-    /// Input is accelerometer bias instability in g per time period tau.
+    /// Set `Q_velocity`, the continuous-time acceleration-noise Power Spectral Density (PSD -units of m²/s³)
+    /// Input is accelerometer noise density in  g/√Hz (g per root-Hertz).
+    /// Datasheets typically specify accelerometer noise density in micro-g per root-Hertz or mg per root-Hertz.
+    pub fn set_q_velocity(&mut self, acc_noise_density_g_per_root_hz: f32) {
+        let acc_noise_density_mps2_per_root_hz = acc_noise_density_g_per_root_hz * Self::G_MPS2;
+        self.Q_velocity = acc_noise_density_mps2_per_root_hz * acc_noise_density_mps2_per_root_hz;
+    }
+
+    /// Set the continuous-time bias random-walk Power Spectral Density (PSD - units of m²/s⁵).
+    ///
     /// Datasheets typically specify bias instability in micro-g over a time constant tau, typically 100 seconds.
-    pub fn set_q_bias(&mut self, bias_instability_g: f32, tau: f32) {
-        let bias_instability_mps2 = bias_instability_g * Self::G_MPS2;
-        self.Q_velocity = bias_instability_mps2 * bias_instability_mps2 / tau;
+    pub fn set_q_bias(&mut self, q_bias: f32) {
+        self.Q_bias = q_bias;
     }
 
     pub fn set_position(&mut self, pos_ned_m: Vector2f32) {
-        self.state.pos_m = pos_ned_m;
+        self.state.pos_ned_m = pos_ned_m;
     }
 
     pub fn set_initial_position(&mut self, initial_position_m: Vector2f32) {
-        self.state.pos_m = initial_position_m;
+        self.state.pos_ned_m = initial_position_m;
 
         // --- Define Initial Uncertainties (Variances) ---
         let p_pos_init = 25.0; // ±5 meters initial position uncertainty, typical of GPS
@@ -143,26 +151,50 @@ impl KalmanFilterXy {
     #[inline]
     #[must_use]
     pub fn pos_m(&self) -> Vector2f32 {
-        self.state.pos_m
+        self.state.pos_ned_m
     }
 
     #[inline]
     #[must_use]
     pub fn vel_mps(&self) -> Vector2f32 {
-        self.state.vel_mps
+        self.state.vel_ned_mps
     }
 
     #[inline]
     #[must_use]
     pub fn acc_bias_mps2(&self) -> Vector2f32 {
-        self.state.acc_bias_mps2
+        self.state.acc_bias_ned_mps2
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn p(&self) -> &Matrix3x3xM2x2f32 {
+        &self.P
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn pp(&self) -> Matrix2x2f32 {
+        self.P[Self::PP]
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn pv(&self) -> Matrix2x2f32 {
+        self.P[Self::PV]
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn bb(&self) -> Matrix2x2f32 {
+        self.P[Self::BB]
     }
 }
 
 // **** Predict ****
 
 impl KalmanFilterXy {
-    /// Propagates the state vector forward using `delta_vel` and `delta_pos` from the IMU integrator.
+    /// Predicts the state vectors using `delta_vel_mps` and `delta_pos_m` from the IMU integrator.
     /// ```text
     ///     ┌          ┐
     ///     │  ½·dt·I₂ │
@@ -170,14 +202,18 @@ impl KalmanFilterXy {
     ///     │    0₂    │
     ///     └          ┘.
     /// ```
-    pub fn predict_state(&mut self, delta_vel_mps: Vector2f32, delta_pos_m: Vector2f32, dt: f32) {
-        // Gravity and acc bias were not included in the IMU integration, so we need to correct for them here.
+    /// Assumptions:
+    /// - `delta_pos_ned_m` is the integrated displacement contribution from acceleration in NED,
+    ///   including gravity compensation and correction using the estimated accelerometer bias.
+    /// - `delta_vel_ned_mps` is the corresponding integrated velocity increment, with the same corrections.
+    /// - Both increments are expressed in NED.
+    /// - `dt` equals the total integration duration represented by these increments.
+    pub fn predict_state(&mut self, delta_vel_ned_mps: Vector2f32, delta_pos_ned_m: Vector2f32, dt: f32) {
+        // Predict the position using standard kinematics, note we use the value of `state.vel_ned_mps` before it is updated.
+        self.state.pos_ned_m += delta_pos_ned_m + dt * self.state.vel_ned_mps;
 
-        // Correct the integrated position for acc bias.
-        self.state.pos_m += delta_pos_m + dt * (self.state.vel_mps - 0.5 * self.state.acc_bias_mps2 * dt);
-
-        // Correct the integrated velocity for acc bias.
-        self.state.vel_mps += delta_vel_mps - self.state.acc_bias_mps2 * dt;
+        // Predict the velocity, using standard kinematics.
+        self.state.vel_ned_mps += delta_vel_ned_mps;
 
         // Bias remains constant during prediction: its uncertainty is modelled as a random walk in the covariance.
         // So we don't update `self.state.acc_bias` here.
@@ -196,6 +232,7 @@ impl KalmanFilterXy {
     /// F = │  0₂       I₂      -dt·I₂   │
     ///     │  0₂       0₂         I₂    │
     ///     └                            ┘
+    /// The process noise matrix Q
     ///     ┌                                ┐
     ///     │  ⅓·Q_v·dt³  ½·Q_v·dt²       0  │
     /// Q = │  ½·Q_v·dt²    Q_v·dt        0  │
@@ -208,44 +245,43 @@ impl KalmanFilterXy {
         // PROPAGATE THE COVARIANCE P_new = F·P_old·Fᵀ
         // =====================================================================
 
-        let dt2 = dt * dt;
-
         // alias self.P for readability.
         let P = &mut self.P;
 
         // We can update P in place by ensuring RHS of all P assignments refers to P_old.
         //
         // We use temporary indices and shadow them out of scope when they have been used.
-        // This ensures we cannot use an updated value in a subsequent update, ie P_new can not be used on RHS.
+        // This ensures we cannot use an updated value in a subsequent update, ie P_new cannot be used on RHS.
         let (PP, VP, BP, PV, VV, BV, PB, VB, BB) =
             (Self::PP, Self::VP, Self::BP, Self::PV, Self::VV, Self::BV, Self::PB, Self::VB, Self::BB);
 
         // --- POSITION COLUMNS (PP, VP, BP) ---
-        P[PP] = P[PP] + (P[VP] + P[PV]) * dt + P[VV] * dt2;
+        P[PP] = P[PP]
+            + dt * (P[PV] + P[VP] + dt * (P[VV] - 0.5 * (P[PB] + P[BP] + dt * (P[VB] + P[BV] - dt * 0.5 * P[BB]))));
         // Prevent P_new[PP] being accidentally used in subsequent calculations by retiring PP.
         retire!(PP);
 
-        P[VP] = P[VP] + (P[VV] - P[BP]) * dt - P[BV] * dt2;
+        P[VP] = P[VP] + dt * (P[VV] - P[BP] - dt * (P[BV] + 0.5 * (P[VB] - dt * P[BB])));
         retire!(VP);
 
-        P[BP] = P[BP] + P[BV] * dt;
+        P[BP] = P[BP] + dt * (P[BV] - dt * 0.5 * P[BB]);
         retire!(BP);
 
         // --- VELOCITY COLUMNS (PV, VV, BV) ---
-        P[PV] = P[PV] + (P[VV] - P[PB]) * dt - P[VB] * dt2;
+        P[PV] = P[PV] + dt * (P[VV] - P[PB] - dt * (P[VB] + 0.5 * (P[BV] - dt * P[BB])));
         retire!(PV);
 
-        P[VV] = P[VV] - (P[BV] + P[VB]) * dt + P[BB] * dt2;
+        P[VV] = P[VV] - dt * (P[BV] + P[VB] + dt * P[BB]);
         retire!(VV);
 
-        P[BV] = P[BV] - P[BB] * dt;
+        P[BV] = P[BV] - dt * P[BB];
         retire!(BV);
 
         // --- BIAS COLUMNS (PB, VB, BB) ---
-        P[PB] = P[PB] + P[VB] * dt;
+        P[PB] = P[PB] + dt * (P[VB] - dt * 0.5 * P[BB]);
         retire!(PB);
 
-        P[VB] = P[VB] - P[BB] * dt;
+        P[VB] = P[VB] - dt * P[BB];
         retire!(VB);
         // P[BB] = P[BB]; so don't need to update BB.
 
@@ -255,8 +291,22 @@ impl KalmanFilterXy {
 
         // Continuous process noise integrated over dt maps to the diagonal variance slots of Velocity and Bias.
         // P += Q
-        P[Self::VV].add_diagonal_scalar_in_place(self.Q_velocity * dt);
-        P[Self::BB].add_diagonal_scalar_in_place(self.Q_bias * dt);
+        let q_vel = self.Q_velocity * dt;
+        let q_cross = 0.5 * q_vel * dt;
+        let q_pos = (2.0 / 3.0) * q_cross * dt;
+        let q_bias = self.Q_bias * dt;
+
+        P[Self::PP].add_diagonal_scalar_in_place(q_pos);
+        P[Self::PV].add_diagonal_scalar_in_place(q_cross);
+        P[Self::VP].add_diagonal_scalar_in_place(q_cross);
+        P[Self::VV].add_diagonal_scalar_in_place(q_vel);
+
+        // Random walk bias drift integration
+        // Bias random-walk noise is added only to the bias covariance (BB).
+        // Its indirect contribution to position, velocity, and their cross-covariances during this interval is neglected as an approximation,
+        // since these are second order in dt.
+        // This is reasonable when dt is small and the bias random-walk noise is sufficiently low.
+        P[Self::BB].add_diagonal_scalar_in_place(q_bias);
 
         // Time propagation is highly sensitive to asymmetric shearing, so enforce symmetry on the covariance matrix.
         P.enforce_symmetry();
@@ -280,24 +330,45 @@ impl KalmanFilterXy {
         predicted_measurement_m: Vector2f32,
         R: Vector2f32,
     ) -> KalmanFilterDiagnostics {
-        // Extract the submatrices representing H * P.
+        // H = [ I₂   0₂   0₂ ]
+        // S = H·P·Hᵀ + R
+        // K = P·Hᵀ·S⁻¹
+        // y = z - H·x
+        // x = x + K·y
+        // P = P - K·H·P
+
+        // Extract the submatrices representing H·P.
         let P_pos = self.P[Self::PP];
         let P_vel = self.P[Self::PV];
         let P_acc_bias = self.P[Self::PB];
 
-        // Calculate S, the Residual Covariance matrix:
+        // Calculate S, the Innovation Covariance matrix:
         // S = H·P·Hᵀ + R
         let S = P_pos.add_diagonal_vector(R);
-
-        // The the Residual Covariance matrix may be non-invertible.
-        // This happens very rarely and is due to rounding errors when the process noise covariance Q is small.
         let Some(S_inv) = S.try_inverse() else {
+            // The the Innovation Covariance matrix may be non-invertible.
+            // This happens very rarely and is due to rounding errors when the process noise covariance Q is small.
             return KalmanFilterDiagnostics::default();
         };
 
         // Calculate the innovation.
         // y = z - H·x
         let innovation_m = measurement_m - predicted_measurement_m;
+
+        // Normalized Innovation Squared (NIS) = yᵀ·S⁻¹·y  (aka Mahalanobis Distance)
+        // Dot product results in a unitless scalar
+        let nis = innovation_m.dot(S_inv * innovation_m);
+        let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP].trace(), nis };
+
+        if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_3D
+            && self.position_consecutive_rejection_count < KalmanFilterDiagnostics::MAX_CONSECUTIVE_REJECTION_COUNT
+        {
+            // If nis > NIS_THRESHOLD_3D, there is less than a 5% chance this is normal sensor noise,
+            // so reject this measurement as an outlier.
+            self.position_consecutive_rejection_count += 1;
+            return diagnostics;
+        }
+        self.position_consecutive_rejection_count = 0;
 
         // Calculate K, the Kalman gain.
         // Calculate the 3x3 segmented Kalman Gain pieces
@@ -313,9 +384,9 @@ impl KalmanFilterXy {
 
         // Update the physical state vectors
         // x += K·y
-        self.state.pos_m += K_pos * innovation_m;
-        self.state.vel_mps += K_vel * innovation_m;
-        self.state.acc_bias_mps2 += K_acc_bias * innovation_m;
+        self.state.pos_ned_m += K_pos * innovation_m;
+        self.state.vel_ned_mps += K_vel * innovation_m;
+        self.state.acc_bias_ned_mps2 += K_acc_bias * innovation_m;
 
         // P -= K·(H·P)
         // Calculate by subtracting the K·(H·P) submatrices one by one.
@@ -338,7 +409,7 @@ impl KalmanFilterXy {
         // Ensure numerical stability by enforcing symmetry on the covariance matrix.
         self.P.enforce_symmetry();
 
-        KalmanFilterDiagnostics::default()
+        diagnostics
     }
 
     /// Joseph's Stabilized Form for the covariance update step:
@@ -353,35 +424,57 @@ impl KalmanFilterXy {
         predicted_measurement_m: Vector2f32,
         R: Vector2f32,
     ) -> KalmanFilterDiagnostics {
-        // Calculate S, the Residual Covariance matrix:
+        // H = [ I₂   0₂   0₂ ]
+        // S = H·P·Hᵀ + R
+        // K = P·Hᵀ·S⁻¹
+        // y = z - H·x
+        // x = x + K·y
+        // P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ); equivalent to P - K·H·P
+
+        // Calculate S, the Innovation Covariance matrix:
         // S = H·P·Hᵀ + R
         let S = self.P[Self::PP].add_diagonal_vector(R);
 
-        // The the Residual Covariance matrix may be non-invertible.
-        // This happens very rarely and is due to rounding errors when the process noise covariance Q is small.
-        let Some(S_inv) = S.try_inverse() else {
+        // S is guaranteed to be positive-definite, since we are using Joseph's Stabilized Form, so we can use a Cholesky solver.
+        let Some(S_cholesky) = S.cholesky() else {
             return KalmanFilterDiagnostics::default();
         };
 
         // Calculate K, the Kalman gain.
-        // `K = P·Hᵀ· S⁻¹`
-        let K_pos = self.P[Self::PP] * S_inv;
-        let K_vel = self.P[Self::VP] * S_inv;
-        let K_acc_bias = self.P[Self::BP] * S_inv;
+        // `K = P·Hᵀ·S⁻¹`
+        let K_pos = S_cholesky.solve_matrix(self.P[Self::PP]); // 60 arithmetic operations, matrix multiply is 45
+        let K_vel = S_cholesky.solve_matrix(self.P[Self::VP]);
+        let K_acc_bias = S_cholesky.solve_matrix(self.P[Self::BP]);
 
         // Calculate the innovation.
         // y = z - H·x
         let innovation_m = measurement_m - predicted_measurement_m;
 
+        // Normalized Innovation Squared (NIS) = yᵀ·S⁻¹·y  (aka Mahalanobis Distance)
+        let s_inv_times_innovation = S_cholesky.solve_vector(innovation_m);
+        // Dot product results in a unitless scalar
+        let nis = innovation_m.dot(s_inv_times_innovation);
+        let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP].trace(), nis };
+
+        if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_3D
+            && self.position_consecutive_rejection_count < KalmanFilterDiagnostics::MAX_CONSECUTIVE_REJECTION_COUNT
+        {
+            // If nis > NIS_THRESHOLD_3D, there is less than a 5% chance this is normal sensor noise,
+            // so reject this measurement as an outlier.
+            self.position_consecutive_rejection_count += 1;
+            return diagnostics;
+        }
+        self.position_consecutive_rejection_count = 0;
+
         // Update the physical state vectors
         // x += K·y
-        self.state.pos_m += K_pos * innovation_m;
-        self.state.vel_mps += K_vel * innovation_m;
-        self.state.acc_bias_mps2 += K_acc_bias * innovation_m;
+        self.state.pos_ned_m += K_pos * innovation_m;
+        self.state.vel_ned_mps += K_vel * innovation_m;
+        self.state.acc_bias_ned_mps2 += K_acc_bias * innovation_m;
 
         // P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ
 
-        // Calculate the columns of intermediate matrix A = (I - KH) * P
+        // Calculate the columns of intermediate matrix A = (I - KH)·P
         let A = Matrix3x3xM2x2::from_column_array([
             // Column 0
             self.P[Self::PP] - K_pos * self.P[Self::PP],
@@ -436,11 +529,11 @@ impl KalmanFilterXy {
     }
 
     pub fn correct_position(&mut self, position_m: Vector2f32, R: Vector2f32) -> KalmanFilterDiagnostics {
-        self.correct_position_short_form(position_m, self.state.pos_m, R)
+        self.correct_position_short_form(position_m, self.state.pos_ned_m, R)
     }
 
     pub fn correct_position_joseph(&mut self, position_m: Vector2f32, R: Vector2f32) -> KalmanFilterDiagnostics {
-        self.correct_position_joseph_stabilized_form(position_m, self.state.pos_m, R)
+        self.correct_position_joseph_stabilized_form(position_m, self.state.pos_ned_m, R)
     }
 }
 
@@ -448,12 +541,12 @@ impl KalmanFilterXy {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanStateXy {
     // 3D Kinematic State Vectors
-    /// Position {x, y}, meters.
-    pub pos_m: Vector2f32,
-    /// Velocity {x, y}, meters per second.
-    pub vel_mps: Vector2f32,
-    /// Accelerometer Bias {x, y}, meters per second squared.
-    pub acc_bias_mps2: Vector2f32,
+    /// Position {x, y}, meters, in the NED frame.
+    pub pos_ned_m: Vector2f32,
+    /// Velocity {x, y}, meters per second, in the NED frame.
+    pub vel_ned_mps: Vector2f32,
+    /// Accelerometer Bias {x, y}, meters per second squared, in the NED frame.
+    pub acc_bias_ned_mps2: Vector2f32,
 }
 
 impl Default for KalmanStateXy {
@@ -467,9 +560,9 @@ impl KalmanStateXy {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            pos_m: Vector2f32 { x: 0.0, y: 0.0 },
-            vel_mps: Vector2f32 { x: 0.0, y: 0.0 },
-            acc_bias_mps2: Vector2f32 { x: 0.0, y: 0.0 },
+            pos_ned_m: Vector2f32 { x: 0.0, y: 0.0 },
+            vel_ned_mps: Vector2f32 { x: 0.0, y: 0.0 },
+            acc_bias_ned_mps2: Vector2f32 { x: 0.0, y: 0.0 },
         }
     }
 }
@@ -487,97 +580,3 @@ mod test_traits {
         is_full::<KalmanStateXy>();
     }
 }
-
-/*
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_2d_position_convergence() {
-        let mut filter = KalmanFilterXy::new();
-
-        // Capture initial uncertainty variance values from the main diagonal blocks
-        let init_p_pos_x = filter.P[KalmanFilterXy::PP][KalmanFilterXy::M11];
-        //let init_p_vel_x = filter.P[PositionKalmanFilter::VV][PositionKalmanFilter::M11];
-
-        // Setup simulation pacing parameters
-        let dt = 0.01; // 100 Hz tracking thread loop
-
-        // Define realistic GPS/UWB measurement noise variances (R)
-        // Tracks ±1.5m horizontal variance
-        let r_gps = Vector2f32 { x: 2.25, y: 2.25 };
-
-        // Define the ground-truth physical state parameters
-        let mut true_pos = Vector2f32 { x: 10.0, y: -5.0 }; // Start at an offset
-        let mut true_vel = Vector2f32::default();
-        let true_bias = Vector2f32 { x: -0.03, y: 0.04 }; // System accelerometer bias
-
-        // Prime the filter's initial position guess to match our starting point
-        filter.state.pos_m = true_pos;
-
-        println!("\n--- PHASE 1: STATIONARY GPS LOCK (1 SECOND) ---");
-        #[allow(clippy::cast_possible_truncation)]
-        let loops_stationary = (1.0 / dt) as i32;
-        for _ in 0..loops_stationary {
-            // Raw IMU reading = Kinematic Acc (0) + Bias
-            #[allow(unused)]
-            let acc_measurement = Vector2f32::default() + true_bias;
-
-            // TODO: filter.predict_state(acc_measurement, dt);
-            filter.predict_covariance(dt);
-
-            //filter.correct_position(true_pos, r_gps);
-            _ = filter.correct_position_joseph(true_pos, r_gps);
-        }
-
-        // --- PHASE 1 AUDIT LOGS ---
-        println!("Stationary -> True Pos X: {:.4}, Estimated Pos X: {:.4}", true_pos.x, filter.pos_m().x);
-        println!("Stationary -> True Vel X: {:.4}, Estimated Vel X: {:.4}", true_vel.x, filter.vel_mps().x);
-        println!("Stationary -> True Bias X: {:.4}, Estimated Bias X: {:.4}", true_bias.x, filter.acc_bias_mps2().x);
-
-        // Verification assertions for Phase 1
-        assert!((filter.pos_m().x - true_pos.x).abs() < 0.05, "Position drifted while stationary!");
-        assert!((filter.vel_mps().x - true_vel.x).abs() < 0.05, "Velocity accumulated noise while stationary!");
-
-        // Ensure covariance has shrunk significantly below the starting bounds
-        let post_stat_p_pos_x = filter.P[KalmanFilterXy::PP][KalmanFilterXy::M11];
-        assert!(post_stat_p_pos_x < init_p_pos_x, "Position covariance failed to contract under GPS track!");
-
-        println!("\n--- PHASE 2: 2D DYNAMIC SLIDE MANEUVER (2 SECONDS) ---");
-        // Simulate a diagonal lateral acceleration profile (+X, +Y)
-        #[allow(clippy::cast_possible_truncation)]
-        let loops_maneuver = (2.0 / dt) as i32;
-        let true_acc_kinematic = Vector2f32 { x: 1.5, y: 2.0 };
-
-        for _ in 0..loops_maneuver {
-            // Update truth kinematics using the exact model equations (Trapezoidal Rule)
-            true_pos += (true_vel + 0.5 * true_acc_kinematic * dt) * dt;
-            true_vel += true_acc_kinematic * dt;
-
-            // Raw IMU specific force generation
-            #[allow(unused)]
-            let acc_measurement = true_acc_kinematic + true_bias;
-
-            // TODO: filter.predict_state(acc_measurement, dt);
-            filter.predict_covariance(dt);
-
-            _ = filter.correct_position(true_pos, r_gps);
-        }
-
-        // --- PHASE 2 AUDIT LOGS ---
-        println!("Maneuver -> True Final Pos X: {:.4}, Estimated Final Pos X: {:.4}", true_pos.x, filter.pos_m().x);
-        println!("Maneuver -> True Final Pos Y: {:.4}, Estimated Final Pos Y: {:.4}", true_pos.y, filter.pos_m().y);
-        println!("Maneuver -> True Final Vel X: {:.4}, Estimated Final Vel X: {:.4}", true_vel.x, filter.vel_mps().x);
-        println!("Maneuver -> True Final Vel Y: {:.4}, Estimated Final Vel Y: {:.4}", true_vel.y, filter.vel_mps().y);
-
-        // Tracking precision assertions
-        assert!((filter.pos_m().x - true_pos.x).abs() < 0.1, "Filter missed true physical X position track!");
-        assert!((filter.pos_m().y - true_pos.y).abs() < 0.1, "Filter missed true physical Y position track!");
-        assert!((filter.vel_mps().x - true_vel.x).abs() < 0.1, "Filter velocity tracking tracking failed on X axis!");
-        assert!((filter.vel_mps().y - true_vel.y).abs() < 0.1, "Filter velocity tracking tracking failed on Y axis!");
-
-        println!("\n✅ 2D position state propagation and measurement updates verified successfully!");
-    }
-}
-*/

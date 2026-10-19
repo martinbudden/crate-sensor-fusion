@@ -3,7 +3,6 @@ use vqm::{Matrix3x3f32, Matrix3x3xM3x3f32, Quaternionf32, Vector3f32};
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]

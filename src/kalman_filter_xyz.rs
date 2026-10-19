@@ -515,8 +515,8 @@ impl KalmanFilterXyz {
     /// * R: Vector3f32 diagonal measurement noise variance [R.x, R.y, R.z]
     pub fn correct_position_short_form(
         &mut self,
-        measurement: Vector3f32,
-        predicted_measurement: Vector3f32,
+        measurement_m: Vector3f32,
+        predicted_measurement_m: Vector3f32,
         R: Vector3f32,
     ) -> KalmanFilterDiagnostics {
         // H = [ I₃   0₃   0₃ ]
@@ -542,7 +542,7 @@ impl KalmanFilterXyz {
 
         // Calculate the innovation.
         // y = z - H·x
-        let innovation_m = measurement - predicted_measurement;
+        let innovation_m = measurement_m - predicted_measurement_m;
 
         // Normalized Innovation Squared (NIS) = yᵀ·S⁻¹·y  (aka Mahalanobis Distance)
         // Dot product results in a unitless scalar
@@ -603,7 +603,7 @@ impl KalmanFilterXyz {
 
     /// Joseph's Stabilized Form for the covariance update step:
     ///
-    /// `P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ)`.
+    /// `P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ`.
     ///
     /// While computationally more expensive, it guarantees the result remains positive-definite.
     /// That is it ensures the covariance matrix has positive eigenvalues and remains valid and invertible for future updates.
@@ -657,7 +657,7 @@ impl KalmanFilterXyz {
         self.position_consecutive_rejection_count = 0;
 
         // Update the physical state vectors
-        // x += K ·y
+        // x += K·y
         self.state.pos_ned_m += K_pos * innovation_m;
         self.state.vel_ned_mps += K_vel * innovation_m;
         self.state.acc_bias_ned_mps2 += K_acc_bias * innovation_m;

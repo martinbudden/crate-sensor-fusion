@@ -219,7 +219,7 @@ A naïve implementation of a 3D position Kalman filter is computationally very e
 As you can see the **predict** step requires multiplying 9x9 matrices,
 and the **correct** step requires 9x9 matrix multiplication and inversion.
 
-Multiplying two 9x9 matrices requires 729 individual arithmetic operations, inversion even more.
+A naïve dense 9×9 matrix multiplication requires 729 scalar multiplications and 648 additions, inversion even more.
 
 Fortunately, these matrices are sparse and so we can avoid doing the full multiplications and inversions.
 
