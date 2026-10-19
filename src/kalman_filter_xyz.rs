@@ -13,21 +13,21 @@ pub type KalmanStateXyzf32 = KalmanStateXyz;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterXyz {
     /// 3D Kinematic State Vectors, in the NED frame.
-    pub state: KalmanStateXyz,
+    state: KalmanStateXyz,
 
     // Predicted System Uncertainty Covariance Matrix (P).
     /// `P`: Prediction error covariance (aka state covariance matrix, the system's internal uncertainty).
-    pub P: Matrix3x3xM3x3f32,
+    P: Matrix3x3xM3x3f32,
 
     // state transition noise covariance Matrix `Q`
     /// Process Noise spectral density mapping to Velocity variance.
-    pub Q_velocity: f32,
+    Q_velocity: f32,
     /// Process Noise spectral density mapping to Sensor Drift variance.
     /// Units: (m/s³)² / Hz.
-    pub Q_bias: f32,
+    Q_bias: f32,
     /// Count to avoid filter latching.
-    pub altitude_consecutive_rejection_count: u32,
-    pub position_consecutive_rejection_count: u32,
+    altitude_consecutive_rejection_count: u32,
+    position_consecutive_rejection_count: u32,
 }
 
 impl Default for KalmanFilterXyz {
@@ -101,6 +101,13 @@ impl KalmanFilterXyz {
         self
     }
 
+    /// Set the state covariance matrix of a newly constructed `KalmanFilterXyz`.
+    #[must_use]
+    pub fn with_p(mut self, p: Matrix3x3xM3x3f32) -> Self {
+        self.P = p;
+        self
+    }
+
     /// Set `Q_velocity`, the continuous-time acceleration-noise Power Spectral Density (PSD -units of m²/s³)
     /// Input is accelerometer noise density in  g/√Hz (g per root-Hertz).
     /// Datasheets typically specify accelerometer noise density in micro-g per root-Hertz or mg per root-Hertz.
@@ -168,6 +175,30 @@ impl KalmanFilterXyz {
     #[must_use]
     pub fn acc_bias_mps2(&self) -> Vector3f32 {
         self.state.acc_bias_ned_mps2
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn p(&self) -> &Matrix3x3xM3x3f32 {
+        &self.P
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn pp(&self) -> Matrix3x3f32 {
+        self.P[Self::PP]
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn pv(&self) -> Matrix3x3f32 {
+        self.P[Self::PV]
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn bb(&self) -> Matrix3x3f32 {
+        self.P[Self::BB]
     }
 }
 
