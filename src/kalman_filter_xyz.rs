@@ -101,24 +101,26 @@ impl KalmanFilterXyz {
         self
     }
 
-    /// Set `Q_velocity`, the spectral density of the acceleration noise.
-    /// Input is accelerometer noise density in g per root-Hertz.
-    /// Datasheets typically specify accelerometer noise density in micro-g per root-Hertz  or mg per root-Hertz.
-    pub fn set_q_velocity(&mut self, acc_noise_density_g_per_root_hz: f32, denominator: u32) {
+    /// Set `Q_velocity`, the continuous-time acceleration-noise Power Spectral Density (PSD -units of m²/s³)
+    /// Input is accelerometer noise density in  g/√Hz (g per root-Hertz).
+    /// Datasheets typically specify accelerometer noise density in micro-g per root-Hertz or mg per root-Hertz.
+    pub fn set_q_velocity(&mut self, acc_noise_density_g_per_root_hz: f32) {
         let acc_noise_density_mps2_per_root_hz = acc_noise_density_g_per_root_hz * Self::G_MPS2;
-        #[allow(clippy::cast_precision_loss)]
-        {
-            self.Q_velocity =
-                acc_noise_density_mps2_per_root_hz * acc_noise_density_mps2_per_root_hz / (denominator as f32);
-        }
+        self.Q_velocity = acc_noise_density_mps2_per_root_hz * acc_noise_density_mps2_per_root_hz;
     }
 
-    /// Set `Q_bias`, the spectral density of the acceleration bias random walk.
+    /*/// Set `Q_bias`, the continuous-time spectral density of the accelerometer-bias random walk.
     /// Input is accelerometer bias instability in g per time period tau.
-    /// Datasheets typically specify bias instability in micro-g over a time constant tau, typically 100 seconds.
     pub fn set_q_bias(&mut self, bias_instability_g: f32, tau: f32) {
         let bias_instability_mps2 = bias_instability_g * Self::G_MPS2;
-        self.Q_velocity = bias_instability_mps2 * bias_instability_mps2 / tau;
+        self.Q_bias = bias_instability_mps2 * bias_instability_mps2 / tau;
+    }*/
+
+    /// Set the continuous-time bias random-walk Power Spectral Density (PSD - units of m²/s⁵).
+    ///
+    /// Datasheets typically specify bias instability in micro-g over a time constant tau, typically 100 seconds.
+    pub fn set_q_bias(&mut self, q_bias: f32) {
+        self.Q_bias = q_bias;
     }
 
     pub fn set_position(&mut self, pos_ned_m: Vector3f32) {
@@ -343,6 +345,20 @@ impl KalmanFilterXyz {
         P[Self::VV].add_diagonal_scalar_in_place(q_vel);
 
         // Random walk bias drift integration
+        // Bias random-walk noise is added only to the bias covariance (BB).
+        // Its indirect contribution to position, velocity, and their cross-covariances during this interval is neglected as an approximation,
+        // since these are second order in dt.
+        // This is reasonable when dt is small and the bias random-walk noise is sufficiently low.
+        /*
+        Q_PP += (1/20) * Q_bias * dt⁵
+        Q_PV += (1/8)  * Q_bias * dt⁴
+        Q_VP += (1/8)  * Q_bias * dt⁴
+        Q_PB += -(1/6) * Q_bias * dt³
+        Q_BP += -(1/6) * Q_bias * dt³
+        Q_VV += (1/3)  * Q_bias * dt³
+        Q_VB += -(1/2) * Q_bias * dt²
+        Q_BV += -(1/2) * Q_bias * dt²
+        */
         P[Self::BB].add_diagonal_scalar_in_place(q_bias);
 
         // Time propagation is highly sensitive to asymmetric shearing, so enforce symmetry on the covariance matrix.
