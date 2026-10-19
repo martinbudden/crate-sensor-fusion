@@ -1,7 +1,7 @@
 use num_traits::ConstZero;
 use vqm::{Vector2f32, Vector3f32};
 
-use super::{KalmanFilterDiagnostics, KalmanFilterXyz};
+use super::{KalmanFilterDiagnostics, KalmanFilterXyz, KalmanStateXyz};
 
 /// `f32` variant of `KalmanFilterXyzWithSensors`.
 pub type KalmanFilterXyzWithSensorsf32 = KalmanFilterXyzWithSensors;
@@ -70,20 +70,26 @@ impl KalmanFilterXyzWithSensors {
 impl KalmanFilterXyzWithSensors {
     #[inline]
     #[must_use]
+    pub fn state(&self) -> KalmanStateXyz {
+        self.base.state()
+    }
+
+    #[inline]
+    #[must_use]
     pub fn pos_m(&self) -> Vector3f32 {
-        self.base.state.pos_ned_m
+        self.base.pos_m()
     }
 
     #[inline]
     #[must_use]
     pub fn vel_mps(&self) -> Vector3f32 {
-        self.base.state.vel_ned_mps
+        self.base.vel_mps()
     }
 
     #[inline]
     #[must_use]
     pub fn acc_bias_mps2(&self) -> Vector3f32 {
-        self.base.state.acc_bias_body_mps2
+        self.base.acc_bias_mps2()
     }
 
     /// Called inside the main IMU execution loop (eg `gyro_pid` loop).

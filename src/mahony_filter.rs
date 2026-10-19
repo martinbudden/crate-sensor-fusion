@@ -1,6 +1,6 @@
 use num_traits::{ConstOne, ConstZero, float::FloatCore};
 
-use crate::{SensorFusion, SensorFusionMath};
+use super::{SensorFusion, SensorFusionMath};
 use vqm::{MathConstants, MathMethods, Quaternion, QuaternionMath, Vector3};
 
 /// Mahony filter for `f32`<br>

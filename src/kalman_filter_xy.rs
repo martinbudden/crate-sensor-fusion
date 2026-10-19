@@ -1,9 +1,12 @@
 use vqm::{Matrix2x2f32, Matrix3x3xM2x2, Matrix3x3xM2x2f32, Vector2f32};
 
-use crate::KalmanFilterDiagnostics;
+use super::KalmanFilterDiagnostics;
 
-/// `f32` variant of `PositionKalmanFilterXy`.
+/// `f32` variant of `KalmanFilterXy`.
 pub type KalmanFilterXyf32 = KalmanFilterXy;
+
+/// `f32` variant of `KalmanStateXy`.
+pub type KalmanStateXyf32 = KalmanStateXy;
 
 /// Linear Kalman Filter in 2 dimensions.
 #[allow(non_snake_case)]
@@ -81,6 +84,13 @@ impl KalmanFilterXy {
         }
     }
 
+    /// Set the state of a newly constructed `KalmanFilterXy`.
+    #[must_use]
+    pub fn with_state(mut self, state: KalmanStateXy) -> Self {
+        self.state = state;
+        self
+    }
+
     /// Set `Q_velocity`, the spectral density of the acceleration noise.
     /// Input is accelerometer noise density in g per root-Hertz.
     /// Datasheets typically specify accelerometer noise density in micro-g per root-Hertz  or mg per root-Hertz.
@@ -99,6 +109,10 @@ impl KalmanFilterXy {
     pub fn set_q_bias(&mut self, bias_instability_g: f32, tau: f32) {
         let bias_instability_mps2 = bias_instability_g * Self::G_MPS2;
         self.Q_velocity = bias_instability_mps2 * bias_instability_mps2 / tau;
+    }
+
+    pub fn set_position(&mut self, pos_ned_m: Vector2f32) {
+        self.state.pos_m = pos_ned_m;
     }
 
     pub fn set_initial_position(&mut self, initial_position_m: Vector2f32) {
@@ -120,6 +134,12 @@ impl KalmanFilterXy {
 }
 
 impl KalmanFilterXy {
+    #[inline]
+    #[must_use]
+    pub fn state(&self) -> KalmanStateXy {
+        self.state
+    }
+
     #[inline]
     #[must_use]
     pub fn pos_m(&self) -> Vector2f32 {

@@ -1,9 +1,12 @@
 use vqm::{Matrix3x3, Matrix3x3f32, Matrix3x3xM3x3, Matrix3x3xM3x3f32, Vector2f32, Vector3f32};
 
-use crate::KalmanFilterDiagnostics;
+use super::KalmanFilterDiagnostics;
 
-/// `f32` variant of `PositionKalmanFilterXyz`.
+/// `f32` variant of `KalmanFilterXyz`.
 pub type KalmanFilterXyzf32 = KalmanFilterXyz;
+
+/// `f32` variant of `KalmanStateXyz`.
+pub type KalmanStateXyzf32 = KalmanStateXyz;
 
 /// Kalman Filter in 3 dimensions.
 #[allow(non_snake_case)]
@@ -91,6 +94,13 @@ impl KalmanFilterXyz {
         }
     }
 
+    /// Set the state of a newly constructed `KalmanFilterXyz`.
+    #[must_use]
+    pub fn with_state(mut self, state: KalmanStateXyz) -> Self {
+        self.state = state;
+        self
+    }
+
     /// Set `Q_velocity`, the spectral density of the acceleration noise.
     /// Input is accelerometer noise density in g per root-Hertz.
     /// Datasheets typically specify accelerometer noise density in micro-g per root-Hertz  or mg per root-Hertz.
@@ -109,6 +119,10 @@ impl KalmanFilterXyz {
     pub fn set_q_bias(&mut self, bias_instability_g: f32, tau: f32) {
         let bias_instability_mps2 = bias_instability_g * Self::G_MPS2;
         self.Q_velocity = bias_instability_mps2 * bias_instability_mps2 / tau;
+    }
+
+    pub fn set_position(&mut self, pos_ned_m: Vector3f32) {
+        self.state.pos_ned_m = pos_ned_m;
     }
 
     pub fn set_initial_position(&mut self, initial_position_m: Vector3f32) {
@@ -132,6 +146,12 @@ impl KalmanFilterXyz {
 impl KalmanFilterXyz {
     #[inline]
     #[must_use]
+    pub fn state(&self) -> KalmanStateXyz {
+        self.state
+    }
+
+    #[inline]
+    #[must_use]
     pub fn pos_m(&self) -> Vector3f32 {
         self.state.pos_ned_m
     }
@@ -145,7 +165,7 @@ impl KalmanFilterXyz {
     #[inline]
     #[must_use]
     pub fn acc_bias_mps2(&self) -> Vector3f32 {
-        self.state.acc_bias_body_mps2
+        self.state.acc_bias_ned_mps2
     }
 }
 
@@ -402,7 +422,7 @@ impl KalmanFilterXyz {
         // Update state using vector scaling
         self.state.pos_ned_m += K_pos * innovation_m;
         self.state.vel_ned_mps += K_vel * innovation_m;
-        self.state.acc_bias_body_mps2 += K_acc_bias * innovation_m;
+        self.state.acc_bias_ned_mps2 += K_acc_bias * innovation_m;
 
         // Covariance update (rank-1 outer product)
         //
@@ -508,7 +528,7 @@ impl KalmanFilterXyz {
         // x += K·y
         self.state.pos_ned_m += K_pos * innovation_m;
         self.state.vel_ned_mps += K_vel * innovation_m;
-        self.state.acc_bias_body_mps2 += K_acc_bias * innovation_m;
+        self.state.acc_bias_ned_mps2 += K_acc_bias * innovation_m;
 
         // P -= K·(H·P)
         // Calculate by subtracting the K·(H·P) submatrices one by one.
@@ -593,7 +613,7 @@ impl KalmanFilterXyz {
         // x += K ·y
         self.state.pos_ned_m += K_pos * innovation_m;
         self.state.vel_ned_mps += K_vel * innovation_m;
-        self.state.acc_bias_body_mps2 += K_acc_bias * innovation_m;
+        self.state.acc_bias_ned_mps2 += K_acc_bias * innovation_m;
 
         // P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ
 
@@ -744,7 +764,7 @@ impl KalmanFilterXyz {
         // x += K·y
         self.state.pos_ned_m += K_pos * innovation_m;
         self.state.vel_ned_mps += K_vel * innovation_m;
-        self.state.acc_bias_body_mps2 += K_acc_bias * innovation_m;
+        self.state.acc_bias_ned_mps2 += K_acc_bias * innovation_m;
 
         // Covariance update:
         //     P_new = P - K·H·P
@@ -835,8 +855,8 @@ pub struct KalmanStateXyz {
     pub pos_ned_m: Vector3f32,
     /// Velocity {x, y, z}, meters per second, in the NED frame.
     pub vel_ned_mps: Vector3f32,
-    /// Accelerometer Bias {x, y, z}, meters per second squared, in the body frame.
-    pub acc_bias_body_mps2: Vector3f32,
+    /// Accelerometer Bias {x, y, z}, meters per second squared, in the NED frame.
+    pub acc_bias_ned_mps2: Vector3f32,
 }
 
 impl Default for KalmanStateXyz {
@@ -852,7 +872,7 @@ impl KalmanStateXyz {
         Self {
             pos_ned_m: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
             vel_ned_mps: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
-            acc_bias_body_mps2: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
+            acc_bias_ned_mps2: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
         }
     }
 }

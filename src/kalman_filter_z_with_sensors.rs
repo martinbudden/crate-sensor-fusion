@@ -1,4 +1,4 @@
-use super::{KalmanFilterDiagnostics, KalmanFilterZ};
+use super::{KalmanFilterDiagnostics, KalmanFilterZ, KalmanStateZ};
 
 /// `f32` variant of `PositionKalmanFilterExtended`.
 pub type KalmanFilterZWithSensorsf32 = KalmanFilterZWithSensors;
@@ -55,20 +55,26 @@ impl KalmanFilterZWithSensors {
 impl KalmanFilterZWithSensors {
     #[inline]
     #[must_use]
+    pub fn state(&self) -> KalmanStateZ {
+        self.base.state()
+    }
+
+    #[inline]
+    #[must_use]
     pub fn pos_m(&self) -> f32 {
-        self.base.state.pos_m
+        self.base.pos_m()
     }
 
     #[inline]
     #[must_use]
     pub fn vel_mps(&self) -> f32 {
-        self.base.state.vel_mps
+        self.base.vel_mps()
     }
 
     #[inline]
     #[must_use]
     pub fn acc_bias_mps2(&self) -> f32 {
-        self.base.state.acc_bias_mps2
+        self.base.acc_bias_mps2()
     }
 
     /// Called inside the main IMU execution loop (eg `gyro_pid` loop).

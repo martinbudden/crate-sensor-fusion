@@ -30,7 +30,7 @@ mod tests {
         let gravity_mps2 = Vector3f32 { x: 0.0, y: 0.0, z: 9.80665 }; // NED gravity
 
         // Prime the filter's initial position guess to match our starting point
-        filter.state.pos_ned_m = true_pos_m;
+        filter.set_position(true_pos_m);
 
         println!("\n--- PHASE 1: STATIONARY GPS LOCK (1 SECOND) ---");
         #[allow(clippy::cast_possible_truncation)]
@@ -270,20 +270,11 @@ mod test_anchors {
     }
 
     fn make_filter() -> KalmanFilterXyz {
-        KalmanFilterXyz {
-            state: KalmanStateXyz {
-                pos_ned_m: v(3.0, 4.0, 0.0),
-                vel_ned_mps: v(0.0, 0.0, 0.0),
-                acc_bias_body_mps2: v(0.0, 0.0, 0.0),
-            },
-
-            P: Matrix3x3xM3x3f32::identity(),
-
-            Q_velocity: 0.0,
-            Q_bias: 0.0,
-            altitude_consecutive_rejection_count: 0,
-            position_consecutive_rejection_count: 0,
-        }
+        KalmanFilterXyz::new().with_state(KalmanStateXyz {
+            pos_ned_m: v(3.0, 4.0, 0.0),
+            vel_ned_mps: v(0.0, 0.0, 0.0),
+            acc_bias_ned_mps2: v(0.0, 0.0, 0.0),
+        })
     }
 
     #[test]
@@ -305,12 +296,12 @@ mod test_anchors {
 
         let scale = 1.0 / 1.01;
 
-        assert_vector_near(kf.state.pos_ned_m, v(3.0 + 0.6 * scale, 4.0 + 0.8 * scale, 0.0), EPS);
+        assert_vector_near(kf.pos_m(), v(3.0 + 0.6 * scale, 4.0 + 0.8 * scale, 0.0), EPS);
 
         // No cross covariance, so velocity and bias should not change.
-        assert_vector_near(kf.state.vel_ned_mps, v(0.0, 0.0, 0.0), EPS);
+        assert_vector_near(kf.vel_mps(), v(0.0, 0.0, 0.0), EPS);
 
-        assert_vector_near(kf.state.acc_bias_body_mps2, v(0.0, 0.0, 0.0), EPS);
+        assert_vector_near(kf.acc_bias_mps2(), v(0.0, 0.0, 0.0), EPS);
     }
 
     #[test]
@@ -326,7 +317,7 @@ mod test_anchors {
             state: KalmanStateXyz {
                 pos_ned_m: v(3.0, 4.0, 0.0),
                 vel_ned_mps: v(0.0, 0.0, 0.0),
-                acc_bias_body_mps2: v(0.0, 0.0, 0.0),
+                acc_bias_ned_mps2: v(0.0, 0.0, 0.0),
             },
 
             P: Matrix3x3xM3x3f32::from_column_array([
@@ -356,7 +347,7 @@ mod test_anchors {
 
         let scale = 1.0 / 1.01;
 
-        assert_vector_near(kf.state.vel_ned_mps, v(0.3 * scale, 0.4 * scale, 0.0), EPS);
+        assert_vector_near(kf.vel_mps(), v(0.3 * scale, 0.4 * scale, 0.0), EPS);
     }
 
     #[test]
@@ -373,7 +364,7 @@ mod test_anchors {
             state: KalmanStateXyz {
                 pos_ned_m: v(3.0, 4.0, 0.0),
                 vel_ned_mps: v(0.0, 0.0, 0.0),
-                acc_bias_body_mps2: v(0.0, 0.0, 0.0),
+                acc_bias_ned_mps2: v(0.0, 0.0, 0.0),
             },
 
             P: Matrix3x3xM3x3f32::from_column_array([
@@ -399,7 +390,7 @@ mod test_anchors {
 
         let scale = 1.0 / 1.01;
 
-        assert_vector_near(kf.state.acc_bias_body_mps2, v(0.12 * scale, 0.24 * scale, 0.0), EPS);
+        assert_vector_near(kf.acc_bias_mps2(), v(0.12 * scale, 0.24 * scale, 0.0), EPS);
     }
 
     #[test]
@@ -408,16 +399,16 @@ mod test_anchors {
 
         let mut kf = make_filter();
 
-        let original_pos = kf.state.pos_ned_m;
-        let original_vel = kf.state.vel_ned_mps;
-        let original_bias = kf.state.acc_bias_body_mps2;
+        let original_pos = kf.pos_m();
+        let original_vel = kf.vel_mps();
+        let original_bias = kf.acc_bias_mps2();
 
         // Predicted range is exactly 5.
         _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 5.0, 100.0, 0.01);
 
-        assert_vector_near(kf.state.pos_ned_m, original_pos, EPS);
-        assert_vector_near(kf.state.vel_ned_mps, original_vel, EPS);
-        assert_vector_near(kf.state.acc_bias_body_mps2, original_bias, EPS);
+        assert_vector_near(kf.pos_m(), original_pos, EPS);
+        assert_vector_near(kf.vel_mps(), original_vel, EPS);
+        assert_vector_near(kf.acc_bias_mps2(), original_bias, EPS);
     }
 
     #[test]
@@ -426,18 +417,18 @@ mod test_anchors {
 
         let mut kf = make_filter();
 
-        let original_pos = kf.state.pos_ned_m;
-        let original_vel = kf.state.vel_ned_mps;
-        let original_bias = kf.state.acc_bias_body_mps2;
+        let original_pos = kf.pos_m();
+        let original_vel = kf.vel_mps();
+        let original_bias = kf.acc_bias_mps2();
         let original_p = kf.P;
 
         // Predicted range = 5.
         // 100 m is obviously an outlier.
         _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 100.0, 6.63, 0.01);
 
-        assert_vector_near(kf.state.pos_ned_m, original_pos, EPS);
-        assert_vector_near(kf.state.vel_ned_mps, original_vel, EPS);
-        assert_vector_near(kf.state.acc_bias_body_mps2, original_bias, EPS);
+        assert_vector_near(kf.pos_m(), original_pos, EPS);
+        assert_vector_near(kf.vel_mps(), original_vel, EPS);
+        assert_vector_near(kf.acc_bias_mps2(), original_bias, EPS);
 
         assert_matrix_near(kf.P[KalmanFilterXyz::PP], original_p[KalmanFilterXyz::PP], EPS);
         assert_matrix_near(kf.P[KalmanFilterXyz::PV], original_p[KalmanFilterXyz::PV], EPS);

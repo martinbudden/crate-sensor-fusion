@@ -1,9 +1,7 @@
 use num_traits::ConstZero;
 use vqm::Vector2f32;
 
-use crate::KalmanFilterDiagnostics;
-
-use super::KalmanFilterXy;
+use super::{KalmanFilterDiagnostics, KalmanFilterXy};
 
 /// `f32` variant of `PositionKalmanFilterExtended`.
 pub type KalmanFilterXyWithSensorsf32 = KalmanFilterXyWithSensors;

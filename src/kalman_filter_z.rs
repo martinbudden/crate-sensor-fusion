@@ -1,14 +1,18 @@
 use vqm::Matrix3x3f32;
 
-use crate::KalmanFilterDiagnostics;
+use super::KalmanFilterDiagnostics;
 
+/// `f32` variant of `KalmanFilterZ`.
 pub type KalmanFilterZf32 = KalmanFilterZ;
+
+/// `f32` variant of `KalmanStateXyz`.
+pub type KalmanStateZf32 = KalmanStateZ;
 
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterZ {
     /// 3D Kinematic State Vectors.
-    pub state: KalmanStateZ,
+    state: KalmanStateZ,
 
     // Predicted System Uncertainty Covariance Matrix (P).
     /// `P`: Prediction error covariance (aka state covariance matrix, the system's internal uncertainty).
@@ -77,6 +81,13 @@ impl KalmanFilterZ {
         }
     }
 
+    /// Set the state of a newly constructed `KalmanFilterZ`.
+    #[must_use]
+    pub fn with_state(mut self, state: KalmanStateZ) -> Self {
+        self.state = state;
+        self
+    }
+
     /// Set `Q_velocity`, the spectral density of the acceleration noise.
     /// Input is accelerometer noise density in g per root-Hertz.
     /// Datasheets typically specify accelerometer noise density in micro-g per root-Hertz  or mg per root-Hertz.
@@ -95,6 +106,10 @@ impl KalmanFilterZ {
     pub fn set_q_bias(&mut self, bias_instability_g: f32, tau: f32) {
         let bias_instability_mps2 = bias_instability_g * Self::G_MPS2;
         self.Q_velocity = bias_instability_mps2 * bias_instability_mps2 / tau;
+    }
+
+    pub fn set_position(&mut self, pos_ned_m: f32) {
+        self.state.pos_m = pos_ned_m;
     }
 
     pub fn set_initial_position(&mut self, initial_position_m: f32) {
@@ -116,6 +131,12 @@ impl KalmanFilterZ {
 }
 
 impl KalmanFilterZ {
+    #[inline]
+    #[must_use]
+    pub fn state(&self) -> KalmanStateZ {
+        self.state
+    }
+
     #[inline]
     #[must_use]
     pub fn pos_m(&self) -> f32 {

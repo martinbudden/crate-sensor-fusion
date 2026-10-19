@@ -1,7 +1,7 @@
 use core::ops::Neg;
 use num_traits::{One, Zero, float::FloatCore};
 
-use crate::{SensorFusion, SensorFusionMath};
+use super::{SensorFusion, SensorFusionMath};
 use vqm::{MathMethods, Quaternion, QuaternionMath, Vector3};
 
 /// Complementary filter for `f32`<br>

@@ -1,4 +1,4 @@
-use crate::{SensorFusion, SensorFusionMath};
+use super::{SensorFusion, SensorFusionMath};
 use num_traits::{ConstOne, ConstZero, float::FloatCore};
 use vqm::{MathMethods, Quaternion, QuaternionMath, Vector3};
 
