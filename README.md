@@ -108,10 +108,11 @@ When using a Kalman filter for 3D there are two possible implementation choices:
 
 | Feature            | Split Architecture (1D + 2D)                                     | Unified 3D Architecture                             |
 | ------------------ | ---------------------------------------------------------------- | --------------------------------------------------- |
-| Computational Cost | Lower (2×2 and 4×4 matrices )                                    | Higher (6×6 and 9×9 matrices)                       |
+| Computational Cost | Lower (2×2 and 4×4 matrices)                                     | Higher (6×6 and 9×9 matrices)                       |
 | Sensor Coupling    | Independent (barometer noise cannot corrupt horizontal accuracy) | Coupled (vertical errors can bleed into horizontal) |
 | Tuning Complexity  | Easier (can tune vertical and horizontal separately)             | Harder                                              |
 | Fault Tolerance    | Higher                                                           | Lower                                               |
+| Banked movement    | Produces inaccuracies                                            | Handled by model                                    |
 
 For vehicles that stay upright, or tilt minimally (eg a walker, a car, or a cinematic quadcopter) the split approach is a good one.
 
@@ -125,7 +126,7 @@ So, for example, using acceleration (`a`) as the control input it would predict 
 
 ```text
 s = ut + ½at²
-v = u + at`
+v = u + at
 ```
 
 However, if you keep predicting position and velocity using integration like that, noise in the system
@@ -155,12 +156,15 @@ Each sensor will have its matrix `R`. So there will be separate matrices `R gps`
 It would be possible to create a Kalman filter that takes accelerometer and gyroscope values as control inputs
 and from those estimates orientation, position and velocity.
 
-However this would be computationally very expensive: in 3D the Kalman filter would need a massive 15x15 covariance matrix
-(position, velocity, attitude, accelerometer bias, and gyroscope bias each of those being 3D vectors).
-Even in 2D a 10x10 covariance matrix would be needed.
+However this would be computationally very expensive: in 3D the Kalman filter would need massive 15x15
+state transition (`F`) and state covariance (`P`) matrices.
+(Position, velocity, attitude, accelerometer bias, and gyroscope bias: each of those being 3D vectors.)
+Even in 2D, 10x10 matrices would be needed.
 
 Since the calculation of attitude is non-linear, the Kalman filter would need to calculate
-[Jacobians](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant)
+the [Jacobian](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant)
+of the state transition matrix
+`F = ∂f(x,u )/∂x`
 as well as multiplying and inverting these large matrices.
 
 A computationally less expensive approach is to remove the responsibility for calculating the orientation from
@@ -189,7 +193,8 @@ the Kalman filter and use a another sensor fusion filter (ie a Mahony or Madgwic
   GPS, Barometer, etc ─▶─┘
 ```
 
-This reduces the covariance matrix to more manageable size of 9x9 for 3D (and 6x6 for 2D) and avoids the need to calculate Jacobians.
+This reduces the covariance matrix to more manageable size of 9x9 for 3D (and 6x6 for 2D) and avoids the need
+to calculate the Jacobian of the state transition matrix (`F`).
 
 Note that we integrate the accelerometer output from the IMU to give `delta_pos` and `delta_vel` values since
 the Kalman filter runs at a lower rate than the IMU (the IMU can run at up to 8kHz, the Kalman
@@ -202,19 +207,19 @@ A naïve implementation of a 3D position Kalman filter is computationally very e
 |     | Description                     | Type         | Notes                                       |
 | --- | ------------------------------- | ------------ | ------------------------------------------- |
 |     | **predict**<br>`x = F·x + B.u`<br>`P = F·P·Fᵀ + Q` | |                                       |
+| `u` | control input vector            | vector3      | acceleration x,y,z (from IMU)               |
 | `x` | estimated state vector          | 3 x vector3  | position x,y,z; velocity x,y,z; bias x,y,z  |
-| `u` | control input vector            | vector3      | acceleration x,y,z                          |
 | `F` | state transition matrix         | 9 x 9 matrix | derived from system dynamics                |
 | `B` | control input matrix            | 9 x 3 matrix | derived from system dynamics                |
-| `P` | state covariance matrix         | 9 x 9 matrix | estimated uncertainty                       |
-| `Q` | process noise covariance matrix | 9 x 9 matrix | how noisy is control vector (eg IMU)        |
-|     | **correct**<br>`S = H·P·Hᵀ + R`<br>`K = P·Hᵀ·S⁻¹`<br>`y = z - H·x`<br>`x = x + K·y`<br>`P = P - K·H·P` | | |
+| `P` | state covariance matrix         | 9 x 9 matrix | estimated uncertainty (calculated)          |
+| `Q` | process noise covariance matrix | 9 x 9 matrix | how noisy is `u`. obtained from IMU datasheet and/or measurement |
+|     | **correct**<br>`y = z - H·x`<br>`S = H·P·Hᵀ + R`<br>`K = P·Hᵀ·S⁻¹`<br>`x = x + K·y`<br>`P = P - K·H·P` | | |
+| `z` | measurement vector              | vector3      | input (eg from GPS)                         |
 | `y` | measurement innovation          | 3 x vector3  | difference between measurement and estimate |
-| `z` | measurement vector              | vector3      | input                                       |
 | `H` | measurement matrix              | 3 x 9 matrix | derived from system dynamics                |
-| `R` | measurement noise covariance    | 3 x 3 matrix | how noisy/accurate is sensor (eg GPS)       |
-| `S` | innovation covariance matrix    | 9 x 9 matrix |                                             |
-| `K` | Kalman gain matrix              | 9 x 3        |                                             |
+| `R` | measurement noise covariance    | 3 x 3 matrix | how noisy/accurate is sensor (eg GPS). obtained from datasheet |
+| `S` | innovation covariance matrix    | 9 x 9 matrix | calculated                                  |
+| `K` | Kalman gain matrix              | 9 x 3        | calculated                                  |
 
 As you can see the **predict** step requires multiplying 9x9 matrices,
 and the **correct** step requires 9x9 matrix multiplication and inversion.
@@ -247,9 +252,9 @@ In our system we have:
 
 ```text
     ┌                                           ┐
-    │  1  0  0   dt   0   0   -½dt     0     0  |
-    │  0  1  0    0  dt   0      0  -½dt     0  |
-    │  0  0  1    0   0  dt      0     0  -½dt  |
+    │  1  0  0   dt   0   0   -½dt²    0     0  |
+    │  0  1  0    0  dt   0      0  -½dt²    0  |
+    │  0  0  1    0   0  dt      0     0  -½dt² |
     |                                           |
     │  0  0  0    1   0   0    -dt     0     0  |
 F = │  0  0  0    0   1   0      0   -dt     0  |
@@ -264,9 +269,10 @@ F = │  0  0  0    0   1   0      0   -dt     0  |
 So calculating `P = F·P·Fᵀ` directly by matrix multiplication and transposition is clearly extremely wasteful.
 Instead we take advantage of the sparseness of the matrix and operate on the 3x3 submatrices.
 
-In the correct phase we do not need to invert the full 9x9 matrix `S`, instead we invert the relevant submatrix.
-For a 3D measurement correction (eg position from GPS) this means inverting a 3x3 submatrix.
-For a 1D measurement correction (eg altitude from a barometer) this involves simply taking the reciprocal of a scalar.
+Also, in the correct phase we do not need to invert the full 9x9 matrix `S`, instead we invert the relevant submatrix.
+
+- for a 3D measurement correction (eg position from GPS) this means inverting a 3x3 submatrix.
+- for a 1D measurement correction (eg altitude from a barometer) this involves simply taking the reciprocal of a scalar.
 
 Further optimizations include:
 
@@ -279,14 +285,22 @@ Further optimizations include:
 The Kalman filter equations themselves are mathematically well behaved, however errors can accumulate when implemented with f32 precision.
 To mitigate these errors this implementation:
 
-1. Explicitly restores symmetry to the covariance matrix (by setting `P = ½(P + Pᵀ)`).
-2. Uses numerically stable Joseph form for covariance updates ( `P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ` rather than `P = P - K·H·P + K·R·Kᵀ`)
-3. Uses Cholesky factorization of the innovation covariance matrix `S` (rather than taking the inverse of S).
+1. Explicitly restores symmetry to the covariance matrix after each state prediction (by setting `P = ½(P + Pᵀ)`).
+2. Uses the numerically stable Joseph form for covariance predictions ( `P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ` rather than `P = P - K·H·P + K·R·Kᵀ`)
+3. Uses Cholesky factorization of the innovation covariance matrix `S` (rather than taking the inverse of `S`).
 
-I plan to scale the states and measurements so their scales are broadly comparable, but this has not been implemented yet.
+Additionally scaling the states and measurements so their scales are broadly comparable improves numerical stability,
+but this has not been implemented yet.
+
 Scaling brings state values and uncertainties to closer to O(1) (order one), improving numerical conditioning
 without changing the underlying physical problem.
 (Floating-point arithmetic may lose precision when operations combine quantities with very different scales.)
+
+### Reference
+
+See [Kalman and Bayesian Filters in Python](https://github.com/rlabbe/Kalman-and-Bayesian-Filters-in-Python/tree/master)
+for a really good introductory text for Kalman and Bayesian filters.
+All code is written in Python, and the book itself is written using Jupyter Notebook so that you can run and modify the code in your browser.
 
 ## Madgwick Filter Optimization {#opt}
 
@@ -361,7 +375,7 @@ I originally implemented this crate as a C++ library:
 
 Licensed under either of:
 
-* Apache License, Version 2.0, see: [LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>
-* MIT license, see: [LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>
+- Apache License, Version 2.0, see: [LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>
+- MIT license, see: [LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>
 
 at your option.

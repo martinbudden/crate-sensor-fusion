@@ -47,7 +47,7 @@ mod tests {
             filter.predict_covariance(dt);
 
             //filter.correct_position(true_pos, r_gps);
-            _ = filter.correct_position_joseph(true_pos_m.into(), r_gps);
+            _ = filter.correct_position(true_pos_m.into(), r_gps);
         }
 
         // --- PHASE 1 AUDIT LOGS ---

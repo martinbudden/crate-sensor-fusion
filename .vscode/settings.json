@@ -116,6 +116,8 @@
         "xtask",
         "Xyzf",
         "zerocopy",
-        "zmij"
+        "zmij",
+        "δpos",
+        "δvel"
     ]
 }
