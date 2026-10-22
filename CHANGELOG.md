@@ -32,6 +32,7 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 ### Removed
 
 - fast-forward from `KalmanFilterXYZWithSensors`.
+- `kalman_state_vector9.rs`.
 
 ## [0.1.11] - 2026-10-01
 
