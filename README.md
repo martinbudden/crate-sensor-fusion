@@ -4,7 +4,7 @@ This crate contains [sensor fusion](https://en.wikipedia.org/wiki/Sensor_fusion)
 output from a gyroscope, accelerometer, and other sensors to give output that has less uncertainty
 than the output of the individual sensors.
 
-This crate is `no_std`, `no alloc`, `no panic`, `no unwrap`, `no expect` and the Minimum Supported Rust Version (MSRV) is `Rust 1.89`.
+This crate is `no_std`, `no alloc`, `no panic`, `no unwrap`, `no expect`, and the Minimum Supported Rust Version (MSRV) is `Rust 1.89`.
 
 Six sensor fusion implementations are available:
 
