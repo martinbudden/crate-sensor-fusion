@@ -15,6 +15,12 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 - May port  **VQF** (Versatile Quaternion Filter) from my C++ library [Library-SensorFusion](https://github.com/martinbudden/Library-SensorFusion).
 
+## [0.1.13] - 2026-10-28
+
+### Changed
+
+- Updated to `vqm` version `0.1.19`.
+
 ## [0.1.12] - 2026-10-23
 
 ### Added
