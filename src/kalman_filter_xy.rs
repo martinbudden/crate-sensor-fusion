@@ -1,4 +1,4 @@
-use vqm::{Matrix2x2f32, Matrix3x3xM2x2f32, Vector2f32};
+use vqm::{M2x2UpperTriangularArrayf32, Matrix2x2f32, Matrix3x3xM2x2f32, Vector2f32};
 
 use super::KalmanFilterDiagnostics;
 
@@ -345,7 +345,7 @@ impl KalmanFilterXy {
         // Calculate S, the Innovation Covariance matrix:
         // S = H·P·Hᵀ + R
         let S = P_pos.add_diagonal_vector(R);
-        let Some(S_inv) = S.try_inverse() else {
+        let Some(S_inv) = M2x2UpperTriangularArrayf32::try_inverse_from_symmetric_matrix(S, 1e-6) else {
             // The the Innovation Covariance matrix may be non-invertible.
             // This happens very rarely and is due to rounding errors when the process noise covariance Q is small.
             return KalmanFilterDiagnostics::default();
@@ -436,7 +436,7 @@ impl KalmanFilterXy {
         let S = self.P[Self::PP].add_diagonal_vector(R);
 
         // S is guaranteed to be positive-definite, since we are using Joseph's Stabilized Form, so we can use a Cholesky solver.
-        let Some(S_cholesky) = S.cholesky() else {
+        let Some(S_inv) = M2x2UpperTriangularArrayf32::try_inverse_from_symmetric_matrix(S, 1e-6) else {
             return KalmanFilterDiagnostics::default();
         };
 
@@ -445,9 +445,8 @@ impl KalmanFilterXy {
         let innovation_m = measurement_m - predicted_measurement_m;
 
         // Normalized Innovation Squared (NIS) = yᵀ·S⁻¹·y  (aka Mahalanobis Distance)
-        let s_inv_times_innovation = S_cholesky.solve_vector(innovation_m);
         // Dot product results in a unitless scalar
-        let nis = innovation_m.dot(s_inv_times_innovation);
+        let nis = innovation_m.dot(S_inv * innovation_m);
         let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP].trace(), nis };
 
         if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_3D
@@ -462,9 +461,9 @@ impl KalmanFilterXy {
 
         // Calculate K, the Kalman gain.
         // K = P·Hᵀ·S⁻¹
-        let K_pos = S_cholesky.solve_matrix(self.P[Self::PP]); // 60 arithmetic operations, matrix multiply is 45
-        let K_vel = S_cholesky.solve_matrix(self.P[Self::VP]);
-        let K_acc_bias = S_cholesky.solve_matrix(self.P[Self::BP]);
+        let K_pos = self.P[Self::PP] * S_inv;
+        let K_vel = self.P[Self::VP] * S_inv;
+        let K_acc_bias = self.P[Self::BP] * S_inv;
 
         // Update the estimated state vector
         // x += K·y
@@ -494,7 +493,7 @@ impl KalmanFilterXy {
         let K_pos_t = K_pos.transpose();
         let K_vel_t = K_vel.transpose();
         let K_acc_bias_t = K_acc_bias.transpose();
-        let I_minus_K_pos_t = Matrix2x2f32::identity() - K_pos_t; // Simplified distribution
+        let I_minus_K_pos_t = Matrix2x2f32::identity() - K_pos_t;
 
         // Calculate J = A·(I - KH)ᵀ.
         // Only calculate the values that are different from A.

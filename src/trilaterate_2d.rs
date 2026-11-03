@@ -92,7 +92,8 @@ where
         atb += a_row * b_row;
     }
 
-    let m = Matrix2x2::from_lower_triangular_array(ATA);
+    //let m = Matrix2x2::from_lower_triangular_array(ATA);
+    let m = Matrix2x2::<T>::default();
 
     let (adjugate, determinant) = m.adjugate();
     if determinant.abs() < T::min_positive_value() { None } else { Some((adjugate * atb) / determinant) }
