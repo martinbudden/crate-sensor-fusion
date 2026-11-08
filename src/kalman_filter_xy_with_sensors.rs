@@ -1,7 +1,7 @@
 use num_traits::ConstZero;
 use vqm::Vector2f32;
 
-use super::{KalmanFilterDiagnostics, KalmanFilterXy, KalmanStateXy};
+use super::{FusionStatus, KalmanFilterDiagnostics, KalmanFilterXy, KalmanStateXy};
 
 /// `f32` variant of `PositionKalmanFilterExtended`.
 pub type KalmanFilterXyWithSensorsf32 = KalmanFilterXyWithSensors;
@@ -43,6 +43,13 @@ impl Default for KalmanFilterXyWithSensors {
 }
 
 impl KalmanFilterXyWithSensors {
+    /// For a 1D measurement, a Chi-Squared 95% confidence threshold is 3.84.
+    /// If NIS (Normalized Innovation Squared aka Mahalanobis distance squared) exceeds this consistently, the sensor and physics model disagree.
+    pub const NIS_THRESHOLD_1D: f32 = 3.84;
+    /// For a 2D measurement, a Chi-Squared 95% confidence threshold is 5.99.
+    /// If NIS (Normalized Innovation Squared aka Mahalanobis distance squared) exceeds this consistently, the sensor and physics model disagree.
+    pub const NIS_THRESHOLD_2D: f32 = 5.991;
+
     /// Constructor.
     #[must_use]
     pub fn new() -> Self {
@@ -111,12 +118,16 @@ impl KalmanFilterXyWithSensors {
     /// Correct position using GPS position measurement (typically at a 1Hz to 10Hz rate).
     pub fn correct_position_using_gps(&mut self, position_m: Vector2f32) -> KalmanFilterDiagnostics {
         let r_gps = Vector2f32 { x: self.R_gps_horizontal, y: self.R_gps_horizontal };
-        self.base.correct_position(position_m, r_gps)
+        self.base.correct_position(position_m, r_gps, Self::NIS_THRESHOLD_2D)
     }
 
     /// Correct position using optical flow position measurement.
+    /// Placeholder function, currently unimplemented.
     pub fn correct_position_using_optical_flow(&mut self, position_m: Vector2f32) -> KalmanFilterDiagnostics {
-        self.base.correct_position(position_m, self.R_optical_flow)
+        _ = self;
+        _ = position_m;
+        todo!("implement correct_position_using_optical_flow for xy");
+        //self.base.correct_position(position_m, self.R_optical_flow)
     }
 }
 
@@ -135,10 +146,10 @@ impl KalmanFilterXyWithSensors {
     ) -> KalmanFilterDiagnostics {
         // Find the past state matching the sensor timestamp
         let Some((past, _)) = self.find_snapshot(sensor_time, dt) else {
-            return KalmanFilterDiagnostics::default();
+            return KalmanFilterDiagnostics { status: FusionStatus::SnapshotNotFound, ..Default::default() };
         };
         let predicted_measurement_m = past.pos_m;
-        self.base.correct_position_short_form(measurement_m, predicted_measurement_m, R)
+        self.base.correct_position_short_form(measurement_m, predicted_measurement_m, R, Self::NIS_THRESHOLD_2D)
     }
 }
 

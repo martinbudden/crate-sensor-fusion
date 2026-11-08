@@ -46,6 +46,7 @@ pub fn trilaterate_3d_weighted(anchors: &[Anchor3df32]) -> Option<Vector3f32> {
     const A12: usize = 4;
     const A22: usize = 5;
 
+    // We need at least 4 anchors to trilaterate in 3D.
     if anchors.len() < 4 {
         return None;
     }
@@ -55,7 +56,6 @@ pub fn trilaterate_3d_weighted(anchors: &[Anchor3df32]) -> Option<Vector3f32> {
     let mut base_idx = 0;
     let mut min_distance = anchors[0].distance;
     let mut max_weight = anchors[0].weight;
-
     for (ii, anchor) in anchors.iter().enumerate().skip(1) {
         #[allow(clippy::float_cmp)]
         if anchor.weight > max_weight || (anchor.weight == max_weight && anchor.distance < min_distance) {
@@ -83,10 +83,11 @@ pub fn trilaterate_3d_weighted(anchors: &[Anchor3df32]) -> Option<Vector3f32> {
     let mut ATA_W: [f32; 6] = [0.0; 6];
 
     // Initialize 3x1 vector Aᵀ·b·w
-    let mut atb_w = Vector3f32::default();
+    let mut atb_w = Vector3f32 { x: 0.0, y: 0.0, z: 0.0 };
 
     // Accumulate all rows, skipping the base anchor
     for (ii, anchor) in anchors.iter().enumerate() {
+        // Skip the base anchor.
         if ii == base_idx {
             continue;
         }
@@ -114,23 +115,12 @@ pub fn trilaterate_3d_weighted(anchors: &[Anchor3df32]) -> Option<Vector3f32> {
         atb_w += a_row * b_row * weight;
     }
 
-    /*
-    let m = Matrix3x3f32::new([
-        ATA_W[A00], ATA_W[A01], ATA_W[A02], //
-        ATA_W[A01], ATA_W[A11], ATA_W[A12], //
-        ATA_W[A02], ATA_W[A12], ATA_W[A22], //
-    ]);
-
-    let (adjugate, determinant) = m.adjugate_symmetric();
-    if determinant.abs() < f32::EPSILON { None } else { Some((adjugate * atb_w) / determinant) }
-    */
-
     // Compute the Cholesky factorization (L·Lᵀ = Aᵀ·A·w).
-    // This will fail and return None if the anchors are coplanar/collinear
+    // This will fail and return `None` if the anchors are coplanar/collinear
     // or if noise causes the matrix to lose its positive-definite status.
     let cholesky = Cholesky3x3f32::from_lower_triangle_array(ATA_W)?;
 
-    // Solve the system using Cholesky fast forward- and backward-substitution
+    // Solve the system using Cholesky forward- and backward-substitution
     Some(cholesky.solve_vector(atb_w))
 }
 
@@ -146,7 +136,6 @@ mod tests {
         }
     }
 
-    fn _is_normal<T: Sized + Send + Sync + Unpin>() {}
     fn is_full<T: Sized + Send + Sync + Unpin + Copy + Clone + Default + PartialEq>() {}
 
     #[test]

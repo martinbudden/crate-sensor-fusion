@@ -1,6 +1,6 @@
-use vqm::Matrix3x3f32;
+use vqm::{Matrix3x3f32, Vector3f32};
 
-use super::KalmanFilterDiagnostics;
+use super::{FusionStatus, KalmanFilterDiagnostics};
 
 /// `f32` variant of `KalmanFilterZ`.
 pub type KalmanFilterZf32 = KalmanFilterZ;
@@ -24,8 +24,6 @@ pub struct KalmanFilterZ {
     /// Process Noise spectral density mapping to Sensor Drift variance.
     /// Units: (m/s³)² / Hz.
     Q_bias: f32,
-    /// Count to avoid filter latching.
-    consecutive_rejection_count: u32,
 }
 
 impl Default for KalmanFilterZ {
@@ -77,7 +75,6 @@ impl KalmanFilterZ {
             // shifting it incrementally over minutes rather than fluctuating on every single vibration loop.
             Q_bias: 1e-4,
             P,
-            consecutive_rejection_count: 0,
         }
     }
 
@@ -208,6 +205,7 @@ impl KalmanFilterZ {
     /// ```
     #[allow(non_snake_case)]
     pub fn predict_covariance(&mut self, dt: f32) {
+        debug_assert!(dt != 0.0 && dt.is_finite());
         // =====================================================================
         // PROPAGATE THE COVARIANCE P_new = F·P_old·Fᵀ
         // =====================================================================
@@ -216,7 +214,6 @@ impl KalmanFilterZ {
         let P = &mut self.P;
 
         // We can update P in place by ensuring RHS of all P assignments refers to P_old.
-        //
         // We use temporary indices and shadow them out of scope when they have been used.
         // This ensures we cannot use an updated value in a subsequent update, ie P_new cannot be used on RHS.
         let (PP, VP, BP, PV, VV, BV, PB, VB, BB) =
@@ -249,7 +246,7 @@ impl KalmanFilterZ {
 
         P[VB] -= dt * P[BB];
         retire!(VB);
-        // P[BB] = P[BB]; so don't need to update BB.
+        // P[BB] = P[BB]; so we don't need to update BB.
 
         // =====================================================================
         // APPLY PROCESS NOISE (Q)
@@ -281,8 +278,8 @@ impl KalmanFilterZ {
 
 #[allow(non_snake_case)]
 impl KalmanFilterZ {
-    pub fn correct_altitude(&mut self, altitude_m: f32, R: f32) -> KalmanFilterDiagnostics {
-        self.correct_position(altitude_m, self.state.pos_ned_m, R)
+    pub fn correct_altitude(&mut self, altitude_m: f32, R: f32, nis_threshold: f32) -> KalmanFilterDiagnostics {
+        self.correct_position(altitude_m, self.state.pos_ned_m, R, nis_threshold)
     }
 
     pub fn correct_position(
@@ -290,7 +287,10 @@ impl KalmanFilterZ {
         measurement_m: f32,
         predicted_measurement_m: f32,
         R: f32,
+        nis_threshold: f32,
     ) -> KalmanFilterDiagnostics {
+        debug_assert!(measurement_m.is_finite());
+        debug_assert!(predicted_measurement_m.is_finite());
         // H = [ 1   0   0 ]
         // S = H·P·Hᵀ + R
         // y = z - H·x
@@ -307,7 +307,11 @@ impl KalmanFilterZ {
         // S = H·P·Hᵀ + R
         let S = P_pos + R;
         if S.abs() <= f32::EPSILON {
-            return KalmanFilterDiagnostics::default();
+            return KalmanFilterDiagnostics {
+                status: FusionStatus::IllConditionedInnovationCovarianceMatrix,
+                position_trace: self.P[Self::PP],
+                ..Default::default()
+            };
         }
         let S_inv = 1.0 / S;
 
@@ -317,17 +321,18 @@ impl KalmanFilterZ {
 
         // Normalized Innovation Squared (NIS) = yᵀ·S⁻¹·y  (aka Mahalanobis Distance)
         let nis = (innovation_m * innovation_m) * S_inv;
-        let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP], nis };
+        let mut diagnostics = KalmanFilterDiagnostics {
+            status: FusionStatus::Accepted,
+            position_trace: self.P[Self::PP],
+            nis,
+            innovation_m: Vector3f32 { x: 0.0, y: 0.0, z: innovation_m },
+        };
 
-        if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_1D
-            && self.consecutive_rejection_count < KalmanFilterDiagnostics::MAX_CONSECUTIVE_REJECTION_COUNT
-        {
-            // If nis > NIS_THRESHOLD_1D, there is less than a 5% chance this is normal sensor noise,
-            // so reject this measurement as an outlier.
-            self.consecutive_rejection_count += 1;
+        if nis > nis_threshold {
+            // nis exceeds nis_threshold, so reject this measurement as an outlier.
+            diagnostics.status = FusionStatus::RejectedOutlier;
             return diagnostics;
         }
-        self.consecutive_rejection_count = 0;
 
         // Calculate K, the Kalman gain.
         // Calculate the 3x3 segmented Kalman Gain pieces
@@ -382,7 +387,10 @@ impl KalmanFilterZ {
         measurement_m: f32,
         predicted_measurement_m: f32,
         R: f32,
+        nis_threshold: f32,
     ) -> KalmanFilterDiagnostics {
+        debug_assert!(measurement_m.is_finite());
+        debug_assert!(predicted_measurement_m.is_finite());
         // H = [ I   0   0 ]
         // S = H·P·Hᵀ + R
         // y = z - H·x
@@ -399,7 +407,11 @@ impl KalmanFilterZ {
         // S = H·P·Hᵀ + R
         let S = P_pos + R;
         if S.abs() <= f32::EPSILON {
-            return KalmanFilterDiagnostics::default();
+            return KalmanFilterDiagnostics {
+                status: FusionStatus::IllConditionedInnovationCovarianceMatrix,
+                position_trace: self.P[Self::PP],
+                ..Default::default()
+            };
         }
         let S_inv = 1.0 / S;
 
@@ -409,17 +421,18 @@ impl KalmanFilterZ {
 
         // Normalized Innovation Squared (NIS) = yᵀ·S⁻¹·y  (aka Mahalanobis Distance)
         let nis = (innovation_m * innovation_m) * S_inv;
-        let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP], nis };
+        let mut diagnostics = KalmanFilterDiagnostics {
+            status: FusionStatus::Accepted,
+            position_trace: self.P[Self::PP],
+            nis,
+            innovation_m: Vector3f32 { x: 0.0, y: 0.0, z: innovation_m },
+        };
 
-        if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_1D
-            && self.consecutive_rejection_count < KalmanFilterDiagnostics::MAX_CONSECUTIVE_REJECTION_COUNT
-        {
-            // If nis > NIS_THRESHOLD_1D, there is less than a 5% chance this is normal sensor noise,
-            // so reject this measurement as an outlier.
-            self.consecutive_rejection_count += 1;
+        if nis > nis_threshold {
+            // nis exceeds nis_threshold, so reject this measurement as an outlier.
+            diagnostics.status = FusionStatus::RejectedOutlier;
             return diagnostics;
         }
-        self.consecutive_rejection_count = 0;
 
         // Calculate K, the Kalman gain.
         // K = P·Hᵀ·S⁻¹
@@ -519,7 +532,6 @@ impl KalmanStateZ {
 mod test_traits {
     use super::*;
 
-    fn _is_normal<T: Sized + Send + Sync + Unpin>() {}
     fn is_full<T: Sized + Send + Sync + Unpin + Copy + Clone + Default + PartialEq>() {}
 
     #[test]

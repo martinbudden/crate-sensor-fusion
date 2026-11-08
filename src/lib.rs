@@ -55,7 +55,7 @@ pub use sensor_fusion_math::SensorFusionMath;
 
 pub use imu_integrator::{ImuIntegral, ImuIntegrator};
 
-pub use kalman_filter_diagnostics::KalmanFilterDiagnostics;
+pub use kalman_filter_diagnostics::{EstimatorHealth, FusionStatus, KalmanFilterDiagnostics};
 pub use kalman_filter_z::{KalmanFilterZ, KalmanFilterZf32, KalmanStateZ, KalmanStateZf32};
 pub use kalman_filter_z_with_sensors::{KalmanFilterZWithSensors, KalmanFilterZWithSensorsf32};
 

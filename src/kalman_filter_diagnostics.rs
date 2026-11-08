@@ -1,3 +1,29 @@
+use vqm::Vector3f32;
+
+/// Status of estimator, for diagnostics.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum EstimatorHealth {
+    #[default]
+    Initializing,
+    Healthy,
+    Degraded,
+    Recovering,
+    Failed,
+}
+
+/// Status of the Kalman filter, for diagnostics.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum FusionStatus {
+    #[default]
+    Accepted,
+    RejectedOutlier,
+    SensorUnavailable,
+    InvalidMeasurement,
+    NumericalFailure,
+    IllConditionedInnovationCovarianceMatrix,
+    SnapshotNotFound,
+}
+
 /// `KalmanFilterDiagnostics`.
 ///
 /// |Symptom                           | Cause                                                             | Mitigation|
@@ -7,12 +33,14 @@
 ///
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterDiagnostics {
+    pub status: FusionStatus,
     /// Normalized Innovation Squared (NIS).
     /// If this sits consistently above your threshold, the filter is diverging.
     pub nis: f32,
     /// Total positional uncertainty (sum of X, Y, Z variances).
     /// If this goes to 0, the filter is overconfident. If it goes to infinity, it's unstable.
     pub position_trace: f32,
+    pub innovation_m: Vector3f32,
 }
 
 impl Default for KalmanFilterDiagnostics {
@@ -22,14 +50,27 @@ impl Default for KalmanFilterDiagnostics {
 }
 
 impl KalmanFilterDiagnostics {
-    // For a 1D measurement, a Chi-Squared 95% confidence threshold is 3.84.
-    // If NIS exceeds this consistently, the sensor and physics model disagree.
-    pub const NIS_THRESHOLD_1D: f32 = 3.84;
-    pub const NIS_THRESHOLD_3D: f32 = 7.81;
-    pub const MAX_CONSECUTIVE_REJECTION_COUNT: u32 = 20;
-
     #[must_use]
-    pub fn new() -> Self {
-        Self { nis: 0.0, position_trace: 0.0 }
+    pub const fn new() -> Self {
+        Self {
+            status: FusionStatus::Accepted,
+            nis: 0.0,
+            position_trace: 0.0,
+            innovation_m: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
+        }
+    }
+}
+
+#[cfg(test)]
+mod test_traits {
+    use super::*;
+
+    fn is_full<T: Sized + Send + Sync + Unpin + Copy + Clone + Default + PartialEq>() {}
+
+    #[test]
+    fn normal_types() {
+        is_full::<EstimatorHealth>();
+        is_full::<FusionStatus>();
+        is_full::<KalmanFilterDiagnostics>();
     }
 }

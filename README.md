@@ -171,34 +171,56 @@ A computationally less expensive approach is to remove the responsibility for ca
 the Kalman filter and use a another sensor fusion filter (ie a Mahony or Madgwick) filter to do this:
 
 ```text
- ┌─────┐                   Acc                 ┌────────────┐
- │     ├────────────────────▶──────────────────┤ FLIGHT     │
- │ IMU │    Acc     ┌──────────┐               │ CONTROLLER │
- │     ├──────▶─────│ MADGWICK ├──────▶────────┤            │
- └──┬──┘    Gyro    │ FILTER   │  Orientation  └────────────┘
-    │               └───┬──────┘
-    ▼ Acc(unfiltered)   │
-    │                   ▼ Orientation
-┌───┴────────┐          │
-│    IMU     ├────◀─────┘
-│ INTEGRATOR │
-└───┬────────┘
-    │
-  delta_pos
-  delta_vel         ┌────────┐     Position    ┌───────────┐
-    └──────────────▶┤ KALMAN ├─────────▶───────┤ AUTOPILOT │
-                    │ FILTER │     Velocity    └───────────┘
+╭─────╮  ┌────────┐            Accₛ/Gyroₛ          ┌────────────┐
+│     │  │ SIGNAL ├────────────────▶───────────────┤   FLIGHT   │
+│ Imu ├─▶┤ FILTER │ Accₛ  ┌──────────┐             │ CONTROLLER │
+│     │  │        ├───▶───┤ MADGWICK ├─────▶───────┤   (PIDS)   │
+╰──┬──╯  └────────┘ Gyroₛ │  FILTER  │ Orientation └────────────┘
+   │                      └─┬──┬───┬─┘
+   ▼ Accₛ(unfiltered)       │  │   │ 
+   │                        │  │   │ Yaw ╭──────────────╮
+   │            Orientation ▼  ▲   └──◀──┤ Magnetometer │
+┌──┴─────────┐              │  │         ╰──────────────╯
+│    IMU     ├─────◀────────┘  │
+│ INTEGRATOR │                 │ Yaw(calculated)
+└──┬─────────┘     Positionₑ ╭─┴───╮
+   │                    ┌──◀─┤ Gps │
+ delta_posₑ             │    ╰─────╯
+ delta_velₑ             │
+   │                ┌───┴────┐       Positionₑ      ┌───────────┐
+   └──────▶─────────┤ KALMAN ├────────────▶─────────┤ AUTOPILOT │
+                    │ FILTER │       Velocityₑ      └───────────┘
                     └────┬───┘
                          │
-  GPS, Barometer, etc ─▶─┘
+       Barometer, etc ─▶─┘
+
+╭───────╮
+│ Boxes │ with rounded corners and mixed case letters represent hardware.
+╰───────╯
+The subscript ₛ denotes a value in the sensor frame (body frame).
+The subscript ₑ denotes a value in the earth frame (inertial frame).
 ```
 
 This reduces the covariance matrix to more manageable size of 9x9 for 3D (and 6x6 for 2D) and avoids the need
 to calculate the Jacobian of the state transition matrix (`F`).
 
-Note that we integrate the accelerometer output from the IMU to give `delta_pos` and `delta_vel` values since
-the Kalman filter runs at a lower rate than the IMU (the IMU can run at up to 8kHz, the Kalman
-filter typically runs at 500Hz or less).
+In this setup:
+
+The Madgwick filter is entirely responsible for the calculation of orientation.
+Since an accelerometer cannot determine absolute yaw, and gyro bias introduces yaw drift,
+the Madgwick filter needs yaw correction inputs to maintain a correct yaw orientation.
+These corrections can come from two sources:
+
+1. a magnetometer for an absolute yaw value
+2. when in motion, the yaw value can be determined from the GPS velocity.
+
+The IMU integrator serves two purposes:
+
+1. It uses the orientation from the Madgwick filter to convert the acceleration `Accₛ` from the sensor
+   frame to the earth frame.
+2. It integrates this `Accₑ` to give `delta_posₑ` and `delta_velₑ` values.
+   These are needed because the Kalman filter runs at a lower rate than the IMU
+   (the IMU can run at up to 8kHz, the Kalman filter typically runs at 500Hz or less).
 
 ### Kalman Filter Optimization
 
@@ -224,11 +246,31 @@ A naïve implementation of a 3D position Kalman filter is computationally very e
 As you can see the **predict** step requires multiplying 9x9 matrices,
 and the **correct** step requires 9x9 matrix multiplication and inversion.
 
-A naïve dense 9×9 matrix multiplication requires 729 scalar multiplications and 648 additions, inversion even more.
+9×9 matrix multiplication requires 729 scalar multiplications and 648 additions, inversion even more.
 
 Fortunately, these matrices are sparse and so we can avoid doing the full multiplications and inversions.
 
-Firstly we split the 9x9 matrix `P` into nine 3x3 submatrices:
+For a 3D position Kalman filter with acceleration as the control input, we have:
+
+```text
+    ┌                                           ┐
+    │  1  0  0   dt   0   0   -½dt²    0     0  |
+    │  0  1  0    0  dt   0      0  -½dt²    0  |
+    │  0  0  1    0   0  dt      0     0  -½dt² |
+    |                                           |
+    │  0  0  0    1   0   0    -dt     0     0  |
+F = │  0  0  0    0   1   0      0   -dt     0  |
+    │  0  0  0    0   0   1      0     0   -dt  |
+    |                                           |
+    │  0  0  0    0   0   0      1     0     0  |
+    │  0  0  0    0   0   0      0     1     0  |
+    │  0  0  0    0   0   0      0     0     1  |
+    └                                           ┘
+```
+
+Calculating `P = F·P·Fᵀ` directly by matrix multiplication and transposition is clearly extremely wasteful.
+
+So, instead of performing operations on the entire 9x9 matrix, we can split the 9x9 matrix `P` into nine 3x3 submatrices:
 
 ```text
 ┌                 9x9                  ┐
@@ -247,29 +289,10 @@ Firstly we split the 9x9 matrix `P` into nine 3x3 submatrices:
 └                                      ┘
 ```
 
-Then instead of performing operations on the entire 9x9 matrix, we can perform sub-operations on the submatrices.
-In our system we have:
+The calculation `P = F·P·Fᵀ` in the predict phase becomes a sequence of operations on the 3x3 submatrices.
 
-```text
-    ┌                                           ┐
-    │  1  0  0   dt   0   0   -½dt²    0     0  |
-    │  0  1  0    0  dt   0      0  -½dt²    0  |
-    │  0  0  1    0   0  dt      0     0  -½dt² |
-    |                                           |
-    │  0  0  0    1   0   0    -dt     0     0  |
-F = │  0  0  0    0   1   0      0   -dt     0  |
-    │  0  0  0    0   0   1      0     0   -dt  |
-    |                                           |
-    │  0  0  0    0   0   0      1     0     0  |
-    │  0  0  0    0   0   0      0     1     0  |
-    │  0  0  0    0   0   0      0     0     1  |
-    └                                           ┘
-```
-
-So calculating `P = F·P·Fᵀ` directly by matrix multiplication and transposition is clearly extremely wasteful.
-Instead we take advantage of the sparseness of the matrix and operate on the 3x3 submatrices.
-
-Also, in the correct phase we do not need to invert the full 9x9 matrix `S`, instead we invert the relevant submatrix.
+In the correct phase we also used these submatrices.
+In particular we do not need to invert the full 9x9 matrix `S`, instead we invert the relevant submatrix.
 
 - for a 3D measurement correction (eg position from GPS) this means inverting a 3x3 submatrix.
 - for a 1D measurement correction (eg altitude from a barometer) this involves simply taking the reciprocal of a scalar.
@@ -282,12 +305,11 @@ Further optimizations include:
 
 ### Kalman filter numerical stability
 
-The Kalman filter equations themselves are mathematically well behaved, however errors can accumulate when implemented with f32 precision.
+The Kalman filter equations themselves are mathematically well behaved, however errors can accumulate when implemented with `f32` precision.
 To mitigate these errors this implementation:
 
 1. Explicitly restores symmetry to the covariance matrix after each state prediction (by setting `P = ½(P + Pᵀ)`).
 2. Uses the numerically stable Joseph form for covariance predictions ( `P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ` rather than `P = P - K·H·P + K·R·Kᵀ`)
-3. Uses Cholesky factorization of the innovation covariance matrix `S` (rather than taking the inverse of `S`).
 
 Additionally scaling the states and measurements so their scales are broadly comparable improves numerical stability,
 but this has not been implemented yet.

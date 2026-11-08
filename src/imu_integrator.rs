@@ -78,11 +78,15 @@ impl ImuIntegrator {
     /// Uses simple Euler integration, assuming acceleration is constant over `dt`.
     ///
     /// # Assumptions
-    /// - `acc_body_mps2` and `dt` have already been validated by the caller.
+    /// - `acc_body_mps2`, `orientation`, and `dt` have already been validated by the caller.
     /// - `acc_body_mps2` is in the body frame.
     /// - The caller does not integrate beyond interval completion.
     #[inline]
     pub fn integrate(&mut self, acc_body_mps2: Vector3f32, orientation: Quaternionf32, dt: f32) {
+        debug_assert!(acc_body_mps2.is_finite());
+        debug_assert!(orientation.is_normalized(1e-5));
+        debug_assert!(dt != 0.0);
+        debug_assert!(dt.is_finite());
         // Rotate acc_body_mps2 into NED and compensate for gravity.
         // Rotate takes ~45 arithmetic operations.
         let mut acc_ned_mps2 = orientation.rotate(acc_body_mps2) + Self::GRAVITY_NED_MPS2;
@@ -139,7 +143,6 @@ impl ImuIntegral {
 mod test_traits {
     use super::*;
 
-    fn _is_normal<T: Sized + Send + Sync + Unpin>() {}
     fn is_full<T: Sized + Send + Sync + Unpin + Copy + Clone + Default + PartialEq>() {}
 
     #[test]

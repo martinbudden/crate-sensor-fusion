@@ -34,6 +34,10 @@ impl Default for KalmanFilterZWithSensors {
 }
 
 impl KalmanFilterZWithSensors {
+    /// For a 1D measurement, a Chi-Squared 95% confidence threshold is 3.84.
+    /// If NIS exceeds this consistently, the sensor and physics model disagree.
+    pub const NIS_THRESHOLD_1D: f32 = 3.84;
+
     /// Constructor.
     #[must_use]
     pub fn new() -> Self {
@@ -97,25 +101,25 @@ impl KalmanFilterZWithSensors {
     /// Correct altitude using supplied R.
     #[inline]
     pub fn correct_altitude(&mut self, altitude_m: f32, r: f32) -> KalmanFilterDiagnostics {
-        self.base.correct_altitude(altitude_m, r)
+        self.base.correct_altitude(altitude_m, r, Self::NIS_THRESHOLD_1D)
     }
 
     /// Correct altitude using the barometer measurement.
     #[inline]
     pub fn correct_altitude_using_barometer(&mut self, altitude_m: f32) -> KalmanFilterDiagnostics {
-        self.base.correct_altitude(altitude_m, self.R_barometer)
+        self.base.correct_altitude(altitude_m, self.R_barometer, Self::NIS_THRESHOLD_1D)
     }
 
     /// Correct altitude using the rangefinder measurement.
     #[inline]
     pub fn correct_altitude_using_rangefinder(&mut self, altitude_m: f32) -> KalmanFilterDiagnostics {
-        self.base.correct_altitude(altitude_m, self.R_rangefinder)
+        self.base.correct_altitude(altitude_m, self.R_rangefinder, Self::NIS_THRESHOLD_1D)
     }
 
     /// Correct altitude using GPS vertical measurement.
     #[inline]
     pub fn correct_altitude_using_gps(&mut self, altitude_m: f32) -> KalmanFilterDiagnostics {
-        self.base.correct_altitude(altitude_m, self.R_gps_vertical)
+        self.base.correct_altitude(altitude_m, self.R_gps_vertical, Self::NIS_THRESHOLD_1D)
     }
 }
 

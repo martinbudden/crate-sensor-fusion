@@ -4,6 +4,7 @@ use vqm::{Matrix3x3f32, Matrix3x3xM3x3f32, Quaternionf32, Vector3f32};
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sensor_fusion::KalmanFilterXyzWithSensors;
 
     #[test]
     fn test_3d_position_convergence() {
@@ -47,7 +48,7 @@ mod tests {
             filter.predict_covariance(dt);
 
             //filter.correct_position(true_pos, r_gps);
-            _ = filter.correct_position(true_pos_m, r_gps);
+            _ = filter.correct_position(true_pos_m, r_gps, KalmanFilterXyzWithSensors::NIS_THRESHOLD_3D);
         }
 
         // --- PHASE 1 AUDIT LOGS ---
@@ -88,7 +89,7 @@ mod tests {
             filter.predict_state(integral.delta_vel_ned_mps, integral.delta_pos_ned_m, dt);
             filter.predict_covariance(dt);
 
-            _ = filter.correct_position(true_pos_m, r_gps);
+            _ = filter.correct_position(true_pos_m, r_gps, KalmanFilterXyzWithSensors::NIS_THRESHOLD_3D);
         }
 
         // --- PHASE 2 AUDIT LOGS ---
@@ -165,7 +166,7 @@ mod tests {
 
             // Step B: Measurement Update (Simulate stationary altitude updates)
             // Injecting a fixed R variance value
-            _ = filter.correct_altitude(true_pos_m.z, r_baro);
+            _ = filter.correct_altitude(true_pos_m.z, r_baro, KalmanFilterXyzWithSensors::NIS_THRESHOLD_1D);
             // Print out the Z-variance tracking elements every 50 steps
             if step % 50 == 0 {
                 println!(
@@ -216,7 +217,7 @@ mod tests {
             filter.predict_covariance(dt);
 
             // Step B: Measurement Update with simulated moving barometer data
-            _ = filter.correct_altitude(true_pos_m.z, r_baro);
+            _ = filter.correct_altitude(true_pos_m.z, r_baro, KalmanFilterXyzWithSensors::NIS_THRESHOLD_1D);
         }
 
         // --- VERIFICATIONS FOR PHASE 2 ---
@@ -262,6 +263,8 @@ mod test_anchors {
     #[test]
     fn range_update_basic() {
         const EPS: f32 = 2.0e-3;
+        const R: f32 = 0.01;
+        let nis_threshold = 3.0;
         let mut kf = make_filter();
 
         // Position = (3,4,0), anchor = (0,0,0)
@@ -274,7 +277,7 @@ mod test_anchors {
         //
         // S = 1 + 0.01 = 1.01
 
-        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, 100.0, 0.01);
+        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, R, nis_threshold);
 
         let scale = 1.0 / 1.01;
 
@@ -289,6 +292,8 @@ mod test_anchors {
     #[test]
     fn range_update_corrects_velocity_through_cross_covariance() {
         const EPS: f32 = 2.0e-3;
+        const R: f32 = 0.01;
+        let nis_threshold = 3.0;
 
         let identity = Matrix3x3f32::identity();
         let zero = Matrix3x3f32::zero();
@@ -307,7 +312,7 @@ mod test_anchors {
                 zero, zero, identity, // PB, VB, BB
             ]));
 
-        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, 100.0, 0.01);
+        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, R, nis_threshold);
 
         // P_VP * H^T:
         //
@@ -327,6 +332,8 @@ mod test_anchors {
     #[test]
     fn range_update_corrects_accelerometer_bias_through_cross_covariance() {
         const EPS: f32 = 2.0e-3;
+        const R: f32 = 0.01;
+        let nis_threshold = 3.0;
 
         let identity = Matrix3x3f32::identity();
         let zero = Matrix3x3f32::zero();
@@ -346,7 +353,7 @@ mod test_anchors {
                 pb, zero, identity, // PB, VB, BB
             ]));
 
-        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, 100.0, 0.01);
+        _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 6.0, R, nis_threshold);
 
         // P_BP * H^T =
         //

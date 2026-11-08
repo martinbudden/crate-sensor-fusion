@@ -4,6 +4,7 @@ use vqm::{Quaternionf32, Vector2f32, Vector3f32};
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sensor_fusion::KalmanFilterXyWithSensors;
 
     #[test]
     fn test_2d_position_convergence() {
@@ -47,7 +48,7 @@ mod tests {
             filter.predict_covariance(dt);
 
             //filter.correct_position(true_pos, r_gps);
-            _ = filter.correct_position(true_pos_m.into(), r_gps);
+            _ = filter.correct_position(true_pos_m.into(), r_gps, KalmanFilterXyWithSensors::NIS_THRESHOLD_2D);
         }
 
         // --- PHASE 1 AUDIT LOGS ---
@@ -88,7 +89,7 @@ mod tests {
             filter.predict_state(integral.delta_vel_ned_mps.into(), integral.delta_pos_ned_m.into(), dt);
             filter.predict_covariance(dt);
 
-            _ = filter.correct_position(true_pos_m.into(), r_gps);
+            _ = filter.correct_position(true_pos_m.into(), r_gps, KalmanFilterXyWithSensors::NIS_THRESHOLD_2D);
         }
 
         // --- PHASE 2 AUDIT LOGS ---

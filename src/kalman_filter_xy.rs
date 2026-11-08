@@ -1,6 +1,6 @@
-use vqm::{M2x2UpperTriangularArrayf32, Matrix2x2f32, Matrix3x3xM2x2f32, Vector2f32};
+use vqm::{Matrix2x2f32, Matrix3x3xM2x2f32, Vector2f32};
 
-use super::KalmanFilterDiagnostics;
+use super::{FusionStatus, KalmanFilterDiagnostics};
 
 /// `f32` variant of `KalmanFilterXy`.
 pub type KalmanFilterXyf32 = KalmanFilterXy;
@@ -25,9 +25,6 @@ pub struct KalmanFilterXy {
     /// Process Noise spectral density mapping to Sensor Drift variance.
     /// Units: (m/s³)² / Hz.
     Q_bias: f32,
-    /// Count to avoid filter latching.
-    altitude_consecutive_rejection_count: u32,
-    position_consecutive_rejection_count: u32,
 }
 
 impl Default for KalmanFilterXy {
@@ -85,8 +82,6 @@ impl KalmanFilterXy {
             // shifting it incrementally over minutes rather than fluctuating on every single vibration loop.
             Q_bias: 1e-4,
             P,
-            altitude_consecutive_rejection_count: 0,
-            position_consecutive_rejection_count: 0,
         }
     }
 
@@ -241,6 +236,7 @@ impl KalmanFilterXy {
     /// ```
     #[allow(non_snake_case)]
     pub fn predict_covariance(&mut self, dt: f32) {
+        debug_assert!(dt != 0.0 && dt.is_finite());
         // =====================================================================
         // PROPAGATE THE COVARIANCE P_new = F·P_old·Fᵀ
         // =====================================================================
@@ -249,7 +245,6 @@ impl KalmanFilterXy {
         let P = &mut self.P;
 
         // We can update P in place by ensuring RHS of all P assignments refers to P_old.
-        //
         // We use temporary indices and shadow them out of scope when they have been used.
         // This ensures we cannot use an updated value in a subsequent update, ie P_new cannot be used on RHS.
         let (PP, VP, BP, PV, VV, BV, PB, VB, BB) =
@@ -283,7 +278,7 @@ impl KalmanFilterXy {
 
         P[VB] = P[VB] - dt * P[BB];
         retire!(VB);
-        // P[BB] = P[BB]; so don't need to update BB.
+        // P[BB] = P[BB]; so we don't need to update BB.
 
         // =====================================================================
         // APPLY PROCESS NOISE (Q)
@@ -329,7 +324,10 @@ impl KalmanFilterXy {
         measurement_m: Vector2f32,
         predicted_measurement_m: Vector2f32,
         R: Vector2f32,
+        nis_threshold: f32,
     ) -> KalmanFilterDiagnostics {
+        debug_assert!(measurement_m.is_finite());
+        debug_assert!(predicted_measurement_m.is_finite());
         // H = [ I₂   0₂   0₂ ]
         // S = H·P·Hᵀ + R
         // y = z - H·x
@@ -345,10 +343,17 @@ impl KalmanFilterXy {
         // Calculate S, the Innovation Covariance matrix:
         // S = H·P·Hᵀ + R
         let S = P_pos.add_diagonal_vector(R);
-        let Some(S_inv) = M2x2UpperTriangularArrayf32::try_inverse_from_symmetric_matrix(S, 1e-6) else {
+        // S is symmetric, so we can just use its upper triangle.
+        let Some(S_inv) = S.upper_triangle().try_inverse(1e-6) else {
             // The the Innovation Covariance matrix may be non-invertible.
             // This happens very rarely and is due to rounding errors when the process noise covariance Q is small.
-            return KalmanFilterDiagnostics::default();
+            let diagnostics = KalmanFilterDiagnostics {
+                status: FusionStatus::IllConditionedInnovationCovarianceMatrix,
+                position_trace: self.P[Self::PP].trace(),
+                ..Default::default()
+            };
+            self.P.enforce_components_diagonal_lower_bound(1e-6);
+            return diagnostics;
         };
 
         // Calculate the innovation.
@@ -358,17 +363,18 @@ impl KalmanFilterXy {
         // Normalized Innovation Squared (NIS) = yᵀ·S⁻¹·y  (aka Mahalanobis Distance)
         // Dot product results in a unitless scalar
         let nis = innovation_m.dot(S_inv * innovation_m);
-        let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP].trace(), nis };
+        let mut diagnostics = KalmanFilterDiagnostics {
+            status: FusionStatus::Accepted,
+            position_trace: self.P[Self::PP].trace(),
+            nis,
+            innovation_m: innovation_m.into(),
+        };
 
-        if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_3D
-            && self.position_consecutive_rejection_count < KalmanFilterDiagnostics::MAX_CONSECUTIVE_REJECTION_COUNT
-        {
-            // If nis > NIS_THRESHOLD_3D, there is less than a 5% chance this is normal sensor noise,
-            // so reject this measurement as an outlier.
-            self.position_consecutive_rejection_count += 1;
+        if nis > nis_threshold {
+            // nis exceeds nis_threshold, so reject this measurement as an outlier.
+            diagnostics.status = FusionStatus::RejectedOutlier;
             return diagnostics;
         }
-        self.position_consecutive_rejection_count = 0;
 
         // Calculate K, the Kalman gain.
         // Calculate the 3x3 segmented Kalman Gain pieces
@@ -423,7 +429,10 @@ impl KalmanFilterXy {
         measurement_m: Vector2f32,
         predicted_measurement_m: Vector2f32,
         R: Vector2f32,
+        nis_threshold: f32,
     ) -> KalmanFilterDiagnostics {
+        debug_assert!(measurement_m.is_finite());
+        debug_assert!(predicted_measurement_m.is_finite());
         // H = [ I₂   0₂   0₂ ]
         // S = H·P·Hᵀ + R
         // y = z - H·x
@@ -436,8 +445,15 @@ impl KalmanFilterXy {
         let S = self.P[Self::PP].add_diagonal_vector(R);
 
         // S is guaranteed to be positive-definite, since we are using Joseph's Stabilized Form, so we can use a Cholesky solver.
-        let Some(S_inv) = M2x2UpperTriangularArrayf32::try_inverse_from_symmetric_matrix(S, 1e-6) else {
-            return KalmanFilterDiagnostics::default();
+        // S is symmetric, so we can just use its upper triangle.
+        let Some(S_inv) = S.upper_triangle().try_inverse(1e-6) else {
+            let diagnostics = KalmanFilterDiagnostics {
+                status: FusionStatus::IllConditionedInnovationCovarianceMatrix,
+                position_trace: self.P[Self::PP].trace(),
+                ..Default::default()
+            };
+            self.P.enforce_components_diagonal_lower_bound(1e-6);
+            return diagnostics;
         };
 
         // Calculate the innovation.
@@ -447,17 +463,18 @@ impl KalmanFilterXy {
         // Normalized Innovation Squared (NIS) = yᵀ·S⁻¹·y  (aka Mahalanobis Distance)
         // Dot product results in a unitless scalar
         let nis = innovation_m.dot(S_inv * innovation_m);
-        let diagnostics = KalmanFilterDiagnostics { position_trace: self.P[Self::PP].trace(), nis };
+        let mut diagnostics = KalmanFilterDiagnostics {
+            status: FusionStatus::Accepted,
+            position_trace: self.P[Self::PP].trace(),
+            nis,
+            innovation_m: innovation_m.into(),
+        };
 
-        if diagnostics.nis > KalmanFilterDiagnostics::NIS_THRESHOLD_3D
-            && self.position_consecutive_rejection_count < KalmanFilterDiagnostics::MAX_CONSECUTIVE_REJECTION_COUNT
-        {
-            // If nis > NIS_THRESHOLD_3D, there is less than a 5% chance this is normal sensor noise,
-            // so reject this measurement as an outlier.
-            self.position_consecutive_rejection_count += 1;
+        if nis > nis_threshold {
+            // nis exceeds nis_threshold, so reject this measurement as an outlier.
+            diagnostics.status = FusionStatus::RejectedOutlier;
             return diagnostics;
         }
-        self.position_consecutive_rejection_count = 0;
 
         // Calculate K, the Kalman gain.
         // K = P·Hᵀ·S⁻¹
@@ -527,8 +544,13 @@ impl KalmanFilterXy {
         diagnostics
     }
 
-    pub fn correct_position(&mut self, position_m: Vector2f32, R: Vector2f32) -> KalmanFilterDiagnostics {
-        self.correct_position_joseph_stabilized_form(position_m, self.state.pos_ned_m, R)
+    pub fn correct_position(
+        &mut self,
+        position_m: Vector2f32,
+        R: Vector2f32,
+        nis_threshold: f32,
+    ) -> KalmanFilterDiagnostics {
+        self.correct_position_joseph_stabilized_form(position_m, self.state.pos_ned_m, R, nis_threshold)
     }
 }
 
@@ -566,7 +588,6 @@ impl KalmanStateXy {
 mod test_traits {
     use super::*;
 
-    fn _is_normal<T: Sized + Send + Sync + Unpin>() {}
     fn is_full<T: Sized + Send + Sync + Unpin + Copy + Clone + Default + PartialEq>() {}
 
     #[test]

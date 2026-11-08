@@ -1,6 +1,6 @@
-use core::ops::{Add, AddAssign};
-use num_traits::{ConstZero, float::FloatCore};
-use vqm::{Matrix2x2, Vector2};
+use core::ops::AddAssign;
+use num_traits::float::FloatCore;
+use vqm::{Cholesky2x2, MathMethods, Vector2};
 
 /// 2-dimensional anchor of `f32` values<br><br>
 pub type Anchor2df32 = Anchor2d<f32>;
@@ -35,16 +35,17 @@ where
     }
 }
 
-/// Trilaterates a 2d position using the least squares method.
+/// Trilaterates a 2D position using the least squares method.
 #[must_use]
 pub fn trilaterate_2d<T>(anchors: &[Anchor2d<T>]) -> Option<Vector2<T>>
 where
-    T: ConstZero + Default + FloatCore + Add<T, Output = T> + AddAssign + vqm::Matrix2x2Math,
+    T: FloatCore + AddAssign + MathMethods,
 {
     const A00: usize = 0;
     const A01: usize = 1;
     const A11: usize = 2;
 
+    // We need at least 3 anchors to trilaterate in 2 dimensions.
     if anchors.len() < 3 {
         return None;
     }
@@ -70,10 +71,11 @@ where
     let mut ATA: [T; 3] = [T::zero(); 3];
 
     // Initialize the 2x1 vector (atb)
-    let mut atb = Vector2::default();
+    let mut atb = Vector2 { x: T::zero(), y: T::zero() };
 
     // Accumulate all rows, skipping the base anchor
     for (ii, anchor) in anchors.iter().enumerate() {
+        // Skip over the base anchor.
         if ii == base_idx {
             continue;
         }
@@ -92,18 +94,19 @@ where
         atb += a_row * b_row;
     }
 
-    //let m = Matrix2x2::from_lower_triangular_array(ATA);
-    let m = Matrix2x2::<T>::default();
+    // Compute the Cholesky factorization (L·Lᵀ = Aᵀ·A·w).
+    // This will fail and return `None` if the anchors are collinear
+    // or if noise causes the matrix to lose its positive-definite status.
+    let cholesky = Cholesky2x2::<T>::from_lower_triangle_array(ATA)?;
 
-    let (adjugate, determinant) = m.adjugate();
-    if determinant.abs() < T::min_positive_value() { None } else { Some((adjugate * atb) / determinant) }
+    // Solve the system using Cholesky forward- and backward-substitution
+    Some(cholesky.solve_vector(atb))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn _is_normal<T: Sized + Send + Sync + Unpin>() {}
     fn is_full<T: Sized + Send + Sync + Unpin + Copy + Clone + Default + PartialEq>() {}
 
     #[test]
