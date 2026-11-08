@@ -787,6 +787,23 @@ impl KalmanFilterXyz {
     ) -> KalmanFilterDiagnostics {
         self.correct_position_xy_joseph_stabilized_form(position_m, self.state.pos_ned_m, R, nis_threshold)
     }
+
+    pub fn correct_position_and_velocity(
+        &mut self,
+        position: Vector3f32,
+        R_position: Vector3f32,
+        velocity: Vector3f32,
+        R_velocity: Vector3f32,
+        nis_threshold: f32,
+    ) -> KalmanFilterDiagnostics {
+        _ = self;
+        _ = position;
+        _ = R_position;
+        _ = velocity;
+        _ = R_velocity;
+        _ = nis_threshold;
+        todo!("implement correct_position_and_velocity for xyz");
+    }
 }
 
 #[allow(non_snake_case)]

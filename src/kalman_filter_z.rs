@@ -282,6 +282,23 @@ impl KalmanFilterZ {
         self.correct_position(altitude_m, self.state.pos_ned_m, R, nis_threshold)
     }
 
+    pub fn correct_altitude_and_vertical_speed(
+        &mut self,
+        altitude_m: f32,
+        R_altitude: f32,
+        speed_mps: f32,
+        R_speed: f32,
+        nis_threshold: f32,
+    ) -> KalmanFilterDiagnostics {
+        _ = self;
+        _ = altitude_m;
+        _ = R_altitude;
+        _ = speed_mps;
+        _ = R_speed;
+        _ = nis_threshold;
+        todo!("implement correct_altitude_and_vertical_speed for z");
+    }
+
     pub fn correct_position(
         &mut self,
         measurement_m: f32,

@@ -20,10 +20,14 @@ Desired Physical Noise (σ)            Equivalent R Variance Code Value (σ²)
 pub struct KalmanFilterXyzWithSensors {
     base: KalmanFilterXyz,
     // measurement noise covariance Matrix `R`
-    /// Absolute Measurement Noise variance for horizontal GPS channels.
-    pub R_gps_horizontal: f32,
-    /// Absolute Measurement Noise variance for vertical GPS channels.
-    pub R_gps_vertical: f32,
+    /// Absolute Measurement Noise variance for horizontal GPS position.
+    pub R_gps_position_horizontal: f32,
+    /// Absolute Measurement Noise variance for vertical GPS position.
+    pub R_gps_position_vertical: f32,
+    /// Absolute Measurement Noise variance for horizontal GPS velocity.
+    pub R_gps_velocity_horizontal: f32,
+    /// Absolute Measurement Noise variance for vertical GPS velocity.
+    pub R_gps_velocity_vertical: f32,
     /// Absolute Measurement Noise variance for barometric pressure altimeter.
     pub R_barometer: f32,
     /// Absolute Measurement Noise variance for rangefinder.
@@ -59,8 +63,12 @@ impl KalmanFilterXyzWithSensors {
         Self {
             base: KalmanFilterXyz::new(),
             // Commercial GPS modules are typically accurate to within 1.5 to 3.0 meters horizontally, less vertically.
-            R_gps_horizontal: 2.25,
-            R_gps_vertical: 9.0,
+            R_gps_position_horizontal: 2.25,
+            R_gps_position_vertical: 9.0,
+            // GPS velocity measurements are often considerably more accurate than GPS position measurements, sometimes by an order of magnitude or more.
+            // This is because the measurements are done by measuring Doppler shift.
+            R_gps_velocity_horizontal: 0.05, // m/s
+            R_gps_velocity_vertical: 0.08,   // m/s
             // Vertical variance in meters squared
             // A standard barometric pressure sensor (e.g., BMP280, MS5611) typically has an RMS noise of around 10 to 20 centimeters
             // which corresponds to a variance of 0.01 to 0.04 m². However, the actual noise can vary based on environmental conditions and sensor quality.
@@ -142,13 +150,44 @@ impl KalmanFilterXyzWithSensors {
     /// Correct altitude using GPS vertical measurement.
     #[inline]
     pub fn correct_altitude_using_gps(&mut self, altitude_m: f32) -> KalmanFilterDiagnostics {
-        self.base.correct_altitude(altitude_m, self.R_gps_vertical, Self::NIS_THRESHOLD_1D)
+        self.base.correct_altitude(altitude_m, self.R_gps_position_vertical, Self::NIS_THRESHOLD_1D)
     }
 
     /// Correct position using GPS position measurement (typically at a 1Hz to 10Hz rate).
     pub fn correct_position_using_gps(&mut self, position_m: Vector3f32) -> KalmanFilterDiagnostics {
-        let r_gps = Vector3f32 { x: self.R_gps_horizontal, y: self.R_gps_horizontal, z: self.R_gps_vertical };
+        let r_gps = Vector3f32 {
+            x: self.R_gps_position_horizontal,
+            y: self.R_gps_position_horizontal,
+            z: self.R_gps_position_vertical,
+        };
         self.base.correct_position(position_m, r_gps, Self::NIS_THRESHOLD_3D)
+    }
+
+    /// Correct velocity using GPS velocity measurement (typically at a 1Hz to 10Hz rate).
+    /// GPS velocity measurements are often considerably more accurate than GPS position measurements, sometimes by an order of magnitude or more.
+    /// This is because the measurements are done by measuring Doppler shift.
+    pub fn correct_position_and_velocity_using_gps(
+        &mut self,
+        position_m: Vector3f32,
+        velocity_mps: Vector3f32,
+    ) -> KalmanFilterDiagnostics {
+        let r_gps_position = Vector3f32 {
+            x: self.R_gps_position_horizontal,
+            y: self.R_gps_position_horizontal,
+            z: self.R_gps_position_vertical,
+        };
+        let r_gps_velocity = Vector3f32 {
+            x: self.R_gps_velocity_horizontal,
+            y: self.R_gps_velocity_horizontal,
+            z: self.R_gps_velocity_vertical,
+        };
+        self.base.correct_position_and_velocity(
+            position_m,
+            r_gps_position,
+            velocity_mps,
+            r_gps_velocity,
+            Self::NIS_THRESHOLD_2D,
+        )
     }
 
     /// Correct position using optical flow position measurement.
