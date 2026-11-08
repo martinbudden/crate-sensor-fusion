@@ -1,7 +1,8 @@
+use core::ops::AddAssign;
 use num_traits::float::FloatCore;
-use vqm::{Cholesky3x3f32, Vector3, Vector3f32};
+use vqm::{Cholesky3x3, MathConstants, MathMethods, Vector3};
 
-/// 3-dimensional anchor of `f32` values<br><br>
+/// 3-dimensional anchor of `f32` values<br>
 pub type Anchor3df32 = Anchor3d<f32>;
 /// 3-dimensional anchor of `f64` values<br><br>
 pub type Anchor3df64 = Anchor3d<f64>;
@@ -38,13 +39,16 @@ where
 
 /// Trilaterates a 3D position using the least squares method.
 #[must_use]
-pub fn trilaterate_3d_weighted(anchors: &[Anchor3df32]) -> Option<Vector3f32> {
-    const A00: usize = 0;
-    const A01: usize = 1;
-    const A02: usize = 2;
-    const A11: usize = 3;
-    const A12: usize = 4;
-    const A22: usize = 5;
+pub fn trilaterate_3d_weighted<T>(anchors: &[Anchor3d<T>]) -> Option<Vector3<T>>
+where
+    T: FloatCore + AddAssign + MathMethods + MathConstants,
+{
+    const A11: usize = 0;
+    const A12: usize = 1;
+    const A13: usize = 2;
+    const A22: usize = 3;
+    const A23: usize = 4;
+    const A33: usize = 5;
 
     // We need at least 4 anchors to trilaterate in 3D.
     if anchors.len() < 4 {
@@ -65,7 +69,7 @@ pub fn trilaterate_3d_weighted(anchors: &[Anchor3df32]) -> Option<Vector3f32> {
         }
     }
     // If the best anchor has no weight, the whole system is untrustworthy
-    if max_weight < f32::EPSILON {
+    if max_weight < T::EPSILON {
         return None;
     }
 
@@ -80,10 +84,10 @@ pub fn trilaterate_3d_weighted(anchors: &[Anchor3df32]) -> Option<Vector3f32> {
     // Initialize accumulation structure for the 3x3 matrix Aᵀ·A·w
     // Since Aᵀ·A·w is symmetric we only need to calculate the upper right corner of the matrix.
     #[allow(non_snake_case)]
-    let mut ATA_W: [f32; 6] = [0.0; 6];
+    let mut AT_A_W: [T; 6] = [T::zero(); 6];
 
     // Initialize 3x1 vector Aᵀ·b·w
-    let mut atb_w = Vector3f32 { x: 0.0, y: 0.0, z: 0.0 };
+    let mut at_b_w = Vector3 { x: T::zero(), y: T::zero(), z: T::zero() };
 
     // Accumulate all rows, skipping the base anchor
     for (ii, anchor) in anchors.iter().enumerate() {
@@ -94,53 +98,59 @@ pub fn trilaterate_3d_weighted(anchors: &[Anchor3df32]) -> Option<Vector3f32> {
 
         // Combine anchor weights
         let weight = anchor.weight * base.weight;
-        if weight < f32::EPSILON {
+        if weight < T::EPSILON {
             continue;
         }
 
         // Calculate Matrix A row values
-        let a_row = (base.pos - anchor.pos) * 2.0;
+        let a_row = (base.pos - anchor.pos) * (T::one() + T::one());
         // Accumulate into the Aᵀ·A·w 3x3 matrix
-        ATA_W[A00] += a_row.x * a_row.x * weight;
-        ATA_W[A01] += a_row.x * a_row.y * weight;
-        ATA_W[A02] += a_row.x * a_row.z * weight;
-        ATA_W[A11] += a_row.y * a_row.y * weight;
-        ATA_W[A12] += a_row.y * a_row.z * weight;
-        ATA_W[A22] += a_row.z * a_row.z * weight;
+        AT_A_W[A11] += a_row.x * a_row.x * weight;
+        AT_A_W[A12] += a_row.x * a_row.y * weight;
+        AT_A_W[A13] += a_row.x * a_row.z * weight;
+        AT_A_W[A22] += a_row.y * a_row.y * weight;
+        AT_A_W[A23] += a_row.y * a_row.z * weight;
+        AT_A_W[A33] += a_row.z * a_row.z * weight;
 
         // Calculate vector b row values
         let b_row = (anchor.distance * anchor.distance - base.distance * base.distance)
             - (anchor.pos.norm_squared() - base.pos.norm_squared());
         // Accumulate into the Aᵀ·b·w 3d vector
-        atb_w += a_row * b_row * weight;
+        at_b_w += a_row * b_row * weight;
     }
 
     // Compute the Cholesky factorization (L·Lᵀ = Aᵀ·A·w).
     // This will fail and return `None` if the anchors are coplanar/collinear
     // or if noise causes the matrix to lose its positive-definite status.
-    let cholesky = Cholesky3x3f32::from_lower_triangle_array(ATA_W)?;
+    let cholesky = Cholesky3x3::<T>::from_lower_triangle_array(AT_A_W)?;
 
     // Solve the system using Cholesky forward- and backward-substitution
-    Some(cholesky.solve_vector(atb_w))
+    Some(cholesky.solve_vector(at_b_w))
 }
 
 #[cfg(test)]
-mod tests {
-    #![allow(clippy::expect_used)]
+mod test_traits {
     use super::*;
-
-    /// Generates true distances from a known target position to an anchor layout.
-    fn calculate_distances(target: Vector3f32, anchors: &mut [Anchor3df32]) {
-        for anchor in anchors.iter_mut() {
-            anchor.distance = anchor.pos.distance(target);
-        }
-    }
 
     fn is_full<T: Sized + Send + Sync + Unpin + Copy + Clone + Default + PartialEq>() {}
 
     #[test]
     fn normal_types() {
         is_full::<Anchor3df32>();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+    use super::*;
+    use vqm::Vector3f32;
+
+    /// Generates true distances from a known target position to an anchor layout.
+    fn calculate_distances(target: Vector3f32, anchors: &mut [Anchor3df32]) {
+        for anchor in anchors.iter_mut() {
+            anchor.distance = anchor.pos.distance(target);
+        }
     }
 
     #[test]
@@ -164,10 +174,13 @@ mod tests {
 
         if let Some(result) = option {
             // Validate that calculated values match the true location within tolerance
-            let epsilon = 0.008;
+            #[cfg(any(feature = "libm", feature = "std"))]
+            let epsilon = 0.000_002;
+            #[cfg(not(any(feature = "libm", feature = "std")))]
+            let epsilon = 0.01;
             assert!((result.x - position.x).abs() < epsilon, "X mismatch: expected {}, got {}", position.x, result.x);
             assert!((result.y - position.y).abs() < epsilon, "Y mismatch: expected {}, got {}", position.y, result.y);
-            assert!((result.z - position.z).abs() < 0.01, "Z mismatch: expected {}, got {}", position.z, result.z);
+            assert!((result.z - position.z).abs() < epsilon, "Z mismatch: expected {}, got {}", position.z, result.z);
         }
     }
 
@@ -205,10 +218,14 @@ mod tests {
         let option = trilaterate_3d_weighted(&anchors);
         assert!(option.is_some());
         if let Some(result) = option {
-            // The target coordinates should stay highly accurate because the bad sensor's weight is near zero
-            assert!((result.x - position.x).abs() < 0.05, "X deviated too far due to outlier: {}", result.x);
-            assert!((result.y - position.y).abs() < 0.05, "Y deviated too far due to outlier: {}", result.y);
-            assert!((result.z - position.z).abs() < 0.05, "Z deviated too far due to outlier: {}", result.z);
+            // The target coordinates should stay accurate because the bad sensor's weight is near zero
+            #[cfg(any(feature = "libm", feature = "std"))]
+            let epsilon = 0.033;
+            #[cfg(not(any(feature = "libm", feature = "std")))]
+            let epsilon = 0.02;
+            assert!((result.x - position.x).abs() < epsilon, "X mismatch: expected {}, got {}", position.x, result.x);
+            assert!((result.y - position.y).abs() < epsilon, "Y mismatch: expected {}, got {}", position.y, result.y);
+            assert!((result.z - position.z).abs() < epsilon, "Z mismatch: expected {}, got {}", position.z, result.z);
         }
     }
 
@@ -250,10 +267,13 @@ mod tests {
         let option = trilaterate_3d_weighted(&anchors);
         assert!(option.is_some());
         if let Some(result) = option {
-            let epsilon = 0.008;
-            assert!((result.x - position.x).abs() < epsilon);
-            assert!((result.y - position.y).abs() < epsilon);
-            assert!((result.z - position.z).abs() < epsilon);
+            #[cfg(any(feature = "libm", feature = "std"))]
+            let epsilon = 0.000_001;
+            #[cfg(not(any(feature = "libm", feature = "std")))]
+            let epsilon = 0.006;
+            assert!((result.x - position.x).abs() < epsilon, "X mismatch: expected {}, got {}", position.x, result.x);
+            assert!((result.y - position.y).abs() < epsilon, "Y mismatch: expected {}, got {}", position.y, result.y);
+            assert!((result.z - position.z).abs() < epsilon, "Z mismatch: expected {}, got {}", position.z, result.z);
         }
     }
 }

@@ -2,7 +2,7 @@ use core::ops::AddAssign;
 use num_traits::float::FloatCore;
 use vqm::{Cholesky2x2, MathMethods, Vector2};
 
-/// 2-dimensional anchor of `f32` values<br><br>
+/// 2-dimensional anchor of `f32` values<br>
 pub type Anchor2df32 = Anchor2d<f32>;
 /// 2-dimensional anchor of `f64` values<br><br>
 pub type Anchor2df64 = Anchor2d<f64>;
@@ -41,9 +41,9 @@ pub fn trilaterate_2d<T>(anchors: &[Anchor2d<T>]) -> Option<Vector2<T>>
 where
     T: FloatCore + AddAssign + MathMethods,
 {
-    const A00: usize = 0;
-    const A01: usize = 1;
-    const A11: usize = 2;
+    const A11: usize = 0;
+    const A12: usize = 1;
+    const A22: usize = 2;
 
     // We need at least 3 anchors to trilaterate in 2 dimensions.
     if anchors.len() < 3 {
@@ -65,13 +65,13 @@ where
 
     // Initialize the accumulation structure for the 2x2 matrix Aᵀ·A
     // Since Aᵀ·A is symmetric we only need to calculate the upper right corner of the matrix.
-    // [ ata_00  ata_01 ]
-    // [         ata_11 ]
+    // [ ata_11  ata_12 ]
+    // [         ata_22 ]
     #[allow(non_snake_case)]
-    let mut ATA: [T; 3] = [T::zero(); 3];
+    let mut AT_A: [T; 3] = [T::zero(); 3];
 
-    // Initialize the 2x1 vector (atb)
-    let mut atb = Vector2 { x: T::zero(), y: T::zero() };
+    // Initialize the 2x1 vector (Aᵀ·b)
+    let mut at_b = Vector2 { x: T::zero(), y: T::zero() };
 
     // Accumulate all rows, skipping the base anchor
     for (ii, anchor) in anchors.iter().enumerate() {
@@ -83,24 +83,36 @@ where
         let a_row = (base.pos - anchor.pos) * (T::one() + T::one());
 
         // Accumulate into the Aᵀ·A matrix
-        ATA[A00] += a_row.x * a_row.x;
-        ATA[A01] += a_row.x * a_row.y;
-        ATA[A11] += a_row.y * a_row.y;
+        AT_A[A11] += a_row.x * a_row.x;
+        AT_A[A12] += a_row.x * a_row.y;
+        AT_A[A22] += a_row.y * a_row.y;
 
         // Calculate vector b row values
         let b_row = (anchor.distance * anchor.distance - base.distance * base.distance)
             - (anchor.pos.norm_squared() - base.pos.norm_squared());
         // Accumulate into the 3d vector A^T * B elements
-        atb += a_row * b_row;
+        at_b += a_row * b_row;
     }
 
     // Compute the Cholesky factorization (L·Lᵀ = Aᵀ·A·w).
     // This will fail and return `None` if the anchors are collinear
     // or if noise causes the matrix to lose its positive-definite status.
-    let cholesky = Cholesky2x2::<T>::from_lower_triangle_array(ATA)?;
+    let cholesky = Cholesky2x2::<T>::from_lower_triangle_array(AT_A)?;
 
     // Solve the system using Cholesky forward- and backward-substitution
-    Some(cholesky.solve_vector(atb))
+    Some(cholesky.solve_vector(at_b))
+}
+
+#[cfg(test)]
+mod test_traits {
+    use super::*;
+
+    fn is_full<T: Sized + Send + Sync + Unpin + Copy + Clone + Default + PartialEq>() {}
+
+    #[test]
+    fn normal_types() {
+        is_full::<Anchor2df32>();
+    }
 }
 
 #[cfg(test)]
