@@ -5,6 +5,10 @@ use vqm::{Matrix3x3f32, Matrix3x3xM3x3f32, Quaternionf32, Vector3f32};
 mod tests {
     use super::*;
     use sensor_fusion::KalmanFilterXyzWithSensors;
+    const M11: usize = Matrix3x3xM3x3f32::M11;
+    //const M22: usize = Matrix3x3xM3x3f32::M22;
+    const M33: usize = Matrix3x3xM3x3f32::M33;
+
 
     #[test]
     fn test_3d_position_convergence() {
@@ -13,7 +17,7 @@ mod tests {
         let orientation = Quaternionf32::identity();
 
         // Capture initial uncertainty variance values from the main diagonal blocks
-        let init_p_pos_x = filter.pp()[KalmanFilterXyz::M11];
+        let init_p_pos_x = filter.pp()[M11];
         //let init_p_vel_x = filter.P[PositionKalmanFilter::VV][PositionKalmanFilter::M11];
 
         // Setup simulation pacing parameters
@@ -65,7 +69,7 @@ mod tests {
         assert!((filter.vel_mps().x - true_vel_mps.x).abs() < 0.05, "Velocity accumulated noise while stationary!");
 
         // Ensure covariance has shrunk significantly below the starting bounds
-        let post_stat_p_pos_x = filter.pp()[KalmanFilterXyz::M11];
+        let post_stat_p_pos_x = filter.pp()[M11];
         assert!(post_stat_p_pos_x < init_p_pos_x, "Position covariance failed to contract under GPS track!");
 
         println!("\n--- PHASE 2: 3D DYNAMIC SLIDE MANEUVER (2 SECONDS) ---");
@@ -128,7 +132,7 @@ mod tests {
         let orientation = Quaternionf32::identity();
 
         // Capture the initial uncertainty bounds
-        let initial_p_pos_m = filter.pp()[KalmanFilterXyz::M33];
+        let initial_p_pos_m = filter.pp()[M33];
         // let initial_p_vel_mps = filter.pv()[PositionKalmanFilter::M33];
 
         // Define simulation parameters
@@ -172,9 +176,9 @@ mod tests {
                 println!(
                     "Step {:03} -> P_pos_z: {:e}, P_vel_z: {:e}, P_bias_z: {:e}",
                     step,
-                    filter.pp()[KalmanFilterXyz::M33],
-                    filter.pv()[KalmanFilterXyz::M33],
-                    filter.bb()[KalmanFilterXyz::M33]
+                    filter.pp()[M33],
+                    filter.pv()[M33],
+                    filter.bb()[M33]
                 );
             }
         }
@@ -189,7 +193,7 @@ mod tests {
         assert!((filter.vel_mps().z - true_vel_mps.z).abs() < 0.05, "Velocity accumulated phantom motion!");
 
         // Assertions: Covariance bounds MUST contract if the sensor math is operating properly
-        let post_stationary_p_pos = filter.pp()[KalmanFilterXyz::M33];
+        let post_stationary_p_pos = filter.pp()[M33];
         assert!(post_stationary_p_pos < initial_p_pos_m, "Covariance failed to contract with sensor updates!");
 
         println!("\n--- PHASE 2: UNIFORM CLIMB TEST (3 SECONDS) ---");

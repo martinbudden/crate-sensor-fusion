@@ -25,6 +25,9 @@ pub struct KalmanFilterXyz {
     /// Process Noise spectral density mapping to Sensor Drift variance.
     /// Units: (m/s³)² / Hz.
     Q_bias: f32,
+    // scale_position: f32, not used, since this is set to 1
+    //scale_velocity: f32,
+    //scale_acc_bias: f32,
 }
 
 impl Default for KalmanFilterXyz {
@@ -36,10 +39,6 @@ impl Default for KalmanFilterXyz {
 #[allow(missing_docs)]
 impl KalmanFilterXyz {
     const G_MPS2: f32 = 9.80665;
-
-    pub const M11: usize = Matrix3x3xM3x3f32::M11;
-    pub const M22: usize = Matrix3x3xM3x3f32::M22;
-    pub const M33: usize = Matrix3x3xM3x3f32::M33;
 
     pub const PP: usize = 0;
     pub const VP: usize = 1;
@@ -62,19 +61,13 @@ impl KalmanFilterXyz {
         let mut P = Matrix3x3xM3x3f32::default();
 
         // Seed initial Position uncertainty (ie, confident within 1 meter)
-        P[Self::PP][Self::M11] = 1.0;
-        P[Self::PP][Self::M22] = 1.0;
-        P[Self::PP][Self::M33] = 1.0;
+        P[Self::PP].set_diagonal_from_vector(Vector3f32{x:1.0, y: 1.0, z:1.0});
 
         // Seed initial Velocity uncertainty (ie, confident within 0.5 m/s)
-        P[Self::VV][Self::M11] = 0.25;
-        P[Self::VV][Self::M22] = 0.25;
-        P[Self::VV][Self::M33] = 0.25;
+        P[Self::VV].set_diagonal_from_vector(Vector3f32{x:0.25, y: 0.25, z:0.25});
 
         // Seed initial Bias uncertainty (ie, accelerometer bias)
-        P[Self::BB][Self::M11] = 0.01;
-        P[Self::BB][Self::M22] = 0.01;
-        P[Self::BB][Self::M33] = 0.01;
+        P[Self::BB].set_diagonal_from_vector(Vector3f32{x:0.01, y: 0.01, z:0.01});
 
         Self {
             state: KalmanStateXyz::new(),
@@ -86,6 +79,9 @@ impl KalmanFilterXyz {
             // shifting it incrementally over minutes rather than fluctuating on every single vibration loop.
             Q_bias: 1e-4,
             P,
+            // scale_position: 1.0, not used, since this is set to 1
+            //scale_velocity: 200.0,
+            //scale_acc_bias: 100_000.0,
         }
     }
 
@@ -110,13 +106,6 @@ impl KalmanFilterXyz {
         let acc_noise_density_mps2_per_root_hz = acc_noise_density_g_per_root_hz * Self::G_MPS2;
         self.Q_velocity = acc_noise_density_mps2_per_root_hz * acc_noise_density_mps2_per_root_hz;
     }
-
-    /*/// Set `Q_bias`, the continuous-time spectral density of the accelerometer-bias random walk.
-    /// Input is accelerometer bias instability in g per time period tau.
-    pub fn set_q_bias(&mut self, bias_instability_g: f32, tau: f32) {
-        let bias_instability_mps2 = bias_instability_g * Self::G_MPS2;
-        self.Q_bias = bias_instability_mps2 * bias_instability_mps2 / tau;
-    }*/
 
     /// Set the continuous-time bias random-walk Power Spectral Density (PSD - units of m²/s⁵).
     ///

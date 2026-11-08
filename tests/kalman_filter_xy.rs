@@ -1,10 +1,12 @@
-use sensor_fusion::{ImuIntegrator, KalmanFilterXy};
-use vqm::{Quaternionf32, Vector2f32, Vector3f32};
+use sensor_fusion::{ImuIntegrator, KalmanFilterXy,KalmanFilterXyWithSensors};
+use vqm::{Quaternionf32, Vector2f32, Vector3f32,Matrix3x3xM2x2f32};
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sensor_fusion::KalmanFilterXyWithSensors;
+    const M11: usize = Matrix3x3xM2x2f32::M11;
+    //const M22: usize = Matrix3x3xM3x3f32::M22;
+    //const M33: usize = Matrix3x3xM2x2f32::M33;
 
     #[test]
     fn test_2d_position_convergence() {
@@ -13,7 +15,7 @@ mod tests {
         let orientation = Quaternionf32::identity();
 
         // Capture initial uncertainty variance values from the main diagonal blocks
-        let init_p_pos_x = filter.pp()[KalmanFilterXy::M11];
+        let init_p_pos_x = filter.pp()[M11];
         //let init_p_vel_x = filter.P[PositionKalmanFilter::VV][PositionKalmanFilter::M11];
 
         // Setup simulation pacing parameters
@@ -65,7 +67,7 @@ mod tests {
         assert!((filter.vel_mps().x - true_vel_mps.x).abs() < 0.05, "Velocity accumulated noise while stationary!");
 
         // Ensure covariance has shrunk significantly below the starting bounds
-        let post_stat_p_pos_x = filter.pp()[KalmanFilterXy::M11];
+        let post_stat_p_pos_x = filter.pp()[M11];
         assert!(post_stat_p_pos_x < init_p_pos_x, "Position covariance failed to contract under GPS track!");
 
         println!("\n--- PHASE 2: 2D DYNAMIC SLIDE MANEUVER (2 SECONDS) ---");

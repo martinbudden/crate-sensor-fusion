@@ -37,9 +37,6 @@ impl Default for KalmanFilterXy {
 impl KalmanFilterXy {
     const G_MPS2: f32 = 9.80665;
 
-    pub const M11: usize = Matrix2x2f32::M11;
-    pub const M22: usize = Matrix2x2f32::M22;
-
     const PP: usize = 0;
     const VP: usize = 1;
     const BP: usize = 2;
@@ -61,16 +58,13 @@ impl KalmanFilterXy {
         let mut P = Matrix3x3xM2x2f32::default();
 
         // Seed initial Position uncertainty (ie, confident within 1 meter)
-        P[Self::PP][Self::M11] = 1.0;
-        P[Self::PP][Self::M22] = 1.0;
+        P[Self::PP].set_diagonal_from_vector(Vector2f32{x:1.0, y: 1.0});
 
         // Seed initial Velocity uncertainty (ie, confident within 0.5 m/s)
-        P[Self::VV][Self::M11] = 0.25;
-        P[Self::VV][Self::M22] = 0.25;
+        P[Self::VV].set_diagonal_from_vector(Vector2f32{x:0.25, y: 0.25});
 
         // Seed initial Bias uncertainty (ie, accelerometer bias)
-        P[Self::BB][Self::M11] = 0.01;
-        P[Self::BB][Self::M22] = 0.01;
+        P[Self::BB].set_diagonal_from_vector(Vector2f32{x:0.01, y: 0.01});
 
         Self {
             state: KalmanStateXy::new(),
