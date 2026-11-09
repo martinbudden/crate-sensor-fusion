@@ -307,7 +307,7 @@ Further optimizations include:
 
 ### Testing optimizations against reference implementation
 
-`KalmanFilterXyz` has been tested against a reference implementation written using `nalgebra` and `f64`.
+`KalmanFilterXyz` has been tested against a reference implementation written using 9x9 matrices, `nalgebra`, and `f64`.
 See: [reference test](tests/kalman_filter_reference.rs).
 
 ### Kalman filter numerical stability
@@ -318,12 +318,13 @@ To mitigate these errors this implementation:
 1. Explicitly restores symmetry to the covariance matrix after each state prediction (by setting `P = ½(P + Pᵀ)`).
 2. Uses the numerically stable Joseph form for covariance predictions ( `P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ` rather than `P = P - K·H·P + K·R·Kᵀ`)
 
-Additionally scaling the states and measurements so their scales are broadly comparable improves numerical stability,
-but this has not been implemented yet.
-
+Additionally scaling the states and measurements so their scales are broadly comparable improves numerical stability.
 Scaling brings state values and uncertainties to closer to O(1) (order one), improving numerical conditioning
 without changing the underlying physical problem.
 (Floating-point arithmetic may lose precision when operations combine quantities with very different scales.)
+
+Initial tests indicate the filter is numerically stable without scaling, but scaling may, nevertheless, be added in a future
+release.
 
 ### Reference
 

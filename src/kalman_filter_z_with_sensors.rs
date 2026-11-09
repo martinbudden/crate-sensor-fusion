@@ -85,7 +85,8 @@ impl KalmanFilterZWithSensors {
     }
 
     /// Called inside the main IMU execution loop (eg `gyro_pid` loop).
-    pub fn predict(&mut self, delta_vel_mps: f32, delta_pos_m: f32, dt: f32) {
+    pub fn predict(&mut self, timestamp_us: u64, delta_vel_mps: f32, delta_pos_m: f32, dt: f32) {
+        _ = timestamp_us;
         // Integrate physical kinematics forward (deterministic)
         self.predict_state(delta_vel_mps, delta_pos_m, dt);
 
@@ -103,25 +104,33 @@ impl KalmanFilterZWithSensors {
 
     /// Correct altitude using supplied R.
     #[inline]
-    pub fn correct_altitude(&mut self, altitude_m: f32, r: f32) -> KalmanFilterDiagnostics {
+    pub fn correct_altitude(&mut self, timestamp_us: u64, altitude_m: f32, r: f32) -> KalmanFilterDiagnostics {
+        _ = timestamp_us;
         self.base.correct_altitude(altitude_m, r, Self::NIS_THRESHOLD_1D)
     }
 
     /// Correct altitude using the barometer measurement.
     #[inline]
-    pub fn correct_altitude_using_barometer(&mut self, altitude_m: f32) -> KalmanFilterDiagnostics {
+    pub fn correct_altitude_using_barometer(&mut self, timestamp_us: u64, altitude_m: f32) -> KalmanFilterDiagnostics {
+        _ = timestamp_us;
         self.base.correct_altitude(altitude_m, self.R_barometer, Self::NIS_THRESHOLD_1D)
     }
 
     /// Correct altitude using the rangefinder measurement.
     #[inline]
-    pub fn correct_altitude_using_rangefinder(&mut self, altitude_m: f32) -> KalmanFilterDiagnostics {
+    pub fn correct_altitude_using_rangefinder(
+        &mut self,
+        timestamp_us: u64,
+        altitude_m: f32,
+    ) -> KalmanFilterDiagnostics {
+        _ = timestamp_us;
         self.base.correct_altitude(altitude_m, self.R_rangefinder, Self::NIS_THRESHOLD_1D)
     }
 
     /// Correct altitude using GPS vertical measurement.
     #[inline]
-    pub fn correct_altitude_using_gps(&mut self, altitude_m: f32) -> KalmanFilterDiagnostics {
+    pub fn correct_altitude_using_gps(&mut self, timestamp_us: u64, altitude_m: f32) -> KalmanFilterDiagnostics {
+        _ = timestamp_us;
         self.base.correct_altitude(altitude_m, self.R_gps_position_vertical, Self::NIS_THRESHOLD_1D)
     }
 
@@ -130,9 +139,11 @@ impl KalmanFilterZWithSensors {
     /// This is because the measurements are done by measuring Doppler shift.
     pub fn correct_altitude_and_vertical_speed_using_gps(
         &mut self,
+        timestamp_us: u64,
         altitude_m: f32,
         speed_mps: f32,
     ) -> KalmanFilterDiagnostics {
+        _ = timestamp_us;
         self.base.correct_altitude_and_vertical_speed(
             altitude_m,
             self.R_gps_position_vertical,
