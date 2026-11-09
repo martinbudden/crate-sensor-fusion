@@ -1,7 +1,9 @@
 # `sensor-fusion` Rust Crate<br>[![Crates.io](https://img.shields.io/crates/v/sensor-fusion.svg)](https://crates.io/crates/sensor-fusion) [![Documentation](https://docs.rs/sensor-fusion/badge.svg)](https://docs.rs/sensor-fusion) [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT) ![open source](https://badgen.net/badge/open/source/blue?icon=github)
 
-This crate contains [sensor fusion](https://en.wikipedia.org/wiki/Sensor_fusion) algorithms to combine
-output from a gyroscope, accelerometer, and other sensors to give output that has less uncertainty
+**sensor-fusion** is a lightweight, allocation-free, Rust math library for [sensor fusion](https://en.wikipedia.org/wiki/Sensor_fusion).
+It is designed for embedded systems, robotics, and real-time applications.
+
+Sensor fusion algorithms to combine output from a gyroscope, accelerometer, and other sensors to give output that has less uncertainty
 than the output of the individual sensors.
 
 This crate is `no_std`, `no alloc`, `no panic`, `no unwrap`, `no expect`, and the Minimum Supported Rust Version (MSRV) is `Rust 1.89`.
@@ -291,7 +293,7 @@ So, instead of performing operations on the entire 9x9 matrix, we can split the 
 
 The calculation `P = F·P·Fᵀ` in the predict phase becomes a sequence of operations on the 3x3 submatrices.
 
-In the correct phase we also used these submatrices.
+In the correct phase we also use these submatrices.
 In particular we do not need to invert the full 9x9 matrix `S`, instead we invert the relevant submatrix.
 
 - for a 3D measurement correction (eg position from GPS) this means inverting a 3x3 submatrix.
@@ -302,6 +304,11 @@ Further optimizations include:
 1. recognizing `R` is diagonal matrix, so multiplication by `R` is simplified.
 2. collapsing `Q` from a 9x9 matrix into the two scalars `Q_velocity` and `Q_bias`.
 3. don't explicitly create the matrix `H`: rather directly select the relevant submatrices when calculating `H·P·Hᵀ`, `P·Hᵀ·S⁻¹` and `H·x`.
+
+### Testing optimizations against reference implementation
+
+`KalmanFilterXyz` has been tested against a reference implementation written using `nalgebra` and `f64`.
+See: [reference test](tests/kalman_filter_reference.rs).
 
 ### Kalman filter numerical stability
 

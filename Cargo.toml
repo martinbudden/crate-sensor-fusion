@@ -42,6 +42,7 @@ libm = { version = "0.2.16", optional = true }
 criterion = { version = "0.8.2", features = ["html_reports"] }
 rand = "0.10.3"
 approx = { version = "0.5.1", default-features = false }
+nalgebra = "0.35"
 
 # see https://doc.rust-lang.org/cargo/reference/profiles.html
 [profile.dev]

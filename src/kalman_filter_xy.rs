@@ -71,6 +71,7 @@ impl KalmanFilterXy {
 
         Self {
             state: KalmanStateXy::new(),
+            P,
             // A value of 0.05 implies that every second, we expect aerodynamic buffeting, vibration, or wind to naturally perturb the velocity
             // by roughly 0.22 m/s ie sqrt(0.05).
             Q_velocity: 0.05,
@@ -78,7 +79,6 @@ impl KalmanFilterXy {
             // So this value should be tiny so the filter treats bias as a near-constant,
             // shifting it incrementally over minutes rather than fluctuating on every single vibration loop.
             Q_bias: 1e-4,
-            P,
         }
     }
 
@@ -270,7 +270,7 @@ impl KalmanFilterXy {
         P[PV] = P[PV] + dt * (P[VV] - P[PB] - dt * (P[VB] + 0.5 * (P[BV] - dt * P[BB])));
         retire!(PV);
 
-        P[VV] = P[VV] - dt * (P[BV] + P[VB] + dt * P[BB]);
+        P[VV] = P[VV] - dt * (P[BV] + P[VB] - dt * P[BB]);
         retire!(VV);
 
         P[BV] = P[BV] - dt * P[BB];

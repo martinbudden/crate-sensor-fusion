@@ -71,6 +71,7 @@ impl KalmanFilterXyz {
 
         Self {
             state: KalmanStateXyz::new(),
+            P,
             // A value of 0.05 implies that every second, we expect aerodynamic buffeting, vibration, or wind to naturally perturb the velocity
             // by roughly 0.22 m/s ie sqrt(0.05).
             Q_velocity: 0.05,
@@ -78,7 +79,6 @@ impl KalmanFilterXyz {
             // So this value should be tiny so the filter treats bias as a near-constant,
             // shifting it incrementally over minutes rather than fluctuating on every single vibration loop.
             Q_bias: 1e-4,
-            P,
         }
     }
 
@@ -354,7 +354,7 @@ impl KalmanFilterXyz {
         P[PV] = P[PV] + dt * (P[VV] - P[PB] - dt * (P[VB] + 0.5 * (P[BV] - dt * P[BB])));
         retire!(PV);
 
-        P[VV] = P[VV] - dt * (P[BV] + P[VB] + dt * P[BB]);
+        P[VV] = P[VV] - dt * (P[BV] + P[VB] - dt * P[BB]);
         retire!(VV);
 
         P[BV] = P[BV] - dt * P[BB];
@@ -741,37 +741,76 @@ impl KalmanFilterXyz {
         let K_pos_t = K_pos.transpose();
         let K_vel_t = K_vel.transpose();
         let K_acc_bias_t = K_acc_bias.transpose();
+
         let I_minus_K_pos_t = Matrix3x3f32::identity() - K_pos_t;
 
-        // Calculate J = A·(I - KH)ᵀ.
-        // Only calculate the values that are different from A.
+        // Calculate J = A·(I - K·H)ᵀ.
+        //
+        // For a position measurement:
+        //
+        // I - K·H =
+        //
+        // [ I - K_pos  0   0 ]
+        // [ - K_vel    I   0 ]
+        // [ -K_bias    0   I ]
+        //
+        // Therefore:
+        //
+        // J = A·(I-K·H)ᵀ
+        //
+        // The resulting blocks are:
+        //
+        // Column 0:
+        // J_PP = A_PP·(I-K_posᵀ)
+        // J_VP = A_VP·(I-K_posᵀ)
+        // J_BP = A_BP·(I-K_posᵀ)
+        //
+        // Column 1:
+        // J_PV = A_PV - A_PP·K_velᵀ
+        // J_VV = A_VV - A_VP·K_velᵀ
+        // J_BV = A_BV - A_BP·K_velᵀ
+        //
+        // Column 2:
+        // J_PB = A_PB - A_PP·K_biasᵀ
+        // J_VB = A_VB - A_VP·K_biasᵀ
+        // J_BB = A_BB - A_BP·K_biasᵀ
+
         let J = [
-            A[Self::PP] * I_minus_K_pos_t - A[Self::PV] * K_vel_t - A[Self::PB] * K_acc_bias_t,
-            A[Self::VP] * I_minus_K_pos_t - A[Self::VV] * K_vel_t - A[Self::VB] * K_acc_bias_t,
-            A[Self::BP] * I_minus_K_pos_t - A[Self::BV] * K_vel_t - A[Self::BB] * K_acc_bias_t,
+            // Column 0: position.
+            A[Self::PP] * I_minus_K_pos_t,
+            A[Self::VP] * I_minus_K_pos_t,
+            A[Self::BP] * I_minus_K_pos_t,
+            // Column 1: velocity.
+            A[Self::PV] - A[Self::PP] * K_vel_t,
+            A[Self::VV] - A[Self::VP] * K_vel_t,
+            A[Self::BV] - A[Self::BP] * K_vel_t,
+            // Column 2: accelerometer bias.
+            A[Self::PB] - A[Self::PP] * K_acc_bias_t,
+            A[Self::VB] - A[Self::VP] * K_acc_bias_t,
+            A[Self::BB] - A[Self::BP] * K_acc_bias_t,
         ];
 
-        // Calculate K·R·Kᵀ blocks
+        // Calculate K·R·Kᵀ blocks.
         let K_pos_R = K_pos.mul_diagonal_vector(R);
         let K_vel_R = K_vel.mul_diagonal_vector(R);
         let K_acc_bias_R = K_acc_bias.mul_diagonal_vector(R);
 
-        // Reassemble J and A into P.
-        self.P[Self::PP] = J[Self::PP] + K_pos_R * K_pos_t;
-        self.P[Self::VP] = J[Self::VP] + K_vel_R * K_pos_t;
-        self.P[Self::BP] = J[Self::BP] + K_acc_bias_R * K_pos_t;
+        // Reassemble J and K·R·Kᵀ into P.
 
-        self.P[Self::PV] = A[Self::PV] + K_pos_R * K_vel_t;
-        self.P[Self::VV] = A[Self::VV] + K_vel_R * K_vel_t;
-        self.P[Self::BV] = A[Self::BV] + K_acc_bias_R * K_vel_t;
+        self.P[Self::PP] = J[0] + K_pos_R * K_pos_t;
+        self.P[Self::VP] = J[1] + K_vel_R * K_pos_t;
+        self.P[Self::BP] = J[2] + K_acc_bias_R * K_pos_t;
 
-        self.P[Self::PB] = A[Self::PB] + K_pos_R * K_acc_bias_t;
-        self.P[Self::VB] = A[Self::VB] + K_vel_R * K_acc_bias_t;
-        self.P[Self::BB] = A[Self::BB] + K_acc_bias_R * K_acc_bias_t;
+        self.P[Self::PV] = J[3] + K_pos_R * K_vel_t;
+        self.P[Self::VV] = J[4] + K_vel_R * K_vel_t;
+        self.P[Self::BV] = J[5] + K_acc_bias_R * K_vel_t;
 
-        // Ensure numerical stability by enforcing symmetry on the covariance matrix.
+        self.P[Self::PB] = J[6] + K_pos_R * K_acc_bias_t;
+        self.P[Self::VB] = J[7] + K_vel_R * K_acc_bias_t;
+        self.P[Self::BB] = J[8] + K_acc_bias_R * K_acc_bias_t;
+
+        // Ensure numerical stability by enforcing symmetry.
         self.P.enforce_symmetry();
-
         diagnostics
     }
 
@@ -792,10 +831,380 @@ impl KalmanFilterXyz {
         R_velocity: Vector3f32,
         nis_threshold: f32,
     ) -> KalmanFilterDiagnostics {
-        _ = velocity_mps;
-        _ = R_velocity;
-        // TODO: implement correct_position_and_velocity for xyz, currently it just calls correct_position.
-        self.correct_position_joseph_stabilized_form(position_m, self.state.pos_ned_m, R_position, nis_threshold)
+        self.correct_position_and_velocity_joseph_stabilized_form(
+            position_m,
+            self.state.pos_ned_m,
+            R_position,
+            velocity_mps,
+            self.state.vel_ned_mps,
+            R_velocity,
+            nis_threshold,
+        )
+    }
+
+    /// Joseph's Stabilized Form for the velocity covariance update:
+    ///
+    /// `P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ`.
+    ///
+    /// `H = [ 0₃   I₃   0₃ ]`.
+    ///
+    /// This function corrects the navigation state using a 3D velocity measurement.
+    pub fn correct_velocity_joseph_stabilized_form(
+        &mut self,
+        velocity_mps: Vector3f32,
+        predicted_velocity_mps: Vector3f32,
+        R: Vector3f32,
+        nis_threshold: f32,
+    ) -> KalmanFilterDiagnostics {
+        debug_assert!(velocity_mps.is_finite());
+        debug_assert!(predicted_velocity_mps.is_finite());
+
+        // H = [ 0₃   I₃   0₃ ]
+        // S = H·P·Hᵀ + R
+        // y = z - H·x
+        // K = P·Hᵀ·S⁻¹
+        // x = x + K·y
+        // P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ
+
+        // Calculate S, the Innovation Covariance matrix:
+        // S = P_VV + R
+        let S = self.P[Self::VV].add_diagonal_vector(R);
+
+        // Calculate the upper-triangle adjugate.
+        let (S_adj, determinant, reciprocal_condition) = S.upper_triangle().adjugate();
+
+        if reciprocal_condition < Self::MIN_RECIPROCAL_CONDITION {
+            let diagnostics = KalmanFilterDiagnostics {
+                status: FusionStatus::IllConditionedInnovationCovarianceMatrix,
+                covariance_trace: self.P[Self::PP].trace(),
+                covariance_reciprocal_condition: Some(reciprocal_condition),
+                ..Default::default()
+            };
+
+            self.P.enforce_components_diagonal_lower_bound(1e-6);
+            return diagnostics;
+        }
+
+        let S_inv = S_adj * (1.0 / determinant);
+
+        // Calculate the innovation.
+        // y = z - H·x
+        let innovation_velocity = velocity_mps - predicted_velocity_mps;
+
+        // Normalized Innovation Squared (NIS):
+        // NIS = yᵀ·S⁻¹·y
+        let s_inv_times_innovation = S_inv * innovation_velocity;
+
+        let nis = innovation_velocity.dot(s_inv_times_innovation);
+
+        let mut diagnostics = KalmanFilterDiagnostics {
+            status: FusionStatus::Accepted,
+            covariance_trace: self.P[Self::PP].trace(),
+            covariance_reciprocal_condition: Some(reciprocal_condition),
+            nis,
+            innovation_m: innovation_velocity,
+        };
+
+        if nis > nis_threshold {
+            diagnostics.status = FusionStatus::RejectedOutlier;
+            return diagnostics;
+        }
+
+        // Calculate K, the Kalman gain.
+        // K = P·Hᵀ·S⁻¹
+        let K_pos = self.P[Self::PV] * S_inv;
+        let K_vel = self.P[Self::VV] * S_inv;
+        let K_acc_bias = self.P[Self::BV] * S_inv;
+
+        // Update the estimated state vector.
+        // x += K·y
+        self.state.pos_ned_m += K_pos * innovation_velocity;
+        self.state.vel_ned_mps += K_vel * innovation_velocity;
+        self.state.acc_bias_ned_mps2 += K_acc_bias * innovation_velocity;
+
+        // Joseph covariance update:
+        // P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ
+
+        // Calculate the columns of intermediate matrix:
+        // A = (I - K·H)·P
+
+        let A = Matrix3x3xM3x3f32::from_column_array([
+            // Column 0: position column submatrices.
+            self.P[Self::PP] - K_pos * self.P[Self::VP],
+            self.P[Self::VP] - K_vel * self.P[Self::VP],
+            self.P[Self::BP] - K_acc_bias * self.P[Self::VP],
+            // Column 1: velocity column submatrices.
+            self.P[Self::PV] - K_pos * self.P[Self::VV],
+            self.P[Self::VV] - K_vel * self.P[Self::VV],
+            self.P[Self::BV] - K_acc_bias * self.P[Self::VV],
+            // Column 2: bias column submatrices.
+            self.P[Self::PB] - K_pos * self.P[Self::VB],
+            self.P[Self::VB] - K_vel * self.P[Self::VB],
+            self.P[Self::BB] - K_acc_bias * self.P[Self::VB],
+        ]);
+
+        // Precompute transposes and helper terms.
+        let K_pos_t = K_pos.transpose();
+        let K_vel_t = K_vel.transpose();
+        let K_acc_bias_t = K_acc_bias.transpose();
+
+        let I_minus_K_vel_t = Matrix3x3f32::identity() - K_vel_t;
+
+        // Calculate J = A·(I - K·H)ᵀ.
+        // Only calculate the values that differ from A.
+
+        let J = [
+            // Column 0: position column submatrices.
+            A[Self::PP] - A[Self::PV] * K_pos_t,
+            A[Self::VP] - A[Self::VV] * K_pos_t,
+            A[Self::BP] - A[Self::BV] * K_pos_t,
+            // Column 1: velocity column submatrices.
+            A[Self::PV] * I_minus_K_vel_t,
+            A[Self::VV] * I_minus_K_vel_t,
+            A[Self::BV] * I_minus_K_vel_t,
+            // Column 2: bias column submatrices.
+            A[Self::PB] - A[Self::PV] * K_acc_bias_t,
+            A[Self::VB] - A[Self::VV] * K_acc_bias_t,
+            A[Self::BB] - A[Self::BV] * K_acc_bias_t,
+        ];
+
+        // Calculate K·R·Kᵀ blocks.
+        let K_pos_R = K_pos.mul_diagonal_vector(R);
+        let K_vel_R = K_vel.mul_diagonal_vector(R);
+        let K_acc_bias_R = K_acc_bias.mul_diagonal_vector(R);
+
+        // Reassemble J into P, adding K·R·Kᵀ.
+
+        // Column 0: position.
+        self.P[Self::PP] = J[Self::PP] + K_pos_R * K_pos_t;
+        self.P[Self::VP] = J[Self::VP] + K_vel_R * K_pos_t;
+        self.P[Self::BP] = J[Self::BP] + K_acc_bias_R * K_pos_t;
+
+        // Column 1: velocity.
+        self.P[Self::PV] = J[Self::PV] + K_pos_R * K_vel_t;
+        self.P[Self::VV] = J[Self::VV] + K_vel_R * K_vel_t;
+        self.P[Self::BV] = J[Self::BV] + K_acc_bias_R * K_vel_t;
+
+        // Column 2: accelerometer bias.
+        self.P[Self::PB] = J[Self::PB] + K_pos_R * K_acc_bias_t;
+        self.P[Self::VB] = J[Self::VB] + K_vel_R * K_acc_bias_t;
+        self.P[Self::BB] = J[Self::BB] + K_acc_bias_R * K_acc_bias_t;
+        // Ensure numerical stability by enforcing symmetry.
+        self.P.enforce_symmetry();
+
+        diagnostics
+    }
+
+    /// Joseph's Stabilized Form for combined GPS position and velocity correction.
+    ///
+    /// Uses sequential conditioning to perform a mathematically equivalent
+    /// 6-dimensional measurement update using 3x3 matrix operations.
+    ///
+    /// Assumes independent GPS position and velocity measurement errors.
+    ///
+    /// The combined NIS is:
+    /// NIS = `NIS_position` + `NIS_velocity_conditional`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn correct_position_and_velocity_joseph_stabilized_form(
+        &mut self,
+        measurement_m: Vector3f32,
+        predicted_measurement_m: Vector3f32,
+        R_position: Vector3f32,
+        velocity_mps: Vector3f32,
+        predicted_velocity_mps: Vector3f32,
+        R_velocity: Vector3f32,
+        nis_threshold: f32,
+    ) -> KalmanFilterDiagnostics {
+        debug_assert!(measurement_m.is_finite());
+        debug_assert!(predicted_measurement_m.is_finite());
+        debug_assert!(velocity_mps.is_finite());
+        debug_assert!(predicted_velocity_mps.is_finite());
+
+        // for position H_p = [I 0 0]
+        // for velocity H_p = [0 I 0]
+
+        // Work on a temporary copy so that both measurements are accepted
+        // or rejected together.
+        let mut candidate = *self;
+
+        // ------------------------------------------------------------
+        // 1. Perform the position correction.
+        // ------------------------------------------------------------
+
+        // Use an infinite threshold here because we want to evaluate
+        // the combined 6-dimensional NIS rather than position NIS alone.
+        let mut diagnostics = candidate.correct_position_joseph_stabilized_form(
+            measurement_m,
+            predicted_measurement_m,
+            R_position,
+            f32::INFINITY,
+        );
+
+        // Abort if the position innovation covariance is ill-conditioned.
+        if diagnostics.status != FusionStatus::Accepted {
+            return diagnostics;
+        }
+
+        let nis_position = diagnostics.nis;
+
+        // ------------------------------------------------------------
+        // 2. Calculate the conditional velocity innovation.
+        // ------------------------------------------------------------
+
+        // The position correction changes the estimated velocity.
+        // Account for this when calculating the conditional velocity innovation.
+        let velocity_correction_from_position = candidate.state.vel_ned_mps - self.state.vel_ned_mps;
+
+        let innovation_velocity = velocity_mps - (predicted_velocity_mps + velocity_correction_from_position);
+
+        // ------------------------------------------------------------
+        // 3. Calculate the conditional velocity innovation covariance.
+        // ------------------------------------------------------------
+
+        // S_velocity = P_VV (after position correction) + R_velocity
+        let S_velocity = candidate.P[Self::VV].add_diagonal_vector(R_velocity);
+
+        let (S_velocity_adj, determinant, reciprocal_condition) = S_velocity.upper_triangle().adjugate();
+
+        if reciprocal_condition < Self::MIN_RECIPROCAL_CONDITION {
+            diagnostics.status = FusionStatus::IllConditionedInnovationCovarianceMatrix;
+
+            diagnostics.covariance_reciprocal_condition = Some(reciprocal_condition);
+
+            return diagnostics;
+        }
+
+        let S_velocity_inv = S_velocity_adj * (1.0 / determinant);
+
+        // ------------------------------------------------------------
+        // 4. Calculate the conditional velocity NIS.
+        // ------------------------------------------------------------
+
+        let s_velocity_inv_times_innovation = S_velocity_inv * innovation_velocity;
+
+        let nis_velocity = innovation_velocity.dot(s_velocity_inv_times_innovation);
+
+        // Combined NIS for the 6-dimensional measurement.
+        let nis = nis_position + nis_velocity;
+
+        diagnostics.nis = nis;
+
+        // The existing diagnostics structure has only one innovation vector.
+        // Preserve its existing position innovation.
+        if nis > nis_threshold {
+            diagnostics.status = FusionStatus::RejectedOutlier;
+            return diagnostics;
+        }
+
+        // ------------------------------------------------------------
+        // 5. Calculate the velocity Kalman gain.
+        // ------------------------------------------------------------
+
+        // H_velocity = [ 0  I  0 ]
+        //
+        // K = P * H_velocity^T * S_velocity^-1
+
+        let K_pos = candidate.P[Self::PV] * S_velocity_inv;
+        let K_vel = candidate.P[Self::VV] * S_velocity_inv;
+        let K_acc_bias = candidate.P[Self::BV] * S_velocity_inv;
+
+        // ------------------------------------------------------------
+        // 6. Update the estimated state vector.
+        // ------------------------------------------------------------
+
+        candidate.state.pos_ned_m += K_pos * innovation_velocity;
+        candidate.state.vel_ned_mps += K_vel * innovation_velocity;
+        candidate.state.acc_bias_ned_mps2 += K_acc_bias * innovation_velocity;
+
+        // ------------------------------------------------------------
+        // 7. Joseph covariance update.
+        //
+        // P = (I - K*H) * P * (I - K*H)^T + K*R*K^T
+        //
+        // Here H = [ 0  I  0 ].
+        // ------------------------------------------------------------
+
+        // Calculate the columns of intermediate matrix:
+        // A = (I - K*H) * P
+
+        let A = Matrix3x3xM3x3f32::from_column_array([
+            // Column 0: position column submatrices.
+            candidate.P[Self::PP] - K_pos * candidate.P[Self::VP],
+            candidate.P[Self::VP] - K_vel * candidate.P[Self::VP],
+            candidate.P[Self::BP] - K_acc_bias * candidate.P[Self::VP],
+            // Column 1: velocity column submatrices.
+            candidate.P[Self::PV] - K_pos * candidate.P[Self::VV],
+            candidate.P[Self::VV] - K_vel * candidate.P[Self::VV],
+            candidate.P[Self::BV] - K_acc_bias * candidate.P[Self::VV],
+            // Column 2: bias column submatrices.
+            candidate.P[Self::PB] - K_pos * candidate.P[Self::VB],
+            candidate.P[Self::VB] - K_vel * candidate.P[Self::VB],
+            candidate.P[Self::BB] - K_acc_bias * candidate.P[Self::VB],
+        ]);
+
+        // Precompute transposes and helper terms.
+        let K_pos_t = K_pos.transpose();
+        let K_vel_t = K_vel.transpose();
+        let K_acc_bias_t = K_acc_bias.transpose();
+
+        let I_minus_K_vel_t = Matrix3x3f32::identity() - K_vel_t;
+
+        // Calculate J = A * (I - K*H)^T.
+        //
+        // Only calculate the values that differ from A.
+
+        let J = [
+            // Column 0: position column submatrices.
+            A[Self::PP] - A[Self::PV] * K_pos_t,
+            A[Self::VP] - A[Self::VV] * K_pos_t,
+            A[Self::BP] - A[Self::BV] * K_pos_t,
+            // Column 1: velocity column submatrices.
+            A[Self::PV] * I_minus_K_vel_t,
+            A[Self::VV] * I_minus_K_vel_t,
+            A[Self::BV] * I_minus_K_vel_t,
+            // Column 2: bias column submatrices.
+            A[Self::PB] - A[Self::PV] * K_acc_bias_t,
+            A[Self::VB] - A[Self::VV] * K_acc_bias_t,
+            A[Self::BB] - A[Self::BV] * K_acc_bias_t,
+        ];
+
+        // ------------------------------------------------------------
+        // 8. Calculate K * R_velocity * K^T blocks.
+        // ------------------------------------------------------------
+
+        let K_pos_R = K_pos.mul_diagonal_vector(R_velocity);
+        let K_vel_R = K_vel.mul_diagonal_vector(R_velocity);
+        let K_acc_bias_R = K_acc_bias.mul_diagonal_vector(R_velocity);
+
+        // ------------------------------------------------------------
+        // 9. Reassemble J and A into P.
+        // ------------------------------------------------------------
+
+        candidate.P[Self::PP] = J[Self::PP] + K_pos_R * K_pos_t;
+        candidate.P[Self::VP] = J[Self::VP] + K_vel_R * K_pos_t;
+        candidate.P[Self::BP] = J[Self::BP] + K_acc_bias_R * K_pos_t;
+
+        candidate.P[Self::PV] = J[Self::PV] + K_pos_R * K_vel_t;
+        candidate.P[Self::VV] = J[Self::VV] + K_vel_R * K_vel_t;
+        candidate.P[Self::BV] = J[Self::BV] + K_acc_bias_R * K_vel_t;
+
+        candidate.P[Self::PB] = J[Self::PB] + K_pos_R * K_acc_bias_t;
+        candidate.P[Self::VB] = J[Self::VB] + K_vel_R * K_acc_bias_t;
+        candidate.P[Self::BB] = J[Self::BB] + K_acc_bias_R * K_acc_bias_t;
+
+        // ------------------------------------------------------------
+        // 10. Ensure numerical stability by enforcing symmetry.
+        // ------------------------------------------------------------
+
+        candidate.P.enforce_symmetry();
+
+        // ------------------------------------------------------------
+        // 11. Commit the accepted correction.
+        // ------------------------------------------------------------
+
+        *self = candidate;
+
+        diagnostics
     }
 
     // TODO: correct_position_xy_joseph_stabilized_form to support optical flow corrections
@@ -996,7 +1405,6 @@ impl KalmanFilterXyz {
     }
 }
 
-#[allow(unused)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanStateXyz {
     // 3D Kinematic State Vectors
@@ -1057,6 +1465,41 @@ impl KalmanStateXyz {
     #[must_use]
     pub fn acc_bias_ned_mps2(&self) -> Vector3f32 {
         self.acc_bias_ned_mps2 / Self::SCALE_ACC_BIAS
+    }
+}
+
+//#[cfg(test)]
+impl KalmanFilterXyz {
+    /// Constructor for test code.
+    #[allow(non_snake_case)]
+    #[must_use]
+    pub fn new_for_test(state: KalmanStateXyz, P: Matrix3x3xM3x3f32, Q_velocity: f32, Q_bias: f32) -> Self {
+        Self { state, P, Q_velocity, Q_bias }
+    }
+    /// Return state for test code.
+    #[must_use]
+    pub fn state_for_test(&self) -> KalmanStateXyz {
+        self.state
+    }
+    /// Return covariance for test code.
+    #[must_use]
+    pub fn covariance_for_test(&self) -> Matrix3x3xM3x3f32 {
+        self.P
+    }
+    /// Return covariance blocks for test code.
+    #[must_use]
+    pub fn covariance_blocks_for_test(&self) -> [Matrix3x3<f32>; 9] {
+        [
+            self.P[Self::PP],
+            self.P[Self::VP],
+            self.P[Self::BP],
+            self.P[Self::PV],
+            self.P[Self::VV],
+            self.P[Self::BV],
+            self.P[Self::PB],
+            self.P[Self::VB],
+            self.P[Self::BB],
+        ]
     }
 }
 

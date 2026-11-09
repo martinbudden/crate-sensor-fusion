@@ -240,7 +240,7 @@ impl KalmanFilterZ {
         P[PV] += dt * (P[VV] - P[PB] - dt * (P[VB] + 0.5 * (P[BV] - dt * P[BB])));
         retire!(PV);
 
-        P[VV] -= dt * (P[BV] + P[VB] + dt * P[BB]);
+        P[VV] -= dt * (P[BV] + P[VB] - dt * P[BB]);
         retire!(VV);
 
         P[BV] -= dt * P[BB];
