@@ -1,5 +1,5 @@
-use sensor_fusion::{ImuIntegrator, KalmanFilterXy,KalmanFilterXyWithSensors};
-use vqm::{Quaternionf32, Vector2f32, Vector3f32,Matrix3x3xM2x2f32};
+use sensor_fusion::{ImuIntegrator, KalmanFilterXy, KalmanFilterXyWithSensors};
+use vqm::{Matrix3x3xM2x2f32, Quaternionf32, Vector2f32, Vector3f32};
 
 #[cfg(test)]
 mod tests {

@@ -9,7 +9,6 @@ mod tests {
     //const M22: usize = Matrix3x3xM3x3f32::M22;
     const M33: usize = Matrix3x3xM3x3f32::M33;
 
-
     #[test]
     fn test_3d_position_convergence() {
         let mut filter = KalmanFilterXyz::new();

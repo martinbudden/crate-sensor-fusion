@@ -81,7 +81,7 @@ impl KalmanFilterZ {
     /// Set the state of a newly constructed `KalmanFilterZ`.
     #[must_use]
     pub fn with_state(mut self, state: KalmanStateZ) -> Self {
-        self.state = state;
+        self.set_state(state);
         self
     }
 
@@ -105,6 +105,12 @@ impl KalmanFilterZ {
     /// Datasheets typically specify bias instability in micro-g over a time constant tau, typically 100 seconds.
     pub fn set_q_bias(&mut self, q_bias: f32) {
         self.Q_bias = q_bias;
+    }
+
+    fn set_state(&mut self, state: KalmanStateZ) {
+        self.state.pos_ned_m = state.pos_ned_m;
+        self.state.vel_ned_mps = state.vel_ned_mps;
+        self.state.acc_bias_ned_mps2 = state.acc_bias_ned_mps2;
     }
 
     pub fn set_position(&mut self, pos_ned_m: f32) {
@@ -290,13 +296,10 @@ impl KalmanFilterZ {
         R_speed: f32,
         nis_threshold: f32,
     ) -> KalmanFilterDiagnostics {
-        _ = self;
-        _ = altitude_m;
-        _ = R_altitude;
+        // TODO: implement correct_altitude_and_vertical_speed, currently it just calls correct_position.
         _ = speed_mps;
         _ = R_speed;
-        _ = nis_threshold;
-        todo!("implement correct_altitude_and_vertical_speed for z");
+        self.correct_position(altitude_m, self.state.pos_ned_m, R_altitude, nis_threshold)
     }
 
     pub fn correct_position(
@@ -326,7 +329,7 @@ impl KalmanFilterZ {
         if S.abs() <= f32::EPSILON {
             return KalmanFilterDiagnostics {
                 status: FusionStatus::IllConditionedInnovationCovarianceMatrix,
-                position_trace: self.P[Self::PP],
+                covariance_trace: self.P[Self::PP],
                 ..Default::default()
             };
         }
@@ -340,7 +343,9 @@ impl KalmanFilterZ {
         let nis = (innovation_m * innovation_m) * S_inv;
         let mut diagnostics = KalmanFilterDiagnostics {
             status: FusionStatus::Accepted,
-            position_trace: self.P[Self::PP],
+            covariance_trace: self.P[Self::PP],
+            covariance_reciprocal_condition: None,
+
             nis,
             innovation_m: Vector3f32 { x: 0.0, y: 0.0, z: innovation_m },
         };
@@ -426,7 +431,7 @@ impl KalmanFilterZ {
         if S.abs() <= f32::EPSILON {
             return KalmanFilterDiagnostics {
                 status: FusionStatus::IllConditionedInnovationCovarianceMatrix,
-                position_trace: self.P[Self::PP],
+                covariance_trace: self.P[Self::PP],
                 ..Default::default()
             };
         }
@@ -440,7 +445,8 @@ impl KalmanFilterZ {
         let nis = (innovation_m * innovation_m) * S_inv;
         let mut diagnostics = KalmanFilterDiagnostics {
             status: FusionStatus::Accepted,
-            position_trace: self.P[Self::PP],
+            covariance_trace: self.P[Self::PP],
+            covariance_reciprocal_condition: None,
             nis,
             innovation_m: Vector3f32 { x: 0.0, y: 0.0, z: innovation_m },
         };

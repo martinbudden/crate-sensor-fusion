@@ -39,7 +39,9 @@ pub struct KalmanFilterDiagnostics {
     pub nis: f32,
     /// Total positional uncertainty (sum of X, Y, Z variances).
     /// If this goes to 0, the filter is overconfident. If it goes to infinity, it's unstable.
-    pub position_trace: f32,
+    pub covariance_trace: f32,
+    /// Reciprocal condition of the covariance matrix, 1.0 represents perfectly conditions, 0.0 means singular. Ideally >= 0.01.
+    pub covariance_reciprocal_condition: Option<f32>,
     pub innovation_m: Vector3f32,
 }
 
@@ -55,7 +57,8 @@ impl KalmanFilterDiagnostics {
         Self {
             status: FusionStatus::Accepted,
             nis: 0.0,
-            position_trace: 0.0,
+            covariance_trace: 0.0,
+            covariance_reciprocal_condition: None,
             innovation_m: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
         }
     }

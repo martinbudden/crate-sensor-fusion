@@ -36,6 +36,9 @@ impl Default for KalmanFilterXy {
 #[allow(missing_docs)]
 impl KalmanFilterXy {
     const G_MPS2: f32 = 9.80665;
+    /// Minimum reciprocal condition allowed for inverting innovation covariance matrix S.
+    /// This represents a fairly ill-conditioned matrix, consider making it larger.
+    const MIN_RECIPROCAL_CONDITION: f32 = 0.0001;
 
     const PP: usize = 0;
     const VP: usize = 1;
@@ -58,13 +61,13 @@ impl KalmanFilterXy {
         let mut P = Matrix3x3xM2x2f32::default();
 
         // Seed initial Position uncertainty (ie, confident within 1 meter)
-        P[Self::PP].set_diagonal_from_vector(Vector2f32{x:1.0, y: 1.0});
+        P[Self::PP].set_diagonal_from_vector(Vector2f32 { x: 1.0, y: 1.0 });
 
         // Seed initial Velocity uncertainty (ie, confident within 0.5 m/s)
-        P[Self::VV].set_diagonal_from_vector(Vector2f32{x:0.25, y: 0.25});
+        P[Self::VV].set_diagonal_from_vector(Vector2f32 { x: 0.25, y: 0.25 });
 
         // Seed initial Bias uncertainty (ie, accelerometer bias)
-        P[Self::BB].set_diagonal_from_vector(Vector2f32{x:0.01, y: 0.01});
+        P[Self::BB].set_diagonal_from_vector(Vector2f32 { x: 0.01, y: 0.01 });
 
         Self {
             state: KalmanStateXy::new(),
@@ -82,7 +85,7 @@ impl KalmanFilterXy {
     /// Set the state of a newly constructed `KalmanFilterXy`.
     #[must_use]
     pub fn with_state(mut self, state: KalmanStateXy) -> Self {
-        self.state = state;
+        self.set_state(state);
         self
     }
 
@@ -106,6 +109,12 @@ impl KalmanFilterXy {
     /// Datasheets typically specify bias instability in micro-g over a time constant tau, typically 100 seconds.
     pub fn set_q_bias(&mut self, q_bias: f32) {
         self.Q_bias = q_bias;
+    }
+
+    fn set_state(&mut self, state: KalmanStateXy) {
+        self.state.pos_ned_m = state.pos_ned_m;
+        self.state.vel_ned_mps = state.vel_ned_mps;
+        self.state.acc_bias_ned_mps2 = state.acc_bias_ned_mps2;
     }
 
     pub fn set_position(&mut self, pos_ned_m: Vector2f32) {
@@ -183,8 +192,9 @@ impl KalmanFilterXy {
 // **** Predict ****
 
 impl KalmanFilterXy {
-    /// Predicts the state vectors using `delta_vel_mps` and `delta_pos_m` from the IMU integrator.
+    /// Predicts the state vectors (`x`) using the control input vectors (`u`) `delta_vel_mps` and `delta_pos_m` from the IMU integrator.
     /// ```text
+    /// x = F·x + B.u
     ///     ┌          ┐
     ///     │  ½·dt·I₂ │
     /// B = │    I₂    │
@@ -338,17 +348,19 @@ impl KalmanFilterXy {
         // S = H·P·Hᵀ + R
         let S = P_pos.add_diagonal_vector(R);
         // S is symmetric, so we can just use its upper triangle.
-        let Some(S_inv) = S.upper_triangle().try_inverse(1e-6) else {
-            // The the Innovation Covariance matrix may be non-invertible.
-            // This happens very rarely and is due to rounding errors when the process noise covariance Q is small.
+        let (S_adj, determinant, reciprocal_condition) = S.upper_triangle().adjugate();
+        if reciprocal_condition < Self::MIN_RECIPROCAL_CONDITION {
             let diagnostics = KalmanFilterDiagnostics {
                 status: FusionStatus::IllConditionedInnovationCovarianceMatrix,
-                position_trace: self.P[Self::PP].trace(),
+                covariance_trace: self.P[Self::PP].trace(),
+                covariance_reciprocal_condition: Some(reciprocal_condition),
                 ..Default::default()
             };
+
             self.P.enforce_components_diagonal_lower_bound(1e-6);
             return diagnostics;
-        };
+        }
+        let S_inv = S_adj * (1.0 / determinant);
 
         // Calculate the innovation.
         // y = z - H·x
@@ -359,7 +371,8 @@ impl KalmanFilterXy {
         let nis = innovation_m.dot(S_inv * innovation_m);
         let mut diagnostics = KalmanFilterDiagnostics {
             status: FusionStatus::Accepted,
-            position_trace: self.P[Self::PP].trace(),
+            covariance_trace: self.P[Self::PP].trace(),
+            covariance_reciprocal_condition: Some(reciprocal_condition),
             nis,
             innovation_m: innovation_m.into(),
         };
@@ -440,15 +453,19 @@ impl KalmanFilterXy {
 
         // S is guaranteed to be positive-definite, since we are using Joseph's Stabilized Form, so we can use a Cholesky solver.
         // S is symmetric, so we can just use its upper triangle.
-        let Some(S_inv) = S.upper_triangle().try_inverse(1e-6) else {
+        let (S_adj, determinant, reciprocal_condition) = S.upper_triangle().adjugate();
+        if reciprocal_condition < Self::MIN_RECIPROCAL_CONDITION {
             let diagnostics = KalmanFilterDiagnostics {
                 status: FusionStatus::IllConditionedInnovationCovarianceMatrix,
-                position_trace: self.P[Self::PP].trace(),
+                covariance_trace: self.P[Self::PP].trace(),
+                covariance_reciprocal_condition: Some(reciprocal_condition),
                 ..Default::default()
             };
+
             self.P.enforce_components_diagonal_lower_bound(1e-6);
             return diagnostics;
-        };
+        }
+        let S_inv = S_adj * (1.0 / determinant);
 
         // Calculate the innovation.
         // y = z - H·x
@@ -459,7 +476,8 @@ impl KalmanFilterXy {
         let nis = innovation_m.dot(S_inv * innovation_m);
         let mut diagnostics = KalmanFilterDiagnostics {
             status: FusionStatus::Accepted,
-            position_trace: self.P[Self::PP].trace(),
+            covariance_trace: self.P[Self::PP].trace(),
+            covariance_reciprocal_condition: Some(reciprocal_condition),
             nis,
             innovation_m: innovation_m.into(),
         };
@@ -549,19 +567,16 @@ impl KalmanFilterXy {
 
     pub fn correct_position_and_velocity(
         &mut self,
-        position: Vector2f32,
+        position_m: Vector2f32,
         R_position: Vector2f32,
-        velocity: Vector2f32,
+        velocity_mps: Vector2f32,
         R_velocity: Vector2f32,
         nis_threshold: f32,
     ) -> KalmanFilterDiagnostics {
-        _ = self;
-        _ = position;
-        _ = R_position;
-        _ = velocity;
+        _ = velocity_mps;
         _ = R_velocity;
-        _ = nis_threshold;
-        todo!("implement correct_position_and_velocity for xyz");
+        // TODO: implement correct_position_and_velocity for xy, currently it just calls correct_position.
+        self.correct_position_joseph_stabilized_form(position_m, self.state.pos_ned_m, R_position, nis_threshold)
     }
 }
 

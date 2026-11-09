@@ -228,7 +228,7 @@ A naïve implementation of a 3D position Kalman filter is computationally very e
 
 |     | Description                     | Type         | Notes                                       |
 | --- | ------------------------------- | ------------ | ------------------------------------------- |
-|     | **predict**<br>`x = F·x + B.u`<br>`P = F·P·Fᵀ + Q` | |                                       |
+|     | **predict**<br>`x = F·x + B·u`<br>`P = F·P·Fᵀ + Q` | |                                       |
 | `u` | control input vector            | vector3      | acceleration x,y,z (from IMU)               |
 | `x` | estimated state vector          | 3 x vector3  | position x,y,z; velocity x,y,z; bias x,y,z  |
 | `F` | state transition matrix         | 9 x 9 matrix | derived from system dynamics                |

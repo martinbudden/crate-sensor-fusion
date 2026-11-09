@@ -25,9 +25,6 @@ pub struct KalmanFilterXyz {
     /// Process Noise spectral density mapping to Sensor Drift variance.
     /// Units: (m/s³)² / Hz.
     Q_bias: f32,
-    // scale_position: f32, not used, since this is set to 1
-    //scale_velocity: f32,
-    //scale_acc_bias: f32,
 }
 
 impl Default for KalmanFilterXyz {
@@ -39,6 +36,9 @@ impl Default for KalmanFilterXyz {
 #[allow(missing_docs)]
 impl KalmanFilterXyz {
     const G_MPS2: f32 = 9.80665;
+    /// Minimum reciprocal condition allowed for inverting innovation covariance matrix S.
+    /// This represents a fairly ill-conditioned matrix, consider making it larger.
+    const MIN_RECIPROCAL_CONDITION: f32 = 0.0001;
 
     pub const PP: usize = 0;
     pub const VP: usize = 1;
@@ -61,13 +61,13 @@ impl KalmanFilterXyz {
         let mut P = Matrix3x3xM3x3f32::default();
 
         // Seed initial Position uncertainty (ie, confident within 1 meter)
-        P[Self::PP].set_diagonal_from_vector(Vector3f32{x:1.0, y: 1.0, z:1.0});
+        P[Self::PP].set_diagonal_from_vector(Vector3f32 { x: 1.0, y: 1.0, z: 1.0 });
 
         // Seed initial Velocity uncertainty (ie, confident within 0.5 m/s)
-        P[Self::VV].set_diagonal_from_vector(Vector3f32{x:0.25, y: 0.25, z:0.25});
+        P[Self::VV].set_diagonal_from_vector(Vector3f32 { x: 0.25, y: 0.25, z: 0.25 } * KalmanStateXyz::SCALE_VELOCITY);
 
         // Seed initial Bias uncertainty (ie, accelerometer bias)
-        P[Self::BB].set_diagonal_from_vector(Vector3f32{x:0.01, y: 0.01, z:0.01});
+        P[Self::BB].set_diagonal_from_vector(Vector3f32 { x: 0.01, y: 0.01, z: 0.01 } * KalmanStateXyz::SCALE_ACC_BIAS);
 
         Self {
             state: KalmanStateXyz::new(),
@@ -79,16 +79,13 @@ impl KalmanFilterXyz {
             // shifting it incrementally over minutes rather than fluctuating on every single vibration loop.
             Q_bias: 1e-4,
             P,
-            // scale_position: 1.0, not used, since this is set to 1
-            //scale_velocity: 200.0,
-            //scale_acc_bias: 100_000.0,
         }
     }
 
     /// Set the state of a newly constructed `KalmanFilterXyz`.
     #[must_use]
     pub fn with_state(mut self, state: KalmanStateXyz) -> Self {
-        self.state = state;
+        self.set_state(&state);
         self
     }
 
@@ -114,6 +111,10 @@ impl KalmanFilterXyz {
         self.Q_bias = q_bias;
     }
 
+    fn set_state(&mut self, state: &KalmanStateXyz) {
+        self.state.set(state);
+    }
+
     pub fn set_position(&mut self, pos_ned_m: Vector3f32) {
         self.state.pos_ned_m = pos_ned_m;
     }
@@ -129,8 +130,8 @@ impl KalmanFilterXyz {
         // --- Populate the Diagonal Core Blocks ---
         // Setting these ensures the X, Y, and Z axes are uniformly weighted at startup.
         self.P[Self::PP].add_diagonal_scalar_in_place(p_pos_init);
-        self.P[Self::VV].add_diagonal_scalar_in_place(p_vel_init);
-        self.P[Self::BB].add_diagonal_scalar_in_place(p_bias_init);
+        self.P[Self::VV].add_diagonal_scalar_in_place(p_vel_init * KalmanStateXyz::SCALE_VELOCITY);
+        self.P[Self::BB].add_diagonal_scalar_in_place(p_bias_init * KalmanStateXyz::SCALE_ACC_BIAS);
 
         // Off-diagonal blocks (PV, PB, VP, VB, BP, BV) remain pure zero matrices, as no cross-correlations exist yet.
     }
@@ -152,13 +153,13 @@ impl KalmanFilterXyz {
     #[inline]
     #[must_use]
     pub fn vel_mps(&self) -> Vector3f32 {
-        self.state.vel_ned_mps
+        self.state.vel_ned_mps()
     }
 
     #[inline]
     #[must_use]
     pub fn acc_bias_mps2(&self) -> Vector3f32 {
-        self.state.acc_bias_ned_mps2
+        self.state.acc_bias_ned_mps2()
     }
 
     #[inline]
@@ -189,8 +190,11 @@ impl KalmanFilterXyz {
 // **** Predict ****
 
 impl KalmanFilterXyz {
-    /// Predicts the state vectors using `delta_vel_mps` and `delta_pos_m` from the IMU integrator.
+    /// Predicts the state vectors (`x`) using the control input vectors (`u`) `delta_vel_mps` and `delta_pos_m` from the IMU integrator.
     /// ```text
+    /// x = F·x + B·u
+    ///
+    /// where
     ///     ┌          ┐
     ///     │  ½·dt·I₃ │
     /// B = │    I₃    │
@@ -203,6 +207,20 @@ impl KalmanFilterXyz {
     /// - `delta_vel_ned_mps` is the corresponding integrated velocity increment, with the same corrections.
     /// - Both increments are expressed in NED.
     /// - `dt` equals the total integration duration represented by these increments.
+    ///
+    /// In scaled form:
+    /// ```text
+    /// D is the scaling matrix:
+    ///     ┌           ┐
+    ///     │  1  0  0  │
+    /// D = │  0  vₛ 0  │
+    ///     │  0  0  bₛ │
+    ///     └           ┘
+    ///
+    /// Fₛ = D·F·D⁻¹
+    /// Bₛ = D·B
+    /// xₛ = Fₛ·xₛ + Bₛ·u
+    /// ```
     pub fn predict_state(&mut self, delta_vel_ned_mps: Vector3f32, delta_pos_ned_m: Vector3f32, dt: f32) {
         // Predict the position using standard kinematics, note we use the value of `state.vel_ned_mps` before it is updated.
         self.state.pos_ned_m += delta_pos_ned_m + dt * self.state.vel_ned_mps;
@@ -297,6 +315,12 @@ impl KalmanFilterXyz {
     /// Q = │  ½·Q_v·dt²    Q_v·dt        0  │
     ///     │         0          0   Q_b·dt  │
     ///     └                                ┘
+    ///
+    /// In scaled form:
+    ///
+    /// Fₛ = D·F·D⁻¹
+    /// Qₛ = D·B·Dᵀ
+    /// Pₛ = Fₛ·Pₛ·Fₛᵀ + Qₛ
     /// ```
     #[allow(non_snake_case)]
     pub fn predict_covariance(&mut self, dt: f32) {
@@ -415,7 +439,7 @@ impl KalmanFilterXyz {
         if S.abs() <= f32::EPSILON {
             return KalmanFilterDiagnostics {
                 status: FusionStatus::IllConditionedInnovationCovarianceMatrix,
-                position_trace: self.P[Self::PP].trace(),
+                covariance_trace: self.P[Self::PP].trace(),
                 ..Default::default()
             };
         }
@@ -437,7 +461,8 @@ impl KalmanFilterXyz {
         let nis = (innovation_m * innovation_m) * S_inv;
         let mut diagnostics = KalmanFilterDiagnostics {
             status: FusionStatus::Accepted,
-            position_trace: self.P[Self::PP].trace(),
+            covariance_trace: self.P[Self::PP].trace(),
+            covariance_reciprocal_condition: None,
             nis,
             innovation_m: Vector3f32 { x: 0.0, y: 0.0, z: innovation_m },
         };
@@ -534,17 +559,19 @@ impl KalmanFilterXyz {
         // S = H·P·Hᵀ + R
         let S = P_pos.add_diagonal_vector(R);
         // S is symmetric, so we can just use its upper triangle.
-        let Some(S_inv) = S.upper_triangle().try_inverse(1e-6) else {
-            // The the Innovation Covariance matrix may be non-invertible.
-            // This happens very rarely and is due to rounding errors when the process noise covariance Q is small.
+        let (S_adj, determinant, reciprocal_condition) = S.upper_triangle().adjugate();
+        if reciprocal_condition < Self::MIN_RECIPROCAL_CONDITION {
             let diagnostics = KalmanFilterDiagnostics {
                 status: FusionStatus::IllConditionedInnovationCovarianceMatrix,
-                position_trace: self.P[Self::PP].trace(),
+                covariance_trace: self.P[Self::PP].trace(),
+                covariance_reciprocal_condition: Some(reciprocal_condition),
                 ..Default::default()
             };
+
             self.P.enforce_components_diagonal_lower_bound(1e-6);
             return diagnostics;
-        };
+        }
+        let S_inv = S_adj * (1.0 / determinant);
 
         // Calculate the innovation.
         // y = z - H·x
@@ -555,7 +582,8 @@ impl KalmanFilterXyz {
         let nis = innovation_m.dot(S_inv * innovation_m);
         let mut diagnostics = KalmanFilterDiagnostics {
             status: FusionStatus::Accepted,
-            position_trace: self.P[Self::PP].trace(),
+            covariance_trace: self.P[Self::PP].trace(),
+            covariance_reciprocal_condition: Some(reciprocal_condition),
             nis,
             innovation_m,
         };
@@ -634,21 +662,27 @@ impl KalmanFilterXyz {
         // S = H·P·Hᵀ + R
         let S = self.P[Self::PP].add_diagonal_vector(R);
 
-        // S is guaranteed to be positive-definite, since we are using Joseph's Stabilized Form, so we can use a Cholesky solver.
+        // S is guaranteed to be positive-definite, since we are using Joseph's Stabilized Form, so we can use
+        // * matrix inverse
+        // * a Cholesky solver.
+        // * inverse using upper triangle
         // Cholesky solver takes 14 arithmetic operations.
         // matrix inverse takes 39 multiplications, 19 additions/subtractions and 1 division (1 div ~= 4 mul).
-        // symmetric matrix inverse takes 21 multiplications, 8 additions/subtractions and 1 division (1 div ~= 4 mul).
-        // S is symmetric, so we can just use its upper triangle.
-        let Some(S_inv) = S.upper_triangle().try_inverse(1e-6) else {
+        // upper triangle matrix inverse takes 21 multiplications, 8 additions/subtractions and 1 division (1 div ~= 4 mul).
+        // Upper triangle matrix is overall computationally more efficient, and almost as numerically stable as Cholesky solver.
+        let (S_adj, determinant, reciprocal_condition) = S.upper_triangle().adjugate();
+        if reciprocal_condition < Self::MIN_RECIPROCAL_CONDITION {
             let diagnostics = KalmanFilterDiagnostics {
                 status: FusionStatus::IllConditionedInnovationCovarianceMatrix,
-                position_trace: self.P[Self::PP].trace(),
+                covariance_trace: self.P[Self::PP].trace(),
+                covariance_reciprocal_condition: Some(reciprocal_condition),
                 ..Default::default()
             };
 
             self.P.enforce_components_diagonal_lower_bound(1e-6);
             return diagnostics;
-        };
+        }
+        let S_inv = S_adj * (1.0 / determinant);
 
         // Calculate the innovation.
         // y = z - H·x
@@ -660,7 +694,8 @@ impl KalmanFilterXyz {
         let nis = innovation_m.dot(s_inv_times_innovation);
         let mut diagnostics = KalmanFilterDiagnostics {
             status: FusionStatus::Accepted,
-            position_trace: self.P[Self::PP].trace(),
+            covariance_trace: self.P[Self::PP].trace(),
+            covariance_reciprocal_condition: Some(reciprocal_condition),
             nis,
             innovation_m,
         };
@@ -749,6 +784,20 @@ impl KalmanFilterXyz {
         self.correct_position_joseph_stabilized_form(position_m, self.state.pos_ned_m, R, nis_threshold)
     }
 
+    pub fn correct_position_and_velocity(
+        &mut self,
+        position_m: Vector3f32,
+        R_position: Vector3f32,
+        velocity_mps: Vector3f32,
+        R_velocity: Vector3f32,
+        nis_threshold: f32,
+    ) -> KalmanFilterDiagnostics {
+        _ = velocity_mps;
+        _ = R_velocity;
+        // TODO: implement correct_position_and_velocity for xyz, currently it just calls correct_position.
+        self.correct_position_joseph_stabilized_form(position_m, self.state.pos_ned_m, R_position, nis_threshold)
+    }
+
     // TODO: correct_position_xy_joseph_stabilized_form to support optical flow corrections
     pub fn correct_position_xy_joseph_stabilized_form(
         &mut self,
@@ -775,23 +824,6 @@ impl KalmanFilterXyz {
         nis_threshold: f32,
     ) -> KalmanFilterDiagnostics {
         self.correct_position_xy_joseph_stabilized_form(position_m, self.state.pos_ned_m, R, nis_threshold)
-    }
-
-    pub fn correct_position_and_velocity(
-        &mut self,
-        position: Vector3f32,
-        R_position: Vector3f32,
-        velocity: Vector3f32,
-        R_velocity: Vector3f32,
-        nis_threshold: f32,
-    ) -> KalmanFilterDiagnostics {
-        _ = self;
-        _ = position;
-        _ = R_position;
-        _ = velocity;
-        _ = R_velocity;
-        _ = nis_threshold;
-        todo!("implement correct_position_and_velocity for xyz");
     }
 }
 
@@ -853,7 +885,7 @@ impl KalmanFilterXyz {
         if S <= f32::EPSILON {
             return KalmanFilterDiagnostics {
                 status: FusionStatus::IllConditionedInnovationCovarianceMatrix,
-                position_trace: self.P[Self::PP].trace(),
+                covariance_trace: self.P[Self::PP].trace(),
                 ..Default::default()
             };
         }
@@ -867,7 +899,8 @@ impl KalmanFilterXyz {
         let nis = innovation_m * innovation_m * S_inv;
         let mut diagnostics = KalmanFilterDiagnostics {
             status: FusionStatus::Accepted,
-            position_trace: self.P[Self::PP].trace(),
+            covariance_trace: self.P[Self::PP].trace(),
+            covariance_reciprocal_condition: None,
             nis,
             innovation_m: Vector3f32 { x: 0.0, y: 0.0, z: innovation_m },
         };
@@ -982,6 +1015,12 @@ impl Default for KalmanStateXyz {
 }
 
 impl KalmanStateXyz {
+    // const SCALE_POSITION: f32 = 1.0; // not used, since this is set to 1.0
+    //const SCALE_VELOCITY: f32 = 256.0;
+    //const SCALE_ACC_BIAS: f32 = 65,536; // or 131_072.0;
+    const SCALE_VELOCITY: f32 = 1.0;
+    const SCALE_ACC_BIAS: f32 = 1.0;
+
     /// Constructor.
     #[must_use]
     pub const fn new() -> Self {
@@ -990,6 +1029,34 @@ impl KalmanStateXyz {
             vel_ned_mps: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
             acc_bias_ned_mps2: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
         }
+    }
+}
+impl KalmanStateXyz {
+    #[inline]
+    pub fn set(&mut self, state: &Self) {
+        self.pos_ned_m = state.pos_ned_m;
+        self.vel_ned_mps = state.vel_ned_mps * Self::SCALE_VELOCITY;
+        self.acc_bias_ned_mps2 = state.acc_bias_ned_mps2 * Self::SCALE_ACC_BIAS;
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn get(&self) -> Self {
+        KalmanStateXyz {
+            pos_ned_m: self.pos_ned_m,
+            vel_ned_mps: self.vel_ned_mps / Self::SCALE_VELOCITY,
+            acc_bias_ned_mps2: self.acc_bias_ned_mps2 / Self::SCALE_ACC_BIAS,
+        }
+    }
+    #[inline]
+    #[must_use]
+    pub fn vel_ned_mps(&self) -> Vector3f32 {
+        self.vel_ned_mps / Self::SCALE_VELOCITY
+    }
+    #[inline]
+    #[must_use]
+    pub fn acc_bias_ned_mps2(&self) -> Vector3f32 {
+        self.acc_bias_ned_mps2 / Self::SCALE_ACC_BIAS
     }
 }
 
