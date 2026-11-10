@@ -4,19 +4,17 @@
 #[cfg(feature = "simd")]
 use core::simd::{f32x4, simd_swizzle};
 
-use vqm::{Quaternion, Vector3};
+#[allow(unused)]
+use vqm::{MathMethods, Quaternion, Vector3};
 
 /// Math functions for `SensorFusion`, using **SIMD** accelerations for `f32`.
 pub trait SensorFusionMath: Sized {
     fn estimate_gravity(q: Quaternion<Self>) -> Vector3<Self>;
     fn derivative(q: Quaternion<Self>, gyro: Vector3<Self>) -> Quaternion<Self>;
-    fn madgwick_step_acc(q: Quaternion<Self>, acc: Vector3<Self>, max_acc_magnitude_squared: Self) -> Quaternion<Self>;
-    fn madgwick_step_acc_mag(
-        q: Quaternion<Self>,
-        acc: Vector3<Self>,
-        mag: Vector3<Self>,
-        max_acc_magnitude_squared: Self,
-    ) -> Quaternion<Self>;
+    /// Both q and acc should be normalized.
+    fn madgwick_step_acc(q: Quaternion<Self>, acc: Vector3<Self>) -> Quaternion<Self>;
+    /// All of q, acc, and mag should be normalized.
+    fn madgwick_step_acc_mag(q: Quaternion<Self>, acc: Vector3<Self>, mag: Vector3<Self>) -> Quaternion<Self>;
 }
 
 impl SensorFusionMath for f32 {
@@ -108,7 +106,9 @@ impl SensorFusionMath for f32 {
         }
     }
 
-    /// Features of this implementation:
+    /// Madgwick gradient decent corrective step, accelerometer only.
+    ///
+    /// Features of the SIMD implementation:
     ///
     /// 1. Parallel Throughput: Instead of 12 separate floating-point multiplications and 8 additions,
     ///    the SIMD unit performs 3 vector multiplications and 2 vector additions.
@@ -120,23 +120,7 @@ impl SensorFusionMath for f32 {
     ///    meaning this whole function could resolve in under 15 clock cycles.
     ///
     #[inline(always)]
-    fn madgwick_step_acc(
-        q: Quaternion<Self>,
-        acc_mps2: Vector3<Self>,
-        max_acc_magnitude_squared: Self,
-    ) -> Quaternion<Self> {
-        use num_traits::Zero;
-        use vqm::MathMethods;
-
-        let acc_magnitude_squared = acc_mps2.norm_squared();
-        // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
-        // so exclude it from the calculation in these cases
-        let mut a = acc_mps2;
-        if acc_magnitude_squared > max_acc_magnitude_squared || acc_magnitude_squared == 0.0 {
-            a = Vector3::zero();
-        } else {
-            a *= acc_magnitude_squared.sqrt_reciprocal();
-        }
+    fn madgwick_step_acc(q: Quaternion<Self>, a: Vector3<Self>) -> Quaternion<Self> {
         #[cfg(feature = "simd")]
         {
             let q_v = f32x4::from(q);
@@ -184,27 +168,7 @@ impl SensorFusionMath for f32 {
     }
 
     #[inline(always)]
-    fn madgwick_step_acc_mag(
-        q: Quaternion<Self>,
-        acc_mps2: Vector3<Self>,
-        mag: Vector3<Self>,
-        max_acc_magnitude_squared: Self,
-    ) -> Quaternion<Self> {
-        use num_traits::Zero;
-        use vqm::MathMethods;
-
-        let acc_magnitude_squared = acc_mps2.norm_squared();
-        // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
-        // so exclude it from the calculation in these cases
-        let mut a = acc_mps2;
-        if acc_magnitude_squared > max_acc_magnitude_squared || acc_magnitude_squared == 0.0 {
-            a = Vector3::zero();
-        } else {
-            a *= acc_magnitude_squared.sqrt_reciprocal();
-        }
-
-        let m = mag.normalize();
-
+    fn madgwick_step_acc_mag(q: Quaternion<Self>, a: Vector3<Self>, m: Vector3<Self>) -> Quaternion<Self> {
         // make copies of the components of q to simplify the algebraic expressions
         let q0 = q.w;
         let q1 = q.x;
@@ -294,23 +258,7 @@ impl SensorFusionMath for f64 {
     }
 
     #[inline(always)]
-    fn madgwick_step_acc(
-        q: Quaternion<Self>,
-        acc_mps2: Vector3<Self>,
-        max_acc_magnitude_squared: Self,
-    ) -> Quaternion<Self> {
-        use num_traits::Zero;
-        use vqm::MathMethods;
-
-        let acc_magnitude_squared = acc_mps2.norm_squared();
-        // Acceleration is an unreliable indicator of orientation when in high-g maneuvers,
-        // so exclude it from the calculation in these cases
-        let mut a = acc_mps2;
-        if acc_magnitude_squared > max_acc_magnitude_squared || acc_magnitude_squared == 0.0 {
-            a = Vector3::zero();
-        } else {
-            a *= acc_magnitude_squared.sqrt_reciprocal();
-        }
+    fn madgwick_step_acc(q: Quaternion<Self>, a: Vector3<Self>) -> Quaternion<Self> {
         let wz_common = 2.0 * (q.x * q.x + q.y * q.y);
         let xy_common = 2.0 * (q.w * q.w + q.z * q.z - 1.0 + 2.0 * wz_common + a.z);
         Quaternion {
@@ -321,14 +269,72 @@ impl SensorFusionMath for f64 {
         }
     }
 
-    /// Not implemented for `f64`.
     #[inline(always)]
-    fn madgwick_step_acc_mag(
-        q: Quaternion<Self>,
-        _acc_mps2: Vector3<Self>,
-        _mag: Vector3<Self>,
-        _max_acc_magnitude_squared: Self,
-    ) -> Quaternion<Self> {
-        q
+    fn madgwick_step_acc_mag(q: Quaternion<Self>, a: Vector3<Self>, m: Vector3<Self>) -> Quaternion<Self> {
+        // make copies of the components of q to simplify the algebraic expressions
+        let q0 = q.w;
+        let q1 = q.x;
+        let q2 = q.y;
+        let q3 = q.z;
+        // Auxiliary variables to avoid repeated arithmetic
+        let q0q0 = q0 * q0;
+        let q0q1 = q0 * q1;
+        let q0q2 = q0 * q2;
+        let q0q3 = q0 * q3;
+        let q1q1 = q1 * q1;
+        let q1q2 = q1 * q2;
+        let q1q3 = q1 * q3;
+        let q2q2 = q2 * q2;
+        let q2q3 = q2 * q3;
+        let q3q3 = q3 * q3;
+
+        let q1q1_plus_q2q2 = q1q1 + q2q2;
+        let q2q2_plus_q3q3 = q2q2 + q3q3;
+
+        // Reference direction of Earth's magnetic field
+        let h = Vector3 {
+            x: m.x * (q0q0 + q1q1 - q2q2_plus_q3q3) + 2.0 * (m.y * (q1q2 - q0q3) + m.z * (q0q2 + q1q3)),
+            y: (m.x * (q0q3 + q1q2) + m.y * (q0q0 - q1q1 + q2q2 - q3q3) + m.z * (q2q3 - q0q1)) * 2.0,
+            z: 0.0,
+        };
+
+        let bx_bx = h.x * h.x + h.y * h.y;
+        let b = Vector3 {
+            x: bx_bx.sqrt(),
+            y: 0.0,
+            z: 2.0 * (m.x * (q1q3 - q0q2) + m.y * (q0q1 + q2q3)) + m.z * (q0q0 - q1q1_plus_q2q2 + q3q3),
+        };
+
+        let a_dash = Vector3 { x: a.x + m.x * b.z, y: a.y + m.y * b.z, z: 0.0 };
+        let bz_bz = b.z * b.z;
+        let _4bx_bz = 4.0 * b.x * b.z;
+
+        let m_bx = m * b.x;
+        let mz_bz = m.z * b.z;
+
+        let sum_squares_minus_one = q0q0 + q1q1_plus_q2q2 + q3q3 - 1.0;
+        let xy_common = sum_squares_minus_one + q1q1_plus_q2q2;
+        let yz_common = sum_squares_minus_one + q2q2_plus_q3q3;
+        let wz_common = q1q1_plus_q2q2 * (1.0 + bz_bz) + bx_bx;
+
+        // Gradient decent algorithm corrective step
+        #[allow(clippy::used_underscore_binding)]
+        Quaternion {
+            w: q0 * 2.0 * (wz_common * q2q2_plus_q3q3) - q1 * a_dash.y
+                + q2 * (a_dash.x - m_bx.z)
+                + q3 * (m_bx.y - _4bx_bz * q0q1),
+
+            x: -q0 * a_dash.y + q1 * 2.0 * (xy_common * (1.0 + 2.0 * bz_bz) + mz_bz + bx_bx * q2q2_plus_q3q3 + a.z)
+                - q2 * m_bx.y
+                - q3 * (a_dash.x + m_bx.z + _4bx_bz * (0.5 * sum_squares_minus_one + q1q1)),
+
+            y: q0 * (a_dash.x - m_bx.z) - q1 * m_bx.y
+                + q2 * 2.0 * (xy_common * (1.0 + bz_bz) + mz_bz + m_bx.x + bx_bx * yz_common + a.z)
+                - q3 * (a_dash.y + _4bx_bz * q1q2),
+
+            z: q0 * m_bx.y - q1 * (a_dash.x + m_bx.z + _4bx_bz * (0.5 * sum_squares_minus_one + q3q3)) - q2 * a_dash.y
+                + q3 * 2.0 * (wz_common + m_bx.x * yz_common),
+        }
+        .normalize()
     }
 }

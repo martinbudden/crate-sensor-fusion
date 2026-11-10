@@ -1,3 +1,5 @@
+use core::{f32, f64, ops::Sub};
+
 use super::{SensorFusion, SensorFusionMath};
 use num_traits::{ConstOne, ConstZero, float::FloatCore};
 use vqm::{MathMethods, Quaternion, QuaternionMath, Vector3};
@@ -7,18 +9,23 @@ pub type MadgwickFilterf32 = MadgwickFilter<f32>;
 /// Madgwick filter for `f64`<br><br>
 pub type MadgwickFilterf64 = MadgwickFilter<f64>;
 
-pub trait ConstFourGMps {
+pub trait MadgwickConstants {
     const G_MPS2: Self;
-    const FOUR_G_MPS2: Self;
+    const ACC_DIRECTIONAL_WEIGHT_DENOMINATOR_DEFAULT: Self;
+    const COS_5_DEGREES: Self;
 }
 
-impl ConstFourGMps for f32 {
+impl MadgwickConstants for f32 {
     const G_MPS2: f32 = 9.80665;
-    const FOUR_G_MPS2: Self = 4.0 * Self::G_MPS2;
+    const ACC_DIRECTIONAL_WEIGHT_DENOMINATOR_DEFAULT: Self = 0.0565;
+    #[allow(clippy::excessive_precision)]
+    const COS_5_DEGREES: Self = 0.996_194_698;
 }
-impl ConstFourGMps for f64 {
+
+impl MadgwickConstants for f64 {
     const G_MPS2: f64 = 9.80665;
-    const FOUR_G_MPS2: Self = 4.0 * Self::G_MPS2;
+    const ACC_DIRECTIONAL_WEIGHT_DENOMINATOR_DEFAULT: Self = 0.0565;
+    const COS_5_DEGREES: Self = 0.996_194_698;
 }
 
 /// [Madgwick filter](https://ahrs.readthedocs.io/en/latest/filters/madgwick.html).
@@ -26,8 +33,15 @@ impl ConstFourGMps for f64 {
 pub struct MadgwickFilter<T> {
     /// orientation quaternion.
     q: Quaternion<T>,
-    max_acc_magnitude_squared: T,
-    /// Beta gain tuned for fast tracking of pitch and roll (typically 0.01 to 0.1).
+    /// Lower confidence angle for accelerometer, below this angle accelerometer is fully trusted.
+    cos_theta1: T,
+    /// Upper confidence angle for accelerometer, above this angle accelerometer is completely rejected.
+    acc_directional_weight_denominator: T,
+    /*/// Typically e0 = 0.05 (5% deviation).
+    e0: T,
+    /// Typically e1 = 0.35 (30% deviation).
+    e1: T,
+    /// Beta gain tuned for fast tracking of pitch and roll (typically 0.01 to 0.1).*/
     beta: T,
     /// Beta yaw gain, should be significantly smaller than beta (e.g., 0.001 to 0.005).
     /// GPS latency can cause the filter to over correct and oscillate if this value is too aggressive.
@@ -36,23 +50,24 @@ pub struct MadgwickFilter<T> {
 
 impl<T> Default for MadgwickFilter<T>
 where
-    T: Copy + ConstZero + ConstOne + ConstFourGMps,
+    T: Copy + ConstZero + ConstOne + MadgwickConstants,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T> MadgwickFilter<T>
-where
-    T: Copy + ConstZero + ConstOne + ConstFourGMps,
-{
+impl<T> MadgwickFilter<T> {
     /// Constructor.
     #[must_use]
-    pub const fn new() -> Self {
+    pub const fn new() -> Self
+    where
+        T: Copy + ConstZero + ConstOne + MadgwickConstants,
+    {
         MadgwickFilter {
             q: Quaternion { w: T::ONE, x: T::ZERO, y: T::ZERO, z: T::ZERO },
-            max_acc_magnitude_squared: T::FOUR_G_MPS2,
+            cos_theta1: MadgwickConstants::COS_5_DEGREES,
+            acc_directional_weight_denominator: (MadgwickConstants::ACC_DIRECTIONAL_WEIGHT_DENOMINATOR_DEFAULT),
             beta: T::ONE,
             beta_yaw: T::ZERO,
         }
@@ -60,33 +75,70 @@ where
 
     /// Set the beta gain of a newly constructed filter.
     #[must_use]
-    pub const fn with_beta(mut self, beta: T) -> Self {
+    pub const fn with_beta(mut self, beta: T) -> Self
+    where
+        T: Copy,
+    {
         self.beta = beta;
         self
     }
 
     /// Set the orientation of a newly constructed filter.
     #[must_use]
-    pub const fn with_orientation(mut self, orientation: Quaternion<T>) -> Self {
+    pub const fn with_orientation(mut self, orientation: Quaternion<T>) -> Self
+    where
+        T: Copy,
+    {
         self.q = orientation;
         self
     }
-}
 
-impl<T: Copy> MadgwickFilter<T> {
-    pub fn set_orientation(&mut self, orientation: Quaternion<T>) {
+    /*/// Set accelerometer directional magnitude weights of a newly constructed filter.
+    #[must_use]
+    pub fn with_accelerometer_magnitude_confidence_weights(mut self, e0: T, e1: T) -> Self
+    where
+        T: Copy + Sub<Output = T> + MathMethods,
+    {
+        self.e0 = e0;
+        self.e1 = e1;
+        self
+    }*/
+
+    /// Set accelerometer directional confidence weights of a newly constructed filter.
+    #[must_use]
+    pub fn with_accelerometer_directional_confidence_weights(mut self, theta0: T, theta1: T) -> Self
+    where
+        T: Copy + Sub<Output = T> + MathMethods,
+    {
+        self.cos_theta1 = theta1.cos();
+        self.acc_directional_weight_denominator = theta0.cos() - self.cos_theta1;
+        self
+    }
+
+    pub fn set_orientation(&mut self, orientation: Quaternion<T>)
+    where
+        T: Copy,
+    {
         self.q = orientation;
     }
-    pub fn set_beta(&mut self, beta: T) {
+
+    pub fn set_beta(&mut self, beta: T)
+    where
+        T: Copy,
+    {
         self.beta = beta;
     }
-    pub fn set_beta_yaw(&mut self, beta_yaw: T) {
+
+    pub fn set_beta_yaw(&mut self, beta_yaw: T)
+    where
+        T: Copy,
+    {
         self.beta_yaw = beta_yaw;
     }
 }
 impl<T> MadgwickFilter<T>
 where
-    T: Copy + FloatCore + QuaternionMath + SensorFusionMath + MathMethods,
+    T: Copy + FloatCore + QuaternionMath + SensorFusionMath + MathMethods + MadgwickConstants,
 {
     pub fn correct_yaw(&mut self, yaw_radians: T, delta_t: T) -> Quaternion<T> {
         self.correct_yaw_with_gain(yaw_radians, self.beta_yaw, delta_t)
@@ -126,10 +178,30 @@ where
     /// Fuses accelerometer and gyroscope readings to give the orientation quaternion.
     fn fuse_acc_gyro(&mut self, acc_mps2: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> Quaternion<T> {
         // Calculate the corrective step.
-        let step = SensorFusionMath::madgwick_step_acc(self.q, acc_mps2, self.max_acc_magnitude_squared);
+        let acc_norm = acc_mps2.norm();
+        let mut acc = acc_mps2;
+        if acc_norm == T::zero() {
+            acc = Vector3 { x: T::zero(), y: T::zero(), z: T::zero() };
+        } else {
+            acc /= acc_norm;
+        }
 
+        // Calculate the acc magnitude confidence weight, `w_mag`.
+        //let e = (acc_norm - MadgwickConstants::G_MPS2).abs();
+        //let w_mag = if e > self.e0 { (self.e1 - e) / (self.e1 - self.e0) } else { T::one() };
+
+        // Calculate the acc directional confidence weight, `w_dir`.
+        // In high g maneuvers the accelerometer is a less reliable direction indicator.
+        // In these maneuvers the acc reading deviates from the estimated gravity direction.
+        let gravity = SensorFusionMath::estimate_gravity(self.q); // 15 arithmetic operations
+        let acc_dot_gravity = acc.dot(gravity).clamp(-T::one(), T::one());
+        let w_dir =
+            ((acc_dot_gravity - self.cos_theta1) / self.acc_directional_weight_denominator).clamp(-T::one(), T::one());
+
+        // Calculate the adaptive step.
+        let step = SensorFusionMath::madgwick_step_acc(self.q, acc);
         // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate and subtract the corrective step.
-        let q_dot = SensorFusionMath::derivative(self.q, gyro_rps) - step * self.beta;
+        let q_dot = SensorFusionMath::derivative(self.q, gyro_rps) - step * self.beta * w_dir;
 
         // Update the orientation quaternion using simple Euler integration
         self.q += q_dot * delta_t;
@@ -148,7 +220,14 @@ where
         delta_t: T,
     ) -> Quaternion<T> {
         // Calculate the corrective step.
-        let step = SensorFusionMath::madgwick_step_acc_mag(self.q, acc_mps2, mag, self.max_acc_magnitude_squared);
+        let acc_magnitude_squared = acc_mps2.norm_squared();
+        let mut acc = acc_mps2;
+        if acc_magnitude_squared == T::zero() {
+            acc = Vector3 { x: T::zero(), y: T::zero(), z: T::zero() };
+        } else {
+            acc *= acc_magnitude_squared.sqrt_reciprocal();
+        }
+        let step = SensorFusionMath::madgwick_step_acc_mag(self.q, acc, mag.normalize());
 
         // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate and subtract the corrective step.
         let q_dot = SensorFusionMath::derivative(self.q, gyro_rps) - step * self.beta;
