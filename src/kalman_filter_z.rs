@@ -523,7 +523,7 @@ impl KalmanFilterZ {
         diagnostics
     }
 }
-#[allow(unused)]
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanStateZ {
     // 3D Kinematic State Vectors

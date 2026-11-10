@@ -13,7 +13,7 @@ pub type KalmanStateXyzf32 = KalmanStateXyz;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterXyz {
     /// 3D Kinematic State Vectors, in the NED frame.
-    state: KalmanStateXyz,
+    pub(crate) state: KalmanStateXyz,
 
     // Predicted System Uncertainty Covariance Matrix (P).
     /// `P`: Prediction error covariance (aka state covariance matrix, the system's internal uncertainty).
@@ -249,7 +249,9 @@ impl KalmanFilterXyz {
     /// Explanation
     ///
     /// A 9×9 matrix multiplication requires 729 scalar multiplications and 648 additions.
-    /// Calculating F·P·Fᵀ is even more expensive.
+    /// Calculating F·P·Fᵀ is more that twice as expensive.
+    /// The optimized form below takes 216 scalar multiplications and 351 additions/subtractions for the full F·P·Fᵀ calculation.
+    ///
     /// Because F is sparse and block structured, the covariance can instead be propagated using explicit 3×3 block equations.
     ///
     /// We can divide F into 9 separate 3x3 sub-matrices (blocks) and process each block using 3x3 matrix operations.
@@ -338,6 +340,7 @@ impl KalmanFilterXyz {
         let (PP, VP, BP, PV, VV, BV, PB, VB, BB) =
             (Self::PP, Self::VP, Self::BP, Self::PV, Self::VV, Self::BV, Self::PB, Self::VB, Self::BB);
 
+        // 24*9 = 216 scalar multiplications, 39*9 = 351 additions and subtractions
         // --- POSITION COLUMNS (PP, VP, BP) ---
         P[PP] = P[PP]
             + dt * (P[PV] + P[VP] + dt * (P[VV] - 0.5 * (P[PB] + P[BP] + dt * (P[VB] + P[BV] - dt * 0.5 * P[BB]))));

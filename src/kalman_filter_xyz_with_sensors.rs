@@ -118,7 +118,7 @@ impl KalmanFilterXyzWithSensors {
         // Propagate covariance uncertainty blocks forward (stochastic)
         self.predict_covariance(dt);
 
-        self.push_snapshot(timestamp_us);
+        self.push_snapshot(timestamp_us, delta_pos_ned_m, delta_vel_ned_mps);
     }
 
     pub fn predict_state(&mut self, delta_vel_ned_mps: Vector3f32, delta_pos_ned_m: Vector3f32, dt: f32) {
@@ -170,6 +170,28 @@ impl KalmanFilterXyzWithSensors {
             z: self.R_gps_position_vertical,
         };
         self.base.correct_position(position_m, r_gps, Self::NIS_THRESHOLD_3D)
+    }
+
+    /// Use the GPS velocity to predict the GPS position forward to the current time,
+    /// And use that to correct the position estimate.
+    pub fn correct_position_using_gps_with_delay_compensation(
+        &mut self,
+        time_us: u64,
+        timestamp_us: u64,
+        position_m: Vector3f32,
+        velocity_mps: Vector3f32,
+    ) -> KalmanFilterDiagnostics {
+        let r_gps = Vector3f32 {
+            x: self.R_gps_position_horizontal,
+            y: self.R_gps_position_horizontal,
+            z: self.R_gps_position_vertical,
+        };
+        let dt_us = time_us - timestamp_us;
+        #[allow(clippy::cast_precision_loss)]
+        let dt = (dt_us as f32) * 1e-6;
+        // Estimate the current position and use that for the correction.
+        let position = position_m + velocity_mps * dt;
+        self.base.correct_position(position, r_gps, Self::NIS_THRESHOLD_3D)
     }
 
     /// Correct velocity using GPS velocity measurement (typically at a 1Hz to 10Hz rate).
@@ -240,13 +262,13 @@ impl KalmanFilterXyzWithSensors {
         timestamp_us: u64,
         measurement_m: Vector3f32,
         R: Vector3f32,
-        dt: f32,
+        _dt: f32,
     ) -> KalmanFilterDiagnostics {
         // Find the past state matching the sensor timestamp
-        let Some((past, _)) = self.find_snapshot(timestamp_us, dt) else {
+        let Some((past, _)) = self.find_snapshot(timestamp_us) else {
             return KalmanFilterDiagnostics { status: FusionStatus::SnapshotNotFound, ..Default::default() };
         };
-        let predicted_measurement_m = past.pos_m;
+        let predicted_measurement_m = past.state.pos_ned_m;
         self.base.correct_position_joseph_stabilized_form(
             measurement_m,
             predicted_measurement_m,
@@ -259,8 +281,15 @@ impl KalmanFilterXyzWithSensors {
 impl KalmanFilterXyzWithSensors {
     /// Saves the current state of the filter into our history ring buffer.
     /// Run this at the very end of EVERY IMU time update step.
-    pub fn push_snapshot(&mut self, timestamp_us: u64) {
-        let snapshot = Snapshot { timestamp_us, pos_m: self.pos_m(), gps_pos_m: None, baro_alt_m: None };
+    pub fn push_snapshot(&mut self, timestamp_us: u64, delta_vel_ned_mps: Vector3f32, delta_pos_ned_m: Vector3f32) {
+        let snapshot = SnapshotXyz {
+            timestamp_us,
+            delta_vel_ned_mps,
+            delta_pos_ned_m,
+            state: self.base.state,
+            gps_pos_m: None,
+            baro_alt_m: None,
+        };
 
         self.history.head_idx = (self.history.head_idx + 1) % self.history.snapshot.len();
         self.history.snapshot[self.history.head_idx] = snapshot;
@@ -281,7 +310,7 @@ impl KalmanFilterXyzWithSensors {
     /// The index is relative to the most recent snapshot, with 0 being the latest.
     #[must_use]
     #[allow(unused)]
-    pub fn find_snapshot(&self, sensor_time_us: u64, dt: f32) -> Option<(Snapshot, usize)> {
+    pub fn find_snapshot(&self, sensor_time_us: u64) -> Option<(SnapshotXyz, usize)> {
         let mut match_idx = None;
 
         for ii in 0..self.history.snapshot.len() {
@@ -304,29 +333,38 @@ impl KalmanFilterXyzWithSensors {
 
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Snapshot {
+pub struct SnapshotXyz {
     pub timestamp_us: u64,
-    pub pos_m: Vector3f32,
+    pub delta_vel_ned_mps: Vector3f32,
+    pub delta_pos_ned_m: Vector3f32,
+    pub state: KalmanStateXyz,
     pub gps_pos_m: Option<Vector3f32>,
     pub baro_alt_m: Option<f32>,
 }
 
-impl Default for Snapshot {
+impl Default for SnapshotXyz {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Snapshot {
+impl SnapshotXyz {
     pub const fn new() -> Self {
-        Self { timestamp_us: 0, pos_m: Vector3f32::ZERO, gps_pos_m: None, baro_alt_m: None }
+        Self {
+            timestamp_us: 0,
+            delta_vel_ned_mps: Vector3f32::ZERO,
+            delta_pos_ned_m: Vector3f32::ZERO,
+            state: KalmanStateXyz::new(),
+            gps_pos_m: None,
+            baro_alt_m: None,
+        }
     }
 }
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterXyzHistory {
     /// Fixed circular window (e.g., handles up to 640ms of latency at 100Hz).
-    pub snapshot: [Snapshot; Self::SNAPSHOT_SIZE],
+    pub snapshot: [SnapshotXyz; Self::SNAPSHOT_SIZE],
     /// Ring buffer index.
     pub head_idx: usize,
 }
@@ -341,7 +379,7 @@ impl KalmanFilterXyzHistory {
     pub const SNAPSHOT_SIZE: usize = 128; // 256ms of history at 500Hz
 
     pub const fn new() -> Self {
-        Self { snapshot: [Snapshot::new(); Self::SNAPSHOT_SIZE], head_idx: 0 }
+        Self { snapshot: [SnapshotXyz::new(); Self::SNAPSHOT_SIZE], head_idx: 0 }
     }
 }
 #[cfg(test)]
@@ -355,6 +393,6 @@ mod test_traits {
         is_full::<KalmanFilterXyzWithSensors>();
         is_full::<KalmanFilterXyzWithSensorsf32>();
         is_full::<KalmanFilterXyzHistory>();
-        is_full::<Snapshot>();
+        is_full::<SnapshotXyz>();
     }
 }

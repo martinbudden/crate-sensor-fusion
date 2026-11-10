@@ -40,7 +40,6 @@ mod tests {
         let loops_stationary = (1.0 / dt) as i32;
         for _ in 0..loops_stationary {
             // Raw IMU reading = Kinematic Acc (0) + Bias - Gravity Reaction Force
-            #[allow(unused)]
             let acc_body_mps2 = Vector3f32::default() + true_bias_mps2 - gravity_mps2;
             //let delta_vel_ned_mps = acc_measurement_mps2 * dt;
             integrator.integrate(acc_body_mps2, orientation, dt);
@@ -83,7 +82,6 @@ mod tests {
             true_vel_mps += true_acc_kinematic * dt;
 
             // Raw IMU specific force generation
-            #[allow(unused)]
             let acc_body_mps2 = true_acc_kinematic + true_bias_mps2 - gravity_mps2;
             integrator.integrate(acc_body_mps2, orientation, dt);
             let integral = integrator.imu_integral();
@@ -156,7 +154,6 @@ mod tests {
 
         for step in 0..sim_loops_stationary {
             // Raw sensor reading = True Kinematic Acc (0) + Bias + Upward Reaction Force (-gravity)
-            #[allow(unused)]
             let acc_body_mps2 = Vector3f32::default() + true_bias_mps2 - gravity_mps2;
 
             // Step A: Time Update
@@ -208,7 +205,6 @@ mod tests {
             true_vel_mps += true_acc_kinematic * dt;
 
             // Generate sensor reading: Kinematic Acc + Bias - Upward Reaction Force
-            #[allow(unused)]
             let acc_body_mps2 = true_acc_kinematic + true_bias_mps2 - gravity_mps2;
 
             // Step A: Time Update

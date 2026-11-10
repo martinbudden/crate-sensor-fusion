@@ -309,6 +309,21 @@ Further optimizations include:
 2. collapsing `Q` from a 9x9 matrix into the two scalars `Q_velocity` and `Q_bias`.
 3. don't explicitly create the matrix `H`: rather directly select the relevant submatrices when calculating `H·P·Hᵀ`, `P·Hᵀ·S⁻¹` and `H·x`.
 
+### Handling corrections using delayed GPS measurements
+
+GPS measurements are inherently delayed. This delay has a number of causes including the time required for
+signal processing by the GPS receiver and the time to transmit the GPS solution over the UART.
+
+This means the Kalman filter state needs to be corrected at the time the GPS measurement was taken, rather than
+the time that it was received. There are a number of ways to handle this, including:
+
+1. Rewind and fast-forward: Maintain a history of the filter states and inputs, and when a GPS measurement is received, rewind it to the
+   time of the GPS measurement, apply the GPS correction, and the fast-forward the measurements to the current time.
+2. Delay compensation: Compensate for the delay by using the GPS velocity to predict the historical position forward to the current time.
+
+In the current release `0.0.14` delay compensation is implemented and rewind and fast-forward is under development.
+The aim is to eventually support both options.
+
 ### Testing optimizations against reference implementation
 
 `KalmanFilterXyz` has been tested against a reference implementation written using 9x9 matrices, `nalgebra`, and `f64`.

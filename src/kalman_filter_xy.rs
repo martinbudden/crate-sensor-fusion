@@ -13,7 +13,7 @@ pub type KalmanStateXyf32 = KalmanStateXy;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterXy {
     /// 2D Kinematic State Vectors, in the NED frame.
-    state: KalmanStateXy,
+    pub(crate) state: KalmanStateXy,
 
     // Predicted System Uncertainty Covariance Matrix (P).
     /// `P`: Prediction error covariance (aka state covariance matrix, the system's internal uncertainty).
@@ -578,7 +578,6 @@ impl KalmanFilterXy {
     }
 }
 
-#[allow(unused)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanStateXy {
     // 3D Kinematic State Vectors

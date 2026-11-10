@@ -17,11 +17,20 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 ## [0.1.14] - 2026-11-xx
 
+### Added
+
+- Reference Kalman filter implementation written using 9x9 matrices, `nalgebra`, and `f64`, used for test comparisons.
+- Kalman filter `correct_position_using_gps_with_delay_compensation`.
+- timestamps to Kalman filter predict and correct functions.
+- Added directional confidence weight to Madgwick filter to improve handling of large accelerations.
+
 ### Changed
 
 - Updated to `vqm` version `0.1.xx`.
 - Changed `KalmanFilterXy` `correct_position` to use `M2x2UpperTriangularArrayf32` for `S_inv`.
 - Changed `KalmanFilterXyz` `correct_position` to use `M3x3UpperTriangularArrayf32` for `S_inv`.
+- Improved diagnostics.
+- Improved snapshot history.
 
 ## [0.1.13] - 2026-10-28
 
