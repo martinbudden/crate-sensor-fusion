@@ -356,7 +356,7 @@ Correct:
     covariance update:
     P = P - (K·H)·P
     or
-    Joseph's Stabilized Form for the covariance update step, computationally more expensive, numerically stabler
+    Joseph's Stabilized Form for the covariance correction step, computationally more expensive, numerically stabler
     P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ
 ```
 

@@ -248,11 +248,11 @@ impl KalmanFilterXyz {
     ///
     /// Explanation
     ///
-    /// A naïve dense 9×9 matrix multiplication requires 729 scalar multiplications and 648 additions.
-    /// Calculating F·P·Fᵀ is even more expensive still.
+    /// A 9×9 matrix multiplication requires 729 scalar multiplications and 648 additions.
+    /// Calculating F·P·Fᵀ is even more expensive.
     /// Because F is sparse and block structured, the covariance can instead be propagated using explicit 3×3 block equations.
     ///
-    /// Instead we can divide F into 9 separate 3x3 sub-matrices (blocks) and process each block using 3x3 matrix operations.
+    /// We can divide F into 9 separate 3x3 sub-matrices (blocks) and process each block using 3x3 matrix operations.
     ///
     /// ┌                 9x9                  ┐
     /// │ ┌   3x3    ┐┌   3x3    ┐┌   3x3    ┐ │
@@ -295,17 +295,17 @@ impl KalmanFilterXyz {
     /// Expanding F·P·Fᵀ algebraically gives the following block updates:
     ///
     /// For the position columns (PP, VP, BP)
-    ///     PP_new = PP + dt*(PV + VP) + dt2*(VV - 0.5*(PB + BP)) - 0.5*dt3*(VB + BV) + 0.25*dt4*BB
-    ///     VP_new = VP + dt*(VV - BP) - dt2*(BV + 0.5*VB) +        0.5*dt3*BB
-    ///     BP_new = BP + dt*BV  -       dt2*0.5*BB
+    ///     PP_new = PP + dt*(PV + VP) + dt²*(VV - 0.5*(PB + BP)) - 0.5*dt³*(VB + BV) + 0.25*dt⁴*BB
+    ///     VP_new = VP + dt*(VV - BP) - dt²*(BV + 0.5*VB) +        0.5*dt³*BB
+    ///     BP_new = BP + dt*BV  -       dt²*0.5*BB
     ///
     /// For the velocity columns (PV, VV, BV)
-    ///     PV_new = PV + dt*(VV - PB) - dt2*(VB + 0.5*BV) + dt3*0.5*BB
-    ///     VV_new = VV - dt*(BV + VB) + dt2*BB
+    ///     PV_new = PV + dt*(VV - PB) - dt²*(VB + 0.5*BV) + dt³*0.5*BB
+    ///     VV_new = VV - dt*(BV + VB) + dt²*BB
     ///     BV_new = BV - dt*BB
     ///
     /// For the bias columns (PB, VB, BB)
-    ///     PB_new = PB + dt*VB - dt2*0.5*BB
+    ///     PB_new = PB + dt*VB - dt²*0.5*BB
     ///     VB_new = VB - dt*BB
     ///     BB_new = BB
     ///
@@ -567,7 +567,6 @@ impl KalmanFilterXyz {
                 covariance_reciprocal_condition: Some(reciprocal_condition),
                 ..Default::default()
             };
-
             self.P.enforce_components_diagonal_lower_bound(1e-6);
             return diagnostics;
         }
@@ -636,7 +635,7 @@ impl KalmanFilterXyz {
         diagnostics
     }
 
-    /// Joseph's Stabilized Form for the covariance update step:
+    /// Joseph's Stabilized Form for the covariance correction step:
     ///
     /// `P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ`.
     ///
@@ -678,7 +677,6 @@ impl KalmanFilterXyz {
                 covariance_reciprocal_condition: Some(reciprocal_condition),
                 ..Default::default()
             };
-
             self.P.enforce_components_diagonal_lower_bound(1e-6);
             return diagnostics;
         }
@@ -751,7 +749,7 @@ impl KalmanFilterXyz {
         // I - K·H =
         //
         // [ I - K_pos  0   0 ]
-        // [ - K_vel    I   0 ]
+        // [ -K_vel     I   0 ]
         // [ -K_bias    0   I ]
         //
         // Therefore:
@@ -880,7 +878,6 @@ impl KalmanFilterXyz {
                 covariance_reciprocal_condition: Some(reciprocal_condition),
                 ..Default::default()
             };
-
             self.P.enforce_components_diagonal_lower_bound(1e-6);
             return diagnostics;
         }
@@ -1251,7 +1248,7 @@ impl KalmanFilterXyz {
         debug_assert!(measured_distance_m.is_finite());
 
         if measured_distance_m < 0.0 {
-            return KalmanFilterDiagnostics { status: FusionStatus::InvalidMeasurement, ..Default::default() };
+            return KalmanFilterDiagnostics { status: FusionStatus::MeasurementTooSmall, ..Default::default() };
         }
         // Position relative to the anchor.
         let position_m = self.state.pos_ned_m - anchor_position_m;
@@ -1274,12 +1271,12 @@ impl KalmanFilterXyz {
         //     P·Hᵀ
         let H = position_m / predicted_distance_m;
 
-        // P ·Hᵀ for each state block.
+        // P·Hᵀ for each state block.
         // u = P·Hᵀ
         //
-        //     [ P_PP·Hᵀ ]
-        // u = [ P_VP·Hᵀ ]
-        //     [ P_BP·Hᵀ ]
+        //     [ P_pp·Hᵀ ]
+        // u = [ P_vp·Hᵀ ]
+        //     [ P_bp·Hᵀ ]
 
         // P·Hᵀ
         let P_pos = self.P[Self::PP] * H;
@@ -1289,14 +1286,16 @@ impl KalmanFilterXyz {
         // Innovation covariance:
         //
         // S = H·P·Hᵀ + R
-        //   = H·P_PP·Hᵀ + R
+        //   = H·P_pp·Hᵀ + R
         let S = H.dot(P_pos) + R;
         if S <= f32::EPSILON {
-            return KalmanFilterDiagnostics {
+            let diagnostics = KalmanFilterDiagnostics {
                 status: FusionStatus::IllConditionedInnovationCovarianceMatrix,
                 covariance_trace: self.P[Self::PP].trace(),
                 ..Default::default()
             };
+            self.P.enforce_components_diagonal_lower_bound(1e-6);
+            return diagnostics;
         }
         let S_inv = 1.0 / S;
 
@@ -1367,22 +1366,17 @@ impl KalmanFilterXyz {
     /// Layouts:
     /// * `self.P`: 9x9 Column-Major Covariance Matrix (used to extract the 3x3 S matrix block)
     /// * `y`: 3-element measurement innovation `[y_x, y_y, y_z]`
-    /// * `R`: 3-element diagonal measurement noise variance array `[R_x, R_y, R_z]`
-    /// * `gate_threshold`: Chi-squared limit (e.g., 7.815 for 3 DOF at 95% confidence)
+    /// * `R`: 3-element diagonal measurement noise variance vector `[R_x, R_y, R_z]`
+    /// * `nis_threshold`: Chi-squared limit (e.g., 7.815 for 3 DOF at 95% confidence)
     #[must_use]
     #[allow(non_snake_case)]
     pub fn validate_measurement(&self, y: Vector3f32, R: Vector3f32, nis_threshold: f32) -> bool {
-        // Collect the columns into an array using standard iteration.
-        /*let mut col_iter = self.P.iter_columns();
-        let (Some(col0), Some(col1), Some(col2)) = (col_iter.next(), col_iter.next(), col_iter.next()) else {
-            return false; // Structured pipeline fallback safety
-        };*/
         let col0 = self.P.column(0);
         let col1 = self.P.column(1);
         let col2 = self.P.column(2);
 
         // H selects position states (rows 0, 1, 2) from columns 0, 1, 2 of matrix P.
-        // We pack these into our a Matrix3x3f32.
+        // We pack these into a matrix.
         #[rustfmt::skip]
         let S = Matrix3x3f32::from_column_array([
             col0[0] + R.x, col0[1],       col0[2],
@@ -1390,7 +1384,7 @@ impl KalmanFilterXyz {
             col2[0],       col2[1],       col2[2] + R.z,
         ]);
 
-        let Some(S_inv) = S.try_inverse(1e-5) else {
+        let Some(S_inv) = S.try_inverse(1e-4) else {
             return false;
         };
 
@@ -1439,6 +1433,7 @@ impl KalmanStateXyz {
         }
     }
 }
+
 impl KalmanStateXyz {
     #[inline]
     pub fn set(&mut self, state: &Self) {
@@ -1456,11 +1451,13 @@ impl KalmanStateXyz {
             acc_bias_ned_mps2: self.acc_bias_ned_mps2 / Self::SCALE_ACC_BIAS,
         }
     }
+
     #[inline]
     #[must_use]
     pub fn vel_ned_mps(&self) -> Vector3f32 {
         self.vel_ned_mps / Self::SCALE_VELOCITY
     }
+
     #[inline]
     #[must_use]
     pub fn acc_bias_ned_mps2(&self) -> Vector3f32 {
@@ -1476,30 +1473,17 @@ impl KalmanFilterXyz {
     pub fn new_for_test(state: KalmanStateXyz, P: Matrix3x3xM3x3f32, Q_velocity: f32, Q_bias: f32) -> Self {
         Self { state, P, Q_velocity, Q_bias }
     }
+
     /// Return state for test code.
     #[must_use]
     pub fn state_for_test(&self) -> KalmanStateXyz {
         self.state
     }
+
     /// Return covariance for test code.
     #[must_use]
     pub fn covariance_for_test(&self) -> Matrix3x3xM3x3f32 {
         self.P
-    }
-    /// Return covariance blocks for test code.
-    #[must_use]
-    pub fn covariance_blocks_for_test(&self) -> [Matrix3x3<f32>; 9] {
-        [
-            self.P[Self::PP],
-            self.P[Self::VP],
-            self.P[Self::BP],
-            self.P[Self::PV],
-            self.P[Self::VV],
-            self.P[Self::BV],
-            self.P[Self::PB],
-            self.P[Self::VB],
-            self.P[Self::BB],
-        ]
     }
 }
 

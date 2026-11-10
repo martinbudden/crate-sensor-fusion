@@ -108,9 +108,7 @@ impl KalmanFilterZ {
     }
 
     fn set_state(&mut self, state: KalmanStateZ) {
-        self.state.pos_ned_m = state.pos_ned_m;
-        self.state.vel_ned_mps = state.vel_ned_mps;
-        self.state.acc_bias_ned_mps2 = state.acc_bias_ned_mps2;
+        self.state.set(&state);
     }
 
     pub fn set_position(&mut self, pos_ned_m: f32) {
@@ -151,13 +149,13 @@ impl KalmanFilterZ {
     #[inline]
     #[must_use]
     pub fn vel_mps(&self) -> f32 {
-        self.state.vel_ned_mps
+        self.state.vel_ned_mps()
     }
 
     #[inline]
     #[must_use]
     pub fn acc_bias_mps2(&self) -> f32 {
-        self.state.acc_bias_ned_mps2
+        self.state.acc_bias_ned_mps2()
     }
 
     #[inline]
@@ -398,7 +396,7 @@ impl KalmanFilterZ {
         diagnostics
     }
 
-    /// Joseph's Stabilized Form for the covariance update step:
+    /// Joseph's Stabilized Form for the covariance correction step:
     ///
     /// `P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ`.
     ///
@@ -548,6 +546,37 @@ impl KalmanStateZ {
     #[must_use]
     pub const fn new() -> Self {
         Self { pos_ned_m: 0.0, vel_ned_mps: 0.0, acc_bias_ned_mps2: 0.0 }
+    }
+}
+
+impl KalmanStateZ {
+    #[inline]
+    pub fn set(&mut self, state: &Self) {
+        self.pos_ned_m = state.pos_ned_m;
+        self.vel_ned_mps = state.vel_ned_mps;
+        self.acc_bias_ned_mps2 = state.acc_bias_ned_mps2;
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn get(&self) -> Self {
+        KalmanStateZ {
+            pos_ned_m: self.pos_ned_m,
+            vel_ned_mps: self.vel_ned_mps,
+            acc_bias_ned_mps2: self.acc_bias_ned_mps2,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn vel_ned_mps(&self) -> f32 {
+        self.vel_ned_mps
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn acc_bias_ned_mps2(&self) -> f32 {
+        self.acc_bias_ned_mps2
     }
 }
 

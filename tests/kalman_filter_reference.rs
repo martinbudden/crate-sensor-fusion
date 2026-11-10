@@ -642,11 +642,9 @@ mod test_predict_covariance {
         );
         // Run the actual production implementation.
         filter.predict_covariance(dt);
-        // Read the covariance blocks after prediction.
-        let blocks = filter.covariance_blocks_for_test();
 
         println!("\nProduction covariance after prediction:");
-        println!("VV after prediction: {:?}", blocks[4]);
+        println!("VV after prediction: {:?}", filter.covariance_for_test()[KalmanFilterXyz::VV]);
         let actual_P = to_na9(&filter.covariance_for_test());
 
         // Compare all 81 covariance elements.
@@ -705,7 +703,7 @@ mod test_predict_covariance {
             }
         }
 
-        //println!("Maximum symmetry error: {:.12e}", symmetry_error);
+        println!("Maximum symmetry error: {:.12e}", symmetry_error);
 
         assert!(
             max_error < 1.0e-5,

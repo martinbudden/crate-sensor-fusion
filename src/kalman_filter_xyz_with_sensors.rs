@@ -247,26 +247,23 @@ impl KalmanFilterXyzWithSensors {
             return KalmanFilterDiagnostics { status: FusionStatus::SnapshotNotFound, ..Default::default() };
         };
         let predicted_measurement_m = past.pos_m;
-        self.base.correct_position_short_form(measurement_m, predicted_measurement_m, R, Self::NIS_THRESHOLD_3D)
+        self.base.correct_position_joseph_stabilized_form(
+            measurement_m,
+            predicted_measurement_m,
+            R,
+            Self::NIS_THRESHOLD_3D,
+        )
     }
 }
 
 impl KalmanFilterXyzWithSensors {
-    /// Caches the current state of the filter into our history ring buffer.
+    /// Saves the current state of the filter into our history ring buffer.
     /// Run this at the very end of EVERY IMU time update step.
     pub fn push_snapshot(&mut self, timestamp_us: u64) {
-        // Cache the fully synchronized state + covariance into history
-        // Call this here so it captures the results of BOTH predictions
-        // Accumulate the raw measurements to form a true average over the window
-        self.history.tick_counter += 1;
-
         let snapshot = Snapshot { timestamp_us, pos_m: self.pos_m(), gps_pos_m: None, baro_alt_m: None };
 
         self.history.head_idx = (self.history.head_idx + 1) % self.history.snapshot.len();
         self.history.snapshot[self.history.head_idx] = snapshot;
-
-        // Reset accumulators
-        self.history.tick_counter = 0;
     }
 
     pub fn register_gps_event(&mut self, timestamp_us: u64, gps_pos_m: Vector3f32) {
@@ -328,11 +325,10 @@ impl Snapshot {
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterXyzHistory {
-    pub snapshot: [Snapshot; Self::SNAPSHOT_SIZE], // Fixed circular window (e.g., handles up to 640ms of latency at 100Hz)
+    /// Fixed circular window (e.g., handles up to 640ms of latency at 100Hz).
+    pub snapshot: [Snapshot; Self::SNAPSHOT_SIZE],
     /// Ring buffer index.
     pub head_idx: usize,
-    pub system_time: f32,
-    pub tick_counter: usize,
 }
 
 impl Default for KalmanFilterXyzHistory {
@@ -345,7 +341,7 @@ impl KalmanFilterXyzHistory {
     pub const SNAPSHOT_SIZE: usize = 128; // 256ms of history at 500Hz
 
     pub const fn new() -> Self {
-        Self { snapshot: [Snapshot::new(); Self::SNAPSHOT_SIZE], head_idx: 0, system_time: 0.0, tick_counter: 0 }
+        Self { snapshot: [Snapshot::new(); Self::SNAPSHOT_SIZE], head_idx: 0 }
     }
 }
 #[cfg(test)]

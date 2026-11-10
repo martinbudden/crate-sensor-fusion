@@ -19,6 +19,7 @@ pub enum FusionStatus {
     RejectedOutlier,
     SensorUnavailable,
     InvalidMeasurement,
+    MeasurementTooSmall,
     NumericalFailure,
     IllConditionedInnovationCovarianceMatrix,
     SnapshotNotFound,

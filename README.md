@@ -93,13 +93,17 @@ let orientation = (acc, gyro).fuse_acc_gyro_using(&mut madgwick, dt);
 let orientation = (acc, gyro, mag).fuse_acc_gyro_mag_using(&mut madgwick, dt);
 ```
 
-## Kalman filter
+## Navigation Kalman filters
 
-Three Kalman filters are provided:
+Three Navigation Kalman filters are provided:
 
 1. `KalmanFilterZ` - a filter to estimate altitude and vertical speed.
 2. `KalmanFilterXy` - a filter to estimate 2D position and velocity.
 3. `KalmanFilterXyz` - a filter to estimate 3D position and velocity.
+
+These are not general purpose Kalman filters (where you provide the `F`, `B`, and `H` matrices according to your problem domain).
+Rather these are Kalman filters specific to and optimized for the Navigation domain - that is they are for predicting position and velocity
+given inputs from relevant sensors (ie IMU, GPS, barometer etc).
 
 ### 3D Kalman filter
 
@@ -110,7 +114,7 @@ When using a Kalman filter for 3D there are two possible implementation choices:
 
 | Feature            | Split Architecture (1D + 2D)                                     | Unified 3D Architecture                             |
 | ------------------ | ---------------------------------------------------------------- | --------------------------------------------------- |
-| Computational Cost | Lower (2×2 and 4×4 matrices)                                     | Higher (6×6 and 9×9 matrices)                       |
+| Computational Cost | Lower (2×2 and 6×6 matrices)                                     | Higher (6×6 and 9×9 matrices)                       |
 | Sensor Coupling    | Independent (barometer noise cannot corrupt horizontal accuracy) | Coupled (vertical errors can bleed into horizontal) |
 | Tuning Complexity  | Easier (can tune vertical and horizontal separately)             | Harder                                              |
 | Fault Tolerance    | Higher                                                           | Lower                                               |
@@ -151,19 +155,19 @@ if we know the accelerometer is very noisy and the GPS is highly accurate, we wo
 The confidence in a value is given by a "noise matrix".
 The confidence in control input `u` (accelerometer in our case) is given by the matrix `Q` (called the process noise covariance matrix).
 The confidence in a measurement `z`, is given by the matrix `R` (called the measurement noise covariance matrix).
-Each sensor will have its matrix `R`. So there will be separate matrices `R gps`, `R barometer`, etc.
+Each sensor will have its matrix `R`. So there will be separate matrices `R_gps`, `R_barometer`, etc.
 
 ### Use of Kalman filter for vehicle control
 
-It would be possible to create a Kalman filter that takes accelerometer and gyroscope values as control inputs
+It is possible to create a Kalman filter that takes accelerometer and gyroscope values as control inputs
 and from those estimates orientation, position and velocity.
 
-However this would be computationally very expensive: in 3D the Kalman filter would need massive 15x15
+However this is computationally very expensive: in 3D the Kalman filter would need massive 15x15
 state transition (`F`) and state covariance (`P`) matrices.
 (Position, velocity, attitude, accelerometer bias, and gyroscope bias: each of those being 3D vectors.)
-Even in 2D, 10x10 matrices would be needed.
+Even in 2D, 10x10 matrices are needed.
 
-Since the calculation of attitude is non-linear, the Kalman filter would need to calculate
+Since the calculation of attitude is non-linear, the Kalman filter needs to calculate
 the [Jacobian](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant)
 of the state transition matrix
 `F = ∂f(x,u )/∂x`
@@ -219,7 +223,7 @@ These corrections can come from two sources:
 The IMU integrator serves two purposes:
 
 1. It uses the orientation from the Madgwick filter to convert the acceleration `Accₛ` from the sensor
-   frame to the earth frame.
+   frame to the earth frame (`Accₑ`).
 2. It integrates this `Accₑ` to give `delta_posₑ` and `delta_velₑ` values.
    These are needed because the Kalman filter runs at a lower rate than the IMU
    (the IMU can run at up to 8kHz, the Kalman filter typically runs at 500Hz or less).
@@ -316,7 +320,8 @@ The Kalman filter equations themselves are mathematically well behaved, however 
 To mitigate these errors this implementation:
 
 1. Explicitly restores symmetry to the covariance matrix after each state prediction (by setting `P = ½(P + Pᵀ)`).
-2. Uses the numerically stable Joseph form for covariance predictions ( `P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ` rather than `P = P - K·H·P + K·R·Kᵀ`)
+2. Uses the numerically stable Joseph form for covariance predictions ( `P = (I - K·H)·P·(I - K·H)ᵀ + K·R·Kᵀ`
+   rather than `P = P - K·H·P + K·R·Kᵀ`)
 
 Additionally scaling the states and measurements so their scales are broadly comparable improves numerical stability.
 Scaling brings state values and uncertainties to closer to O(1) (order one), improving numerical conditioning
