@@ -309,7 +309,6 @@ impl KalmanFilterXyzWithSensors {
     /// Retrieves a historical snapshot of the filter state at a given time.
     /// The index is relative to the most recent snapshot, with 0 being the latest.
     #[must_use]
-    #[allow(unused)]
     pub fn find_snapshot(&self, sensor_time_us: u64) -> Option<(SnapshotXyz, usize)> {
         let mut match_idx = None;
 

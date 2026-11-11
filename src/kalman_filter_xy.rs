@@ -33,24 +33,33 @@ impl Default for KalmanFilterXy {
     }
 }
 
-#[allow(missing_docs)]
 impl KalmanFilterXy {
+    /// Earth gravity, meters per second squared.
     const G_MPS2: f32 = 9.80665;
     /// Minimum reciprocal condition allowed for inverting innovation covariance matrix S.
-    /// This represents a fairly ill-conditioned matrix, consider making it larger.
+    /// This represents a fairly ill-conditioned matrix (TODO: consider making it larger_.
     const MIN_RECIPROCAL_CONDITION: f32 = 0.0001;
 
-    const PP: usize = 0;
-    const VP: usize = 1;
-    const BP: usize = 2;
+    /// Index for PP sub-matrix.
+    pub const PP: usize = 0;
+    /// Index for VP sub-matrix.
+    pub const VP: usize = 1;
+    /// Index for BP sub-matrix.
+    pub const BP: usize = 2;
 
-    const PV: usize = 3;
-    const VV: usize = 4;
-    const BV: usize = 5;
+    /// Index for PV sub-matrix.
+    pub const PV: usize = 3;
+    /// Index for VV sub-matrix.
+    pub const VV: usize = 4;
+    /// Index for BV sub-matrix.
+    pub const BV: usize = 5;
 
-    const PB: usize = 6;
-    const VB: usize = 7;
-    const BB: usize = 8;
+    /// Index for PB sub-matrix.
+    pub const PB: usize = 6;
+    /// Index for VB sub-matrix.
+    pub const VB: usize = 7;
+    /// Index for BB sub-matrix.
+    pub const BB: usize = 8;
 }
 
 impl KalmanFilterXy {
@@ -160,30 +169,6 @@ impl KalmanFilterXy {
     #[must_use]
     pub fn acc_bias_mps2(&self) -> Vector2f32 {
         self.state.acc_bias_ned_mps2()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn p(&self) -> &Matrix3x3xM2x2f32 {
-        &self.P
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn pp(&self) -> Matrix2x2f32 {
-        self.P[Self::PP]
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn pv(&self) -> Matrix2x2f32 {
-        self.P[Self::PV]
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn bb(&self) -> Matrix2x2f32 {
-        self.P[Self::BB]
     }
 }
 
@@ -635,6 +620,55 @@ impl KalmanStateXy {
     #[must_use]
     pub fn acc_bias_ned_mps2(&self) -> Vector2f32 {
         self.acc_bias_ned_mps2
+    }
+}
+
+impl KalmanFilterXy {
+    /// Constructor for test code.
+    #[allow(non_snake_case)]
+    #[must_use]
+    pub fn new_for_test(state: KalmanStateXy, P: Matrix3x3xM2x2f32, Q_velocity: f32, Q_bias: f32) -> Self {
+        Self { state, P, Q_velocity, Q_bias }
+    }
+
+    /// Return state for test code.
+    #[must_use]
+    pub fn state_for_test(&self) -> KalmanStateXy {
+        self.state
+    }
+
+    /// Return covariance for test code.
+    #[must_use]
+    pub fn covariance_for_test(&self) -> Matrix3x3xM2x2f32 {
+        self.P
+    }
+
+    /// Return covariance for test code.
+    #[inline]
+    #[must_use]
+    pub fn p_for_test(&self) -> &Matrix3x3xM2x2f32 {
+        &self.P
+    }
+
+    /// Return PP matrix for test code.
+    #[inline]
+    #[must_use]
+    pub fn pp_for_test(&self) -> Matrix2x2f32 {
+        self.P[Self::PP]
+    }
+
+    /// Return PV matrix for test code.
+    #[inline]
+    #[must_use]
+    pub fn pv_for_test(&self) -> Matrix2x2f32 {
+        self.P[Self::PV]
+    }
+
+    /// Return BB matrix for test code.
+    #[inline]
+    #[must_use]
+    pub fn bb_for_test(&self) -> Matrix2x2f32 {
+        self.P[Self::BB]
     }
 }
 

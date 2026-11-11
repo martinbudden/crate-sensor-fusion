@@ -1,5 +1,4 @@
 #![allow(non_snake_case)]
-#![allow(unused)]
 #![allow(clippy::clone_on_copy)]
 
 use sensor_fusion::{FusionStatus, KalmanFilterXyz, KalmanStateXyz};
@@ -65,6 +64,7 @@ fn to_na_state(state: &KalmanStateXyz) -> DVector<f64> {
     ])
 }
 
+#[allow(unused)]
 fn calculate_position_update_intermediate_a(
     p: &nalgebra::SMatrix<f64, 9, 9>,
     k: &nalgebra::SMatrix<f64, 9, 3>,
@@ -81,6 +81,7 @@ fn calculate_position_update_intermediate_a(
     identity * p
 }
 
+#[allow(unused)]
 fn reference_position_intermediate_a(P: &Matrix3x3xM3x3f32, R_position: Vector3f32) -> (DMatrix<f64>, DMatrix<f64>) {
     let P = to_na9(P);
 
@@ -117,6 +118,7 @@ fn reference_position_intermediate_a(P: &Matrix3x3xM3x3f32, R_position: Vector3f
     (A_intermediate, K)
 }
 
+#[allow(unused)]
 fn print_a_block_errors(actual: &nalgebra::SMatrix<f64, 9, 9>, expected: &nalgebra::SMatrix<f64, 9, 9>) {
     let names = ["PP", "PV", "PB", "VP", "VV", "VB", "BP", "BV", "BB"];
 
@@ -349,7 +351,7 @@ fn compare_results(
     let actual_P = to_na9(&filter.covariance_for_test());
     //println!("\nCovariance block errors:");
 
-    let block_names = ["PP", "VP", "BP", "PV", "VV", "BV", "PB", "VB", "BB"];
+    //let block_names = ["PP", "VP", "BP", "PV", "VV", "BV", "PB", "VB", "BB"];
 
     for block_col in 0..3 {
         for block_row in 0..3 {
@@ -364,8 +366,7 @@ fn compare_results(
                     max_error = max_error.max(error);
                 }
             }
-            let index = block_row + block_col * 3;
-            //println!("{}: {:.12e}", block_names[index], max_error);
+            //println!("{}: {:.12e}", block_names[block_row + block_col * 3], max_error);
         }
     }
 
@@ -437,15 +438,14 @@ mod test_gps_reference {
 
         let predicted_measurement_m = initial_state.pos_ned_m;
 
-        // Calculate the reference intermediate A matrix.
-        let (A_reference, K_reference) = reference_position_intermediate_a(&initial_P, R_position);
-
         println!("\n========== POSITION UPDATE REFERENCE ==========");
 
         /*println!("Reference Kalman gain K:");
         println!("{:#?}", K_reference);
 
         println!("Reference intermediate A = (I - KH)P:");
+        // Calculate the reference intermediate A matrix.
+        let (A_reference, K_reference) = reference_position_intermediate_a(&initial_P, R_position);
         println!("{:#?}", A_reference);*/
 
         // Calculate the complete 9x9 reference update.
@@ -676,9 +676,9 @@ mod test_predict_covariance {
         );
 
         // Report errors for each 3x3 covariance block.
-        let block_names = [["PP", "PV", "PB"], ["VP", "VV", "VB"], ["BP", "BV", "BB"]];
+        //let block_names = [["PP", "PV", "PB"], ["VP", "VV", "VB"], ["BP", "BV", "BB"]];
 
-        ///println!("\nCovariance block errors:");
+        //println!("\nCovariance block errors:");
         for block_row in 0..3 {
             for block_col in 0..3 {
                 let mut block_error = 0.0_f64;

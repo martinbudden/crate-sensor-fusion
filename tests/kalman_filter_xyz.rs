@@ -16,7 +16,7 @@ mod tests {
         let orientation = Quaternionf32::identity();
 
         // Capture initial uncertainty variance values from the main diagonal blocks
-        let init_p_pos_x = filter.pp()[M11];
+        let init_p_pos_x = filter.pp_for_test()[M11];
         //let init_p_vel_x = filter.P[PositionKalmanFilter::VV][PositionKalmanFilter::M11];
 
         // Setup simulation pacing parameters
@@ -67,7 +67,7 @@ mod tests {
         assert!((filter.vel_mps().x - true_vel_mps.x).abs() < 0.05, "Velocity accumulated noise while stationary!");
 
         // Ensure covariance has shrunk significantly below the starting bounds
-        let post_stat_p_pos_x = filter.pp()[M11];
+        let post_stat_p_pos_x = filter.pp_for_test()[M11];
         assert!(post_stat_p_pos_x < init_p_pos_x, "Position covariance failed to contract under GPS track!");
 
         println!("\n--- PHASE 2: 3D DYNAMIC SLIDE MANEUVER (2 SECONDS) ---");
@@ -129,7 +129,7 @@ mod tests {
         let orientation = Quaternionf32::identity();
 
         // Capture the initial uncertainty bounds
-        let initial_p_pos_m = filter.pp()[M33];
+        let initial_p_pos_m = filter.pp_for_test()[M33];
         // let initial_p_vel_mps = filter.pv()[PositionKalmanFilter::M33];
 
         // Define simulation parameters
@@ -172,9 +172,9 @@ mod tests {
                 println!(
                     "Step {:03} -> P_pos_z: {:e}, P_vel_z: {:e}, P_bias_z: {:e}",
                     step,
-                    filter.pp()[M33],
-                    filter.pv()[M33],
-                    filter.bb()[M33]
+                    filter.pp_for_test()[M33],
+                    filter.pv_for_test()[M33],
+                    filter.bb_for_test()[M33]
                 );
             }
         }
@@ -189,7 +189,7 @@ mod tests {
         assert!((filter.vel_mps().z - true_vel_mps.z).abs() < 0.05, "Velocity accumulated phantom motion!");
 
         // Assertions: Covariance bounds MUST contract if the sensor math is operating properly
-        let post_stationary_p_pos = filter.pp()[M33];
+        let post_stationary_p_pos = filter.pp_for_test()[M33];
         assert!(post_stationary_p_pos < initial_p_pos_m, "Covariance failed to contract with sensor updates!");
 
         println!("\n--- PHASE 2: UNIFORM CLIMB TEST (3 SECONDS) ---");
@@ -392,7 +392,7 @@ mod test_anchors {
         let original_pos = kf.pos_m();
         let original_vel = kf.vel_mps();
         let original_bias = kf.acc_bias_mps2();
-        let original_p = *kf.p();
+        let original_p = *kf.p_for_test();
 
         // Predicted range = 5.
         // 100 m is obviously an outlier.
@@ -402,15 +402,15 @@ mod test_anchors {
         assert!(kf.vel_mps().is_near(original_vel, EPS));
         assert!(kf.acc_bias_mps2().is_near(original_bias, EPS));
 
-        assert!(kf.p()[KalmanFilterXyz::PP].is_near(original_p[KalmanFilterXyz::PP], EPS));
-        assert!(kf.p()[KalmanFilterXyz::PV].is_near(original_p[KalmanFilterXyz::PV], EPS));
-        assert!(kf.p()[KalmanFilterXyz::PB].is_near(original_p[KalmanFilterXyz::PB], EPS));
-        assert!(kf.p()[KalmanFilterXyz::VP].is_near(original_p[KalmanFilterXyz::VP], EPS));
-        assert!(kf.p()[KalmanFilterXyz::VV].is_near(original_p[KalmanFilterXyz::VV], EPS));
-        assert!(kf.p()[KalmanFilterXyz::VB].is_near(original_p[KalmanFilterXyz::VB], EPS));
-        assert!(kf.p()[KalmanFilterXyz::BP].is_near(original_p[KalmanFilterXyz::BP], EPS));
-        assert!(kf.p()[KalmanFilterXyz::BV].is_near(original_p[KalmanFilterXyz::BV], EPS));
-        assert!(kf.p()[KalmanFilterXyz::BB].is_near(original_p[KalmanFilterXyz::BB], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::PP].is_near(original_p[KalmanFilterXyz::PP], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::PV].is_near(original_p[KalmanFilterXyz::PV], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::PB].is_near(original_p[KalmanFilterXyz::PB], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::VP].is_near(original_p[KalmanFilterXyz::VP], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::VV].is_near(original_p[KalmanFilterXyz::VV], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::VB].is_near(original_p[KalmanFilterXyz::VB], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::BP].is_near(original_p[KalmanFilterXyz::BP], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::BV].is_near(original_p[KalmanFilterXyz::BV], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::BB].is_near(original_p[KalmanFilterXyz::BB], EPS));
     }
     #[test]
     fn range_update_reduces_radial_position_variance() {
@@ -418,11 +418,11 @@ mod test_anchors {
 
         let h = v(0.6, 0.8, 0.0);
 
-        let before = h.dot(kf.pp() * h);
+        let before = h.dot(kf.pp_for_test() * h);
 
         _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 5.0, 100.0, 0.01);
 
-        let after = h.dot(kf.pp() * h);
+        let after = h.dot(kf.pp_for_test() * h);
 
         assert!(after < before, "radial variance should decrease: before={before}, after={after}");
 
@@ -431,14 +431,14 @@ mod test_anchors {
         // original variance.
         let perpendicular = v(-0.8, 0.6, 0.0);
 
-        let before_perp = perpendicular.dot(kf.pp() * perpendicular);
+        let before_perp = perpendicular.dot(kf.pp_for_test() * perpendicular);
 
         assert_near(before_perp, 1.0, 2.0e-3);
 
         // Z is completely unobserved by this range measurement.
         let z = v(0.0, 0.0, 1.0);
 
-        let z_variance = z.dot(kf.pp() * z);
+        let z_variance = z.dot(kf.pp_for_test() * z);
 
         assert_near(z_variance, 1.0, 2.0e-3);
     }

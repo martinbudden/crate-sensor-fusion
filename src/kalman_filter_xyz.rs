@@ -33,23 +33,32 @@ impl Default for KalmanFilterXyz {
     }
 }
 
-#[allow(missing_docs)]
 impl KalmanFilterXyz {
+    /// Earth gravity, meters per second squared.
     const G_MPS2: f32 = 9.80665;
     /// Minimum reciprocal condition allowed for inverting innovation covariance matrix S.
-    /// This represents a fairly ill-conditioned matrix, consider making it larger.
+    /// This represents a fairly ill-conditioned matrix (TODO: consider making it larger_.
     const MIN_RECIPROCAL_CONDITION: f32 = 0.0001;
 
+    /// Index for PP sub-matrix.
     pub const PP: usize = 0;
+    /// Index for VP sub-matrix.
     pub const VP: usize = 1;
+    /// Index for BP sub-matrix.
     pub const BP: usize = 2;
 
+    /// Index for PV sub-matrix.
     pub const PV: usize = 3;
+    /// Index for VV sub-matrix.
     pub const VV: usize = 4;
+    /// Index for BV sub-matrix.
     pub const BV: usize = 5;
 
+    /// Index for PB sub-matrix.
     pub const PB: usize = 6;
+    /// Index for VB sub-matrix.
     pub const VB: usize = 7;
+    /// Index for BB sub-matrix.
     pub const BB: usize = 8;
 }
 
@@ -160,30 +169,6 @@ impl KalmanFilterXyz {
     #[must_use]
     pub fn acc_bias_mps2(&self) -> Vector3f32 {
         self.state.acc_bias_ned_mps2()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn p(&self) -> &Matrix3x3xM3x3f32 {
-        &self.P
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn pp(&self) -> Matrix3x3f32 {
-        self.P[Self::PP]
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn pv(&self) -> Matrix3x3f32 {
-        self.P[Self::PV]
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn bb(&self) -> Matrix3x3f32 {
-        self.P[Self::BB]
     }
 }
 
@@ -1487,6 +1472,34 @@ impl KalmanFilterXyz {
     #[must_use]
     pub fn covariance_for_test(&self) -> Matrix3x3xM3x3f32 {
         self.P
+    }
+
+    /// Return covariance for test code.
+    #[inline]
+    #[must_use]
+    pub fn p_for_test(&self) -> &Matrix3x3xM3x3f32 {
+        &self.P
+    }
+
+    /// Return PP matrix for test code.
+    #[inline]
+    #[must_use]
+    pub fn pp_for_test(&self) -> Matrix3x3f32 {
+        self.P[Self::PP]
+    }
+
+    /// Return PV matrix for test code.
+    #[inline]
+    #[must_use]
+    pub fn pv_for_test(&self) -> Matrix3x3f32 {
+        self.P[Self::PV]
+    }
+
+    /// Return BB matrix for test code.
+    #[inline]
+    #[must_use]
+    pub fn bb_for_test(&self) -> Matrix3x3f32 {
+        self.P[Self::BB]
     }
 }
 

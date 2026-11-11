@@ -293,11 +293,12 @@ mod test_traits {
 }
 #[cfg(any(debug_assertions, test))]
 mod tests {
-    #![allow(unused)]
-    use super::*;
-
-    use crate::FuseAccGyro;
-    use vqm::{Quaternionf32, Vector3f32};
+    #[allow(unused)]
+    use {
+        super::*,
+        crate::FuseAccGyro,
+        vqm::{Quaternionf32, Vector3f32},
+    };
 
     #[test]
     #[allow(clippy::float_cmp)]

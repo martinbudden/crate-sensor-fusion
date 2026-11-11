@@ -4,8 +4,7 @@
 #[cfg(feature = "simd")]
 use core::simd::{f32x4, simd_swizzle};
 
-#[allow(unused)]
-use vqm::{MathMethods, Quaternion, Vector3};
+use vqm::{Quaternion, Vector3};
 
 /// Math functions for `SensorFusion`, using **SIMD** accelerations for `f32`.
 pub trait SensorFusionMath: Sized {

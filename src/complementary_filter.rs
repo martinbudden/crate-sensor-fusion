@@ -126,9 +126,11 @@ mod test_traits {
 }
 #[cfg(any(debug_assertions, test))]
 mod tests {
-    #![allow(unused)]
-    use super::*;
-    use vqm::{Quaternionf32, Vector3f32};
+    #[allow(unused)]
+    use {
+        super::*,
+        vqm::{Quaternionf32, Vector3f32},
+    };
 
     #[test]
     fn update_orientation() {
