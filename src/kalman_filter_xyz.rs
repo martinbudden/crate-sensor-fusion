@@ -322,39 +322,55 @@ impl KalmanFilterXyz {
         // We can update P in place by ensuring RHS of all P assignments refers to P_old.
         // We use temporary indices and shadow them out of scope when they have been used.
         // This ensures we cannot use an updated value in a subsequent update, ie P_new cannot be used on RHS.
-        let (PP, VP, BP, PV, VV, BV, PB, VB, BB) =
-            (Self::PP, Self::VP, Self::BP, Self::PV, Self::VV, Self::BV, Self::PB, Self::VB, Self::BB);
+        let (PP, VP, BP, VV, BV, BB) = (Self::PP, Self::VP, Self::BP, Self::VV, Self::BV, Self::BB);
 
-        // 24*9 = 216 scalar multiplications, 39*9 = 351 additions and subtractions
+        // We exploit the symmetry of P in the calculations below. 
+        // This gains us a large amount of speed at the cost of a small amount of numerical conditioning.
+        // Total calculation of F·P·Fᵀ: 138 multiplications, 126 additions/subtractions
+
         // --- POSITION COLUMNS (PP, VP, BP) ---
-        P[PP] = P[PP]
-            + dt * (P[PV] + P[VP] + dt * (P[VV] - 0.5 * (P[PB] + P[BP] + dt * (P[VB] + P[BV] - dt * 0.5 * P[BB]))));
+
+        //P[PP] = P[PP] + dt * (P[PV] + P[VP] + dt * (P[VV] - 0.5 * (P[PB] + P[BP] + dt * (P[VB] + P[BV] - dt * 0.5 * P[BB]))));
+        //P[PP] = P[PP] + dt * (P[PV] + P[VP] + dt * (P[VV] - (P[BP] + 0.5 * dt * (P[VB] + P[BV] - dt * 0.5 * P[BB]))));
+        // 46 multiplications, 45 additions/subtractions
+        P[PP] = P[PP] + dt * (2.0 * P[VP] + dt * (P[VV] - (P[BP] + dt * (P[BV] - 0.25 * dt * P[BB]))));
         // Prevent P_new[PP] being accidentally used in subsequent calculations by retiring PP.
         retire!(PP);
 
-        P[VP] = P[VP] + dt * (P[VV] - P[BP] - dt * (P[BV] + 0.5 * (P[VB] - dt * P[BB])));
+        // 37 multiplications, 36 additions/subtractions
+        P[VP] = P[VP] + dt * (P[VV] - P[BP] - dt * (1.5 * P[BV] - 0.5 * dt * P[BB]));
         retire!(VP);
 
-        P[BP] = P[BP] + dt * (P[BV] - dt * 0.5 * P[BB]);
+        // 19 multiplications, 18 additions/subtractions
+        P[BP] = P[BP] + dt * (P[BV] - 0.5 * dt * P[BB]);
         retire!(BP);
 
         // --- VELOCITY COLUMNS (PV, VV, BV) ---
-        P[PV] = P[PV] + dt * (P[VV] - P[PB] - dt * (P[VB] + 0.5 * (P[BV] - dt * P[BB])));
-        retire!(PV);
 
-        P[VV] = P[VV] - dt * (P[BV] + P[VB] - dt * P[BB]);
+        // 36 multiplications, 45 additions/subtractions
+        //P[PV] = P[PV] + dt * (P[VV] - P[PB] - dt * (P[VB] + 0.5 * (P[BV] - dt * P[BB])));
+        //retire!(PV);
+
+        // 27 multiplications, 18 additions/subtractions
+        P[VV] = P[VV] - dt * (2.0 * P[BV] - dt * P[BB]);
         retire!(VV);
 
+        // 9 multiplications, 9 additions/subtractions
         P[BV] = P[BV] - dt * P[BB];
         retire!(BV);
 
         // --- BIAS COLUMNS (PB, VB, BB) ---
-        P[PB] = P[PB] + dt * (P[VB] - dt * 0.5 * P[BB]);
-        retire!(PB);
 
-        P[VB] = P[VB] - dt * P[BB];
-        retire!(VB);
+        // 19 multiplications, 18 additions/subtractions
+        //P[PB] = P[PB] + dt * (P[VB] - dt * 0.5 * P[BB]);
+        //retire!(PB);
+
+        // 9 multiplications, 9 additions/subtractions
+        //P[VB] = P[VB] - dt * P[BB];
+        //retire!(VB);
+
         // P[BB] = P[BB]; so we don't need to update BB.
+        //retire!(BB);
 
         // =====================================================================
         // APPLY PROCESS NOISE (Q)
@@ -368,9 +384,14 @@ impl KalmanFilterXyz {
         let q_bias = self.Q_bias * dt;
 
         P[Self::PP].add_diagonal_scalar_in_place(q_pos);
-        P[Self::PV].add_diagonal_scalar_in_place(q_cross);
+        //P[Self::PV].add_diagonal_scalar_in_place(q_cross);
         P[Self::VP].add_diagonal_scalar_in_place(q_cross);
         P[Self::VV].add_diagonal_scalar_in_place(q_vel);
+
+        // Exploit symmetry rather than calculate PV, PB, VB.
+        P[Self::PV] = P[Self::VP];
+        P[Self::PB] = P[Self::BP];
+        P[Self::VB] = P[Self::BV];
 
         // Random walk bias drift integration
         // Bias random-walk noise is added only to the bias covariance (BB).
@@ -378,19 +399,23 @@ impl KalmanFilterXyz {
         // since these are second order in dt.
         // This is reasonable when dt is small and the bias random-walk noise is sufficiently low.
         /*
-        Q_PP += (1/20) * Q_bias * dt⁵
-        Q_PV += (1/8)  * Q_bias * dt⁴
-        Q_VP += (1/8)  * Q_bias * dt⁴
-        Q_PB += -(1/6) * Q_bias * dt³
-        Q_BP += -(1/6) * Q_bias * dt³
-        Q_VV += (1/3)  * Q_bias * dt³
-        Q_VB += -(1/2) * Q_bias * dt²
-        Q_BV += -(1/2) * Q_bias * dt²
+        Q_pp += 1/20 * Q_bias * dt⁵
+        Q_pv +=  1/8 * Q_bias * dt⁴
+        Q_vp +=  1/8 * Q_bias * dt⁴
+        Q_pb += -1/6 * Q_bias * dt³
+        Q_bp += -1/6 * Q_bias * dt³
+        Q_vv +=  1/3 * Q_bias * dt³
+        Q_vb += -1/2 * Q_bias * dt²
+        Q_bv += -1/2 * Q_bias * dt²
         */
         P[Self::BB].add_diagonal_scalar_in_place(q_bias);
 
         // Time propagation is highly sensitive to asymmetric shearing, so enforce symmetry on the covariance matrix.
-        P.enforce_symmetry();
+        //P.enforce_symmetry();
+        // We only need to enforce symmetry on the diagonal, since the off-diagonal elements are already symmetric.
+        P[Self::PP].enforce_symmetry();
+        P[Self::VV].enforce_symmetry();
+        P[Self::BB].enforce_symmetry();
     }
 }
 
