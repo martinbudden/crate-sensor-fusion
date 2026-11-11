@@ -76,6 +76,7 @@
         "nalgebra",
         "ncols",
         "nrows",
+        "oooc",
         "oorandom",
         "petgraph",
         "pico",

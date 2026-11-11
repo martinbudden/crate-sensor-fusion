@@ -23,11 +23,13 @@ rustc_version = "0.4.1"
 [features]
 default = ["libm"]
 #default = ["std"]
+#default = ["oooc"]
 std = ["num-traits/std", "vqm/std"]
 #std = ["num-traits/std", "vqm/std", "derive_more/std"]
 libm = ["dep:libm", "num-traits/libm", "vqm/libm"]
 align = ["vqm/align"]
 simd = ["vqm/simd"]
+oooc = []
 
 [dependencies]
 # Set default-features = false to prevent host target leakage

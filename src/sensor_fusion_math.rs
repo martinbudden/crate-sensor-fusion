@@ -4,15 +4,17 @@
 #[cfg(feature = "simd")]
 use core::simd::{f32x4, simd_swizzle};
 
-use vqm::{Quaternion, Vector3};
+#[allow(unused)]
+use vqm::{MathMethods, Quaternion, Vector3};
 
 /// Math functions for `SensorFusion`, using **SIMD** accelerations for `f32`.
 pub trait SensorFusionMath: Sized {
+    /// Estimate the gravity quaternion.
     fn estimate_gravity(q: Quaternion<Self>) -> Vector3<Self>;
     fn derivative(q: Quaternion<Self>, gyro: Vector3<Self>) -> Quaternion<Self>;
-    /// Both q and acc should be normalized.
+    /// Calculate the gradient descent corrective step, acc only. Both q and acc should be normalized.
     fn madgwick_step_acc(q: Quaternion<Self>, acc: Vector3<Self>) -> Quaternion<Self>;
-    /// All of q, acc, and mag should be normalized.
+    /// Calculate the gradient descent corrective step. All of q, acc, and mag should be normalized.
     fn madgwick_step_acc_mag(q: Quaternion<Self>, acc: Vector3<Self>, mag: Vector3<Self>) -> Quaternion<Self>;
 }
 

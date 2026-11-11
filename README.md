@@ -297,6 +297,13 @@ So, instead of performing operations on the entire 9x9 matrix, we can split the 
 
 The calculation `P = F·P·Fᵀ` in the predict phase becomes a sequence of operations on the 3x3 submatrices.
 
+By exploiting the sparseness and symmetry of `F` we ca can reduce the calculation of `F·P·Fᵀ`
+from 1458 scalar multiplications and 1296 scalar additions to 138 scalar multiplications and 126 scalar additions/subtractions.
+That is over a 10-times increase in speed.
+
+This is important because it means that, on any given processor, we can run the Kalman filter at a higher rate.
+It also speeds up the rewind phase when using out of order corrections.
+
 In the correct phase we also use these submatrices.
 In particular we do not need to invert the full 9x9 matrix `S`, instead we invert the relevant submatrix.
 
@@ -321,8 +328,10 @@ the time that it was received. There are a number of ways to handle this, includ
    time of the GPS measurement, apply the GPS correction, and the fast-forward the measurements to the current time.
 2. Delay compensation: Compensate for the delay by using the GPS velocity to predict the historical position forward to the current time.
 
-In the current release `0.0.14` delay compensation is implemented and rewind and fast-forward is under development.
-The aim is to eventually support both options.
+Delay compensation was added in release `0.0.14`.
+Rewind and fast-forward is under development and will be added in a future release under the feature flag
+`oooc` (out of order correction). A feature flag will be used since OOOC incurs both speed and memory penalties
+which the user may wish to avoid.
 
 ### Testing optimizations against reference implementation
 

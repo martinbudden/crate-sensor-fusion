@@ -1,7 +1,9 @@
-use num_traits::ConstZero;
 use vqm::{Vector2f32, Vector3f32};
 
-use super::{FusionStatus, KalmanFilterDiagnostics, KalmanFilterXyz, KalmanStateXyz};
+#[cfg(feature = "oooc")]
+use super::{FusionStatus, KalmanFilterXyzHistory, SnapshotXyz};
+
+use super::{KalmanFilterDiagnostics, KalmanFilterXyz, KalmanStateXyz};
 
 /// `f32` variant of `KalmanFilterXyzWithSensors`.
 pub type KalmanFilterXyzWithSensorsf32 = KalmanFilterXyzWithSensors;
@@ -37,6 +39,7 @@ pub struct KalmanFilterXyzWithSensors {
     /// Absolute Measurement Noise variance for ultra-wideband indoor positioning system..
     pub R_ultra_wideband: f32,
     /// Delayed State Buffer for Retrodictive Updates.
+    #[cfg(feature = "oooc")]
     pub history: KalmanFilterXyzHistory,
 }
 
@@ -80,6 +83,7 @@ impl KalmanFilterXyzWithSensors {
             R_optical_flow: Vector2f32 { x: 0.04, y: 0.04 },
             // 1cm to 10cm typical accuracy, use 10cm = 0.10m, = 0.01 variance for cheap modules.
             R_ultra_wideband: 0.01,
+            #[cfg(feature = "oooc")]
             history: KalmanFilterXyzHistory::new(),
         }
     }
@@ -118,7 +122,9 @@ impl KalmanFilterXyzWithSensors {
         // Propagate covariance uncertainty blocks forward (stochastic)
         self.predict_covariance(dt);
 
+        #[cfg(feature = "oooc")]
         self.push_snapshot(timestamp_us, delta_pos_ned_m, delta_vel_ned_mps);
+        _ = timestamp_us;
     }
 
     pub fn predict_state(&mut self, delta_vel_ned_mps: Vector3f32, delta_pos_ned_m: Vector3f32, dt: f32) {
@@ -236,9 +242,19 @@ impl KalmanFilterXyzWithSensors {
         todo!("implement correct_position_using_optical_flow for xyx");
         //self.base.correct_position_xy(position_m, self.R_optical_flow)
     }
+    /// Flags that a fresh Barometric Altitude measurement occurred at the current step.
+    pub fn register_barometer_event(&mut self, timestamp_us: u64, altitude_m: f32) {
+        _ = timestamp_us;
+        _ = altitude_m;
+        #[cfg(feature = "oooc")]
+        {
+            self.history.snapshot[self.history.head_idx].baro_alt_m = Some(altitude_m);
+        }
+    }
 }
 
 #[allow(non_snake_case)]
+#[cfg(feature = "oooc")]
 impl KalmanFilterXyzWithSensors {
     /*
     Strategy: "State-Only Rewind"
@@ -257,6 +273,7 @@ impl KalmanFilterXyzWithSensors {
     /// When a delayed measurement arrives, we calculate the innovation error using the past state vector (`past.pos`).
     /// We calculate the Kalman Gain vectors using the current active P matrix.
     /// We correct the current state vector directly.
+    #[cfg(feature = "oooc")]
     pub fn correct_position_delayed(
         &mut self,
         timestamp_us: u64,
@@ -276,9 +293,7 @@ impl KalmanFilterXyzWithSensors {
             Self::NIS_THRESHOLD_3D,
         )
     }
-}
 
-impl KalmanFilterXyzWithSensors {
     /// Saves the current state of the filter into our history ring buffer.
     /// Run this at the very end of EVERY IMU time update step.
     pub fn push_snapshot(&mut self, timestamp_us: u64, delta_vel_ned_mps: Vector3f32, delta_pos_ned_m: Vector3f32) {
@@ -293,17 +308,6 @@ impl KalmanFilterXyzWithSensors {
 
         self.history.head_idx = (self.history.head_idx + 1) % self.history.snapshot.len();
         self.history.snapshot[self.history.head_idx] = snapshot;
-    }
-
-    pub fn register_gps_event(&mut self, timestamp_us: u64, gps_pos_m: Vector3f32) {
-        _ = timestamp_us;
-        self.history.snapshot[self.history.head_idx].gps_pos_m = Some(gps_pos_m);
-    }
-
-    /// Flags that a fresh Barometric Altitude measurement occurred at the current step.
-    pub fn register_baro_event(&mut self, timestamp_us: u64, altitude_m: f32) {
-        _ = timestamp_us;
-        self.history.snapshot[self.history.head_idx].baro_alt_m = Some(altitude_m);
     }
 
     /// Retrieves a historical snapshot of the filter state at a given time.
@@ -330,57 +334,6 @@ impl KalmanFilterXyzWithSensors {
     }
 }
 
-#[allow(non_snake_case)]
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct SnapshotXyz {
-    pub timestamp_us: u64,
-    pub delta_vel_ned_mps: Vector3f32,
-    pub delta_pos_ned_m: Vector3f32,
-    pub state: KalmanStateXyz,
-    pub gps_pos_m: Option<Vector3f32>,
-    pub baro_alt_m: Option<f32>,
-}
-
-impl Default for SnapshotXyz {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl SnapshotXyz {
-    pub const fn new() -> Self {
-        Self {
-            timestamp_us: 0,
-            delta_vel_ned_mps: Vector3f32::ZERO,
-            delta_pos_ned_m: Vector3f32::ZERO,
-            state: KalmanStateXyz::new(),
-            gps_pos_m: None,
-            baro_alt_m: None,
-        }
-    }
-}
-#[allow(non_snake_case)]
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct KalmanFilterXyzHistory {
-    /// Fixed circular window (e.g., handles up to 640ms of latency at 100Hz).
-    pub snapshot: [SnapshotXyz; Self::SNAPSHOT_SIZE],
-    /// Ring buffer index.
-    pub head_idx: usize,
-}
-
-impl Default for KalmanFilterXyzHistory {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl KalmanFilterXyzHistory {
-    pub const SNAPSHOT_SIZE: usize = 128; // 256ms of history at 500Hz
-
-    pub const fn new() -> Self {
-        Self { snapshot: [SnapshotXyz::new(); Self::SNAPSHOT_SIZE], head_idx: 0 }
-    }
-}
 #[cfg(test)]
 mod test_traits {
     use super::*;
@@ -391,7 +344,5 @@ mod test_traits {
     fn normal_types() {
         is_full::<KalmanFilterXyzWithSensors>();
         is_full::<KalmanFilterXyzWithSensorsf32>();
-        is_full::<KalmanFilterXyzHistory>();
-        is_full::<SnapshotXyz>();
     }
 }

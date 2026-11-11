@@ -1,7 +1,9 @@
-use num_traits::ConstZero;
 use vqm::Vector2f32;
 
-use super::{FusionStatus, KalmanFilterDiagnostics, KalmanFilterXy, KalmanStateXy};
+#[cfg(feature = "oooc")]
+use super::{FusionStatus, KalmanFilterXyHistory, SnapshotXy};
+
+use super::{KalmanFilterDiagnostics, KalmanFilterXy, KalmanStateXy};
 
 /// `f32` variant of `PositionKalmanFilterExtended`.
 pub type KalmanFilterXyWithSensorsf32 = KalmanFilterXyWithSensors;
@@ -37,6 +39,7 @@ pub struct KalmanFilterXyWithSensors {
     /// Absolute Measurement Noise variance for ultra-wideband indoor positioning system..
     pub R_ultra_wideband: f32,
     /// Delayed State Buffer for Retrodictive Updates.
+    #[cfg(feature = "oooc")]
     pub history: KalmanFilterXyHistory,
 }
 
@@ -74,6 +77,7 @@ impl KalmanFilterXyWithSensors {
             R_optical_flow: Vector2f32 { x: 0.04, y: 0.04 },
             // 1cm to 10cm typical accuracy, use 10cm = 0.10m, = 0.01 variance for cheap modules.
             R_ultra_wideband: 0.01,
+            #[cfg(feature = "oooc")]
             history: KalmanFilterXyHistory::new(),
         }
     }
@@ -112,7 +116,9 @@ impl KalmanFilterXyWithSensors {
         // Propagate covariance uncertainty blocks forward (stochastic)
         self.predict_covariance(dt);
 
+        #[cfg(feature = "oooc")]
         self.push_snapshot(timestamp_us, delta_pos_ned_m, delta_vel_ned_mps);
+        _ = timestamp_us;
     }
 
     pub fn predict_state(&mut self, delta_vel_ned_mps: Vector2f32, delta_pos_ned_m: Vector2f32, dt: f32) {
@@ -185,6 +191,7 @@ impl KalmanFilterXyWithSensors {
 }
 
 #[allow(non_snake_case)]
+#[cfg(feature = "oooc")]
 impl KalmanFilterXyWithSensors {
     /// Correct position using delayed measurement without rewinding `P`.
     /// When a delayed measurement arrives, we calculate the innovation error using the past state vector (`past.pos`).
@@ -208,9 +215,7 @@ impl KalmanFilterXyWithSensors {
             Self::NIS_THRESHOLD_2D,
         )
     }
-}
 
-impl KalmanFilterXyWithSensors {
     /// Saves the current state of the filter into our history ring buffer.
     /// Run this at the very end of EVERY IMU time update step.
     pub fn push_snapshot(&mut self, timestamp_us: u64, delta_vel_ned_mps: Vector2f32, delta_pos_ned_m: Vector2f32) {
@@ -225,11 +230,6 @@ impl KalmanFilterXyWithSensors {
 
         self.history.head_idx = (self.history.head_idx + 1) % self.history.snapshot.len();
         self.history.snapshot[self.history.head_idx] = snapshot;
-    }
-
-    pub fn register_gps_event(&mut self, timestamp_us: u64, gps_pos_m: Vector2f32) {
-        _ = timestamp_us;
-        self.history.snapshot[self.history.head_idx].gps_pos_m = Some(gps_pos_m);
     }
 
     /// Retrieves a historical snapshot of the filter state at a given index.
@@ -256,57 +256,6 @@ impl KalmanFilterXyWithSensors {
     }
 }
 
-#[allow(non_snake_case)]
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct SnapshotXy {
-    pub timestamp_us: u64,
-    pub delta_vel_ned_mps: Vector2f32,
-    pub delta_pos_ned_m: Vector2f32,
-    pub state: KalmanStateXy,
-    pub gps_pos_m: Option<Vector2f32>,
-    pub baro_alt_m: Option<f32>,
-}
-
-impl Default for SnapshotXy {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl SnapshotXy {
-    pub const fn new() -> Self {
-        Self {
-            timestamp_us: 0,
-            delta_vel_ned_mps: Vector2f32::ZERO,
-            delta_pos_ned_m: Vector2f32::ZERO,
-            state: KalmanStateXy::new(),
-            gps_pos_m: None,
-            baro_alt_m: None,
-        }
-    }
-}
-#[allow(non_snake_case)]
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct KalmanFilterXyHistory {
-    /// Fixed circular window (e.g., handles up to 640ms of latency at 100Hz).
-    pub snapshot: [SnapshotXy; Self::SNAPSHOT_SIZE],
-    /// Ring buffer index.
-    pub head_idx: usize,
-}
-
-impl Default for KalmanFilterXyHistory {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl KalmanFilterXyHistory {
-    pub const SNAPSHOT_SIZE: usize = 128; // 256ms of history at 500Hz
-
-    pub const fn new() -> Self {
-        Self { snapshot: [SnapshotXy::new(); Self::SNAPSHOT_SIZE], head_idx: 0 }
-    }
-}
 #[cfg(test)]
 mod test_traits {
     use super::*;
@@ -317,7 +266,5 @@ mod test_traits {
     fn normal_types() {
         is_full::<KalmanFilterXyWithSensors>();
         is_full::<KalmanFilterXyWithSensorsf32>();
-        is_full::<KalmanFilterXyHistory>();
-        is_full::<SnapshotXy>();
     }
 }

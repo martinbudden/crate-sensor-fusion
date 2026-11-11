@@ -35,9 +35,11 @@ mod kalman_filter_z;
 mod kalman_filter_z_with_sensors;
 
 mod kalman_filter_xy;
+mod kalman_filter_xy_history;
 mod kalman_filter_xy_with_sensors;
 
 mod kalman_filter_xyz;
+mod kalman_filter_xyz_history;
 mod kalman_filter_xyz_with_sensors;
 
 mod sensor_fusion;
@@ -60,9 +62,13 @@ pub use kalman_filter_z::{KalmanFilterZ, KalmanFilterZf32, KalmanStateZ, KalmanS
 pub use kalman_filter_z_with_sensors::{KalmanFilterZWithSensors, KalmanFilterZWithSensorsf32};
 
 pub use kalman_filter_xy::{KalmanFilterXy, KalmanFilterXyf32, KalmanStateXy, KalmanStateXyf32};
+#[cfg(feature = "oooc")]
+pub use kalman_filter_xy_history::{KalmanFilterXyHistory, SnapshotXy};
 pub use kalman_filter_xy_with_sensors::{KalmanFilterXyWithSensors, KalmanFilterXyWithSensorsf32};
 
 pub use kalman_filter_xyz::{KalmanFilterXyz, KalmanFilterXyzf32, KalmanStateXyz, KalmanStateXyzf32};
+#[cfg(feature = "oooc")]
+pub use kalman_filter_xyz_history::{KalmanFilterXyzHistory, SnapshotXyz};
 pub use kalman_filter_xyz_with_sensors::{KalmanFilterXyzWithSensors, KalmanFilterXyzWithSensorsf32};
 
 pub use trilaterate_2d::{Anchor2d, Anchor2df32, Anchor2df64, trilaterate_2d};

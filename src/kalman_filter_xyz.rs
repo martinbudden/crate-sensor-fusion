@@ -324,7 +324,7 @@ impl KalmanFilterXyz {
         // This ensures we cannot use an updated value in a subsequent update, ie P_new cannot be used on RHS.
         let (PP, VP, BP, VV, BV, BB) = (Self::PP, Self::VP, Self::BP, Self::VV, Self::BV, Self::BB);
 
-        // We exploit the symmetry of P in the calculations below. 
+        // We exploit the symmetry of P in the calculations below.
         // This gains us a large amount of speed at the cost of a small amount of numerical conditioning.
         // Total calculation of F·P·Fᵀ: 138 multiplications, 126 additions/subtractions
 

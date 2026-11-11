@@ -23,14 +23,18 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 - Kalman filter `correct_position_using_gps_with_delay_compensation`.
 - timestamps to Kalman filter predict and correct functions.
 - Added directional confidence weight to Madgwick filter to improve handling of large accelerations.
+- `oooc` - out of order correction feature flag.
 
 ### Changed
 
-- Updated to `vqm` version `0.1.xx`.
+- Updated to `vqm` version `0.1.20`.
+- Improved efficiency of `KalmanFilterXyz` `correct_covariance`.
 - Changed `KalmanFilterXy` `correct_position` to use `M2x2UpperTriangularArrayf32` for `S_inv`.
 - Changed `KalmanFilterXyz` `correct_position` to use `M3x3UpperTriangularArrayf32` for `S_inv`.
+- Improved handling of large accelerations by Madgwick filter.
 - Improved diagnostics.
 - Improved snapshot history.
+- Placed snapshot, history and out of order corrections under `oooc` feature flag.
 
 ## [0.1.13] - 2026-10-28
 

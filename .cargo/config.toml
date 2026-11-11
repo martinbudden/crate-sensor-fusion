@@ -3,10 +3,12 @@
 test-none = [ "test", "--no-default-features"]
 test-libm = [ "test", "--no-default-features", "--features", "libm"]
 test-std = [ "test", "--no-default-features", "--features", "std"]
+test-oooc = [ "test", "--no-default-features", "--features", "oooc"]
 
 check-none = [ "check", "--no-default-features"]
 check-libm = [ "check", "--no-default-features", "--features", "libm"]
 check-std = [ "check", "--no-default-features", "--features", "std"]
+check-oooc = [ "check", "--no-default-features", "--features", "oooc"]
 
 # Continuous Integration
 ci = "run --package xtask --bin xtask"
