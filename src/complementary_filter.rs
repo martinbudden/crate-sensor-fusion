@@ -75,13 +75,13 @@ where
     }
 
     /// Fuses accelerometer and gyroscope readings to give the orientation quaternion.
-    fn fuse_acc_gyro(&mut self, acc_mps2: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> UnitQuaternion<T> {
+    fn fuse_acc_gyro(&mut self, acc_mps2: Vector3<T>, gyro_rps: Vector3<T>, dt: T) -> UnitQuaternion<T> {
         // Calculate quaternion derivative (qDot) from angular rate https://ahrs.readthedocs.io/en/latest/filters/angular.html#quaternion-derivative
         let mut q = self.q.q();
         let q_dot = q.derivative(gyro_rps);
 
         // Update the attitude quaternion using simple Euler integration (qNew = qOld + qDot*deltaT).
-        q += q_dot * delta_t;
+        q += q_dot * dt;
 
         // use the normalized accelerometer data to calculate an estimate of the attitude
         let acc_mps2: Vector3<T> = acc_mps2.normalize();
@@ -102,12 +102,12 @@ where
         acc_mps2: Vector3<T>,
         gyro_rps: Vector3<T>,
         _mag: Vector3<T>,
-        delta_t: T,
+        dt: T,
     ) -> UnitQuaternion<T> {
-        self.fuse_acc_gyro(acc_mps2, gyro_rps, delta_t)
+        self.fuse_acc_gyro(acc_mps2, gyro_rps, dt)
     }
 
-    fn correct_yaw_with_gain(&mut self, _yaw_radians: T, _gain: T, _delta_t: T) -> UnitQuaternion<T> {
+    fn correct_yaw_with_gain(&mut self, _yaw_radians: T, _gain: T, _dt: T) -> UnitQuaternion<T> {
         self.q
     }
 }
@@ -139,11 +139,11 @@ mod tests {
 
         sensor_fusion.set_alpha(1.0);
 
-        let delta_t: f32 = 0.0;
+        let dt: f32 = 0.0;
         let acc_mps2 = Vector3f32::default();
         let gyro_rps = Vector3f32::default();
 
-        let orientation = sensor_fusion.fuse_acc_gyro(acc_mps2, gyro_rps, delta_t);
+        let orientation = sensor_fusion.fuse_acc_gyro(acc_mps2, gyro_rps, dt);
 
         //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
         assert!(orientation.is_near_one(1.2e-4));

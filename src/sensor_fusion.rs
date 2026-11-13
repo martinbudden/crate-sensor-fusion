@@ -7,11 +7,11 @@ use vqm::{UnitQuaternion, Vector3};
 ///
 /// let mut madgwick_filter = MadgwickFilterf32::default();
 ///
-/// let delta_t: f32 = 0.0;
+/// let dt: f32 = 0.0;
 /// let acc = Vector3f32::default();
 /// let gyro_rps = Vector3f32::default();
 ///
-/// let orientation = madgwick_filter.fuse_acc_gyro(acc, gyro_rps, delta_t);
+/// let orientation = madgwick_filter.fuse_acc_gyro(acc, gyro_rps, dt);
 /// assert!(orientation.is_near_one(1.2e-4));
 /// ```
 pub trait SensorFusion<T> {
@@ -20,15 +20,9 @@ pub trait SensorFusion<T> {
 
     fn requires_initialization() -> bool;
 
-    fn fuse_acc_gyro(&mut self, acc: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> UnitQuaternion<T>;
-    fn fuse_acc_gyro_mag(
-        &mut self,
-        acc: Vector3<T>,
-        gyro: Vector3<T>,
-        mag: Vector3<T>,
-        delta_t: T,
-    ) -> UnitQuaternion<T>;
-    fn correct_yaw_with_gain(&mut self, yaw_radians: T, gain: T, delta_t: T) -> UnitQuaternion<T>;
+    fn fuse_acc_gyro(&mut self, acc: Vector3<T>, gyro_rps: Vector3<T>, dt: T) -> UnitQuaternion<T>;
+    fn fuse_acc_gyro_mag(&mut self, acc: Vector3<T>, gyro: Vector3<T>, mag: Vector3<T>, dt: T) -> UnitQuaternion<T>;
+    fn correct_yaw_with_gain(&mut self, yaw_radians: T, gain: T, dt: T) -> UnitQuaternion<T>;
 }
 
 /// Trait to allow sensor fusion filters to be used with method-call syntax, ie:<br>
@@ -39,21 +33,21 @@ pub trait SensorFusion<T> {
 ///
 /// let mut madgwick_filter = MadgwickFilterf32::default();
 ///
-/// let delta_t: f32 = 0.0;
+/// let dt: f32 = 0.0;
 /// let acc = Vector3f32::default();
 /// let gyro_rps = Vector3f32::default();
 ///
-/// let orientation = (acc, gyro_rps).fuse_acc_gyro_using(&mut madgwick_filter, delta_t);
+/// let orientation = (acc, gyro_rps).fuse_acc_gyro_using(&mut madgwick_filter, dt);
 /// assert!(orientation.is_near_one(1.2e-4));
 /// ```
 pub trait FuseAccGyro<T> {
-    fn fuse_acc_gyro_using<F: SensorFusion<T>>(self, filter: &mut F, delta_t: T) -> UnitQuaternion<T>;
+    fn fuse_acc_gyro_using<F: SensorFusion<T>>(self, filter: &mut F, dt: T) -> UnitQuaternion<T>;
 }
 
 impl<T> FuseAccGyro<T> for (Vector3<T>, Vector3<T>) {
-    fn fuse_acc_gyro_using<F: SensorFusion<T>>(self, filter: &mut F, delta_t: T) -> UnitQuaternion<T> {
+    fn fuse_acc_gyro_using<F: SensorFusion<T>>(self, filter: &mut F, dt: T) -> UnitQuaternion<T> {
         let (acc, gyro) = self;
-        filter.fuse_acc_gyro(acc, gyro, delta_t)
+        filter.fuse_acc_gyro(acc, gyro, dt)
     }
 }
 
@@ -71,18 +65,13 @@ impl<T> FuseAccGyro<T> for (Vector3<T>, Vector3<T>) {
 /// assert!(orientation.is_near_one(1.2e-4));
 /// ```
 pub trait FuseAccGyroMag<T> {
-    fn fuse_acc_gyro_mag_using<F: SensorFusion<T>>(self, sensor_fusion_filter: &mut F, delta_t: T)
-    -> UnitQuaternion<T>;
+    fn fuse_acc_gyro_mag_using<F: SensorFusion<T>>(self, sensor_fusion_filter: &mut F, dt: T) -> UnitQuaternion<T>;
 }
 
 impl<T> FuseAccGyroMag<T> for (Vector3<T>, Vector3<T>, Vector3<T>) {
-    fn fuse_acc_gyro_mag_using<F: SensorFusion<T>>(
-        self,
-        sensor_fusion_filter: &mut F,
-        delta_t: T,
-    ) -> UnitQuaternion<T> {
+    fn fuse_acc_gyro_mag_using<F: SensorFusion<T>>(self, sensor_fusion_filter: &mut F, dt: T) -> UnitQuaternion<T> {
         let (acc, gyro, mag) = self;
-        sensor_fusion_filter.fuse_acc_gyro_mag(acc, gyro, mag, delta_t)
+        sensor_fusion_filter.fuse_acc_gyro_mag(acc, gyro, mag, dt)
     }
 }
 
@@ -104,7 +93,7 @@ mod tests {
         fn requires_initialization() -> bool {
             true
         }
-        fn fuse_acc_gyro(&mut self, _acc: Vector3f32, _gyro_rps: Vector3f32, _delta_t: f32) -> UnitQuaternionf32 {
+        fn fuse_acc_gyro(&mut self, _acc: Vector3f32, _gyro_rps: Vector3f32, _dt: f32) -> UnitQuaternionf32 {
             UnitQuaternionf32::default()
         }
         fn fuse_acc_gyro_mag(
@@ -112,11 +101,11 @@ mod tests {
             acc: Vector3f32,
             gyro_rps: Vector3f32,
             _mag: Vector3f32,
-            delta_t: f32,
+            dt: f32,
         ) -> UnitQuaternionf32 {
-            self.fuse_acc_gyro(acc, gyro_rps, delta_t)
+            self.fuse_acc_gyro(acc, gyro_rps, dt)
         }
-        fn correct_yaw_with_gain(&mut self, _yaw_radians: f32, _gain: f32, _delta_t: f32) -> UnitQuaternionf32 {
+        fn correct_yaw_with_gain(&mut self, _yaw_radians: f32, _gain: f32, _dt: f32) -> UnitQuaternionf32 {
             UnitQuaternionf32::default()
         }
     }
@@ -129,11 +118,11 @@ mod tests {
 
         test_struct.set_gains(0.0, 0.0);
 
-        let delta_t: f32 = 0.0;
+        let dt: f32 = 0.0;
         let acc = Vector3f32::default();
         let gyro_rps = Vector3f32::default();
 
-        let orientation = test_struct.fuse_acc_gyro(acc, gyro_rps, delta_t);
+        let orientation = test_struct.fuse_acc_gyro(acc, gyro_rps, dt);
         assert_eq!(orientation, UnitQuaternion::default());
     }
 
@@ -147,12 +136,12 @@ mod tests {
 
         madgwick_filter.set_beta(1.0);
 
-        let delta_t: f32 = 0.0;
+        let dt: f32 = 0.0;
         let acc = Vector3f32::default();
         let gyro_rps = Vector3f32::default();
 
-        //let orientation = madgwick_filter.fuse_acc_gyro(acc, gyro_rps, delta_t);
-        let orientation = (acc, gyro_rps).fuse_acc_gyro_using(&mut madgwick_filter, delta_t);
+        //let orientation = madgwick_filter.fuse_acc_gyro(acc, gyro_rps, dt);
+        let orientation = (acc, gyro_rps).fuse_acc_gyro_using(&mut madgwick_filter, dt);
         //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
         assert!(orientation.is_near_one(1.2e-4));
     }

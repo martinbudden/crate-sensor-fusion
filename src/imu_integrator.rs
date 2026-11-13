@@ -102,7 +102,7 @@ impl ImuIntegrator {
         ImuIntegral {
             delta_pos_ned_m: self.delta_pos_ned_m,
             delta_vel_ned_mps: self.delta_vel_ned_mps,
-            delta_t: self.dt_sum,
+            dt: self.dt_sum,
             count: self.count,
         }
     }
@@ -113,7 +113,7 @@ impl ImuIntegrator {
 pub struct ImuIntegral {
     pub delta_pos_ned_m: Vector3f32,
     pub delta_vel_ned_mps: Vector3f32,
-    pub delta_t: f32,
+    pub dt: f32,
     pub count: u32,
 }
 
@@ -132,7 +132,7 @@ impl ImuIntegral {
         Self {
             delta_pos_ned_m: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
             delta_vel_ned_mps: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
-            delta_t: 0.0,
+            dt: 0.0,
             count: 0,
         }
     }

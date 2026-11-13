@@ -14,7 +14,7 @@ fn bench_filter(c: &mut Criterion) {
     let mut madgwick_filter = MadgwickFilterf32::new();
     let mut mahony_filter = MahonyFilterf32::new();
     let mut complementary_filter = ComplementaryFilterf32::new();
-    let delta_t = 0.000_1_f32;
+    let dt = 0.000_1_f32;
 
     _ = group.throughput(Throughput::Elements(1));
 
@@ -28,7 +28,7 @@ fn bench_filter(c: &mut Criterion) {
                 (acc, gyro_rps)
             },
             |(acc, gyro_rps)| {
-                black_box((acc, gyro_rps)).fuse_acc_gyro_using(black_box(&mut madgwick_filter), black_box(delta_t))
+                black_box((acc, gyro_rps)).fuse_acc_gyro_using(black_box(&mut madgwick_filter), black_box(dt))
             },
             BatchSize::SmallInput,
         );
@@ -46,8 +46,7 @@ fn bench_filter(c: &mut Criterion) {
                 (acc, gyro_rps, mag)
             },
             |(acc, gyro_rps, mag)| {
-                black_box((acc, gyro_rps, mag))
-                    .fuse_acc_gyro_mag_using(black_box(&mut madgwick_filter), black_box(delta_t))
+                black_box((acc, gyro_rps, mag)).fuse_acc_gyro_mag_using(black_box(&mut madgwick_filter), black_box(dt))
             },
             BatchSize::SmallInput,
         );
@@ -63,7 +62,7 @@ fn bench_filter(c: &mut Criterion) {
                 (acc, gyro_rps)
             },
             |(acc, gyro_rps)| {
-                black_box((acc, gyro_rps)).fuse_acc_gyro_using(black_box(&mut mahony_filter), black_box(delta_t))
+                black_box((acc, gyro_rps)).fuse_acc_gyro_using(black_box(&mut mahony_filter), black_box(dt))
             },
             BatchSize::SmallInput,
         );
@@ -79,7 +78,7 @@ fn bench_filter(c: &mut Criterion) {
                 (acc, gyro_rps)
             },
             |(acc, gyro_rps)| {
-                black_box((acc, gyro_rps)).fuse_acc_gyro_using(black_box(&mut complementary_filter), black_box(delta_t))
+                black_box((acc, gyro_rps)).fuse_acc_gyro_using(black_box(&mut complementary_filter), black_box(dt))
             },
             BatchSize::SmallInput,
         );

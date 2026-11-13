@@ -138,11 +138,11 @@ impl<T> MadgwickFilter<T> {
         self.beta_yaw = beta_yaw;
     }
 
-    pub fn correct_yaw(&mut self, yaw_radians: T, delta_t: T) -> UnitQuaternion<T>
+    pub fn correct_yaw(&mut self, yaw_radians: T, dt: T) -> UnitQuaternion<T>
     where
         T: Copy + FloatCore + QuaternionMath + MathMethods + MadgwickConstants,
     {
-        self.correct_yaw_with_gain(yaw_radians, self.beta_yaw, delta_t)
+        self.correct_yaw_with_gain(yaw_radians, self.beta_yaw, dt)
     }
 
     // Calculate the acc directional confidence weight, `w_dir`.
@@ -282,7 +282,7 @@ where
     }
 
     /// Fuses accelerometer and gyroscope readings to give the orientation quaternion.
-    fn fuse_acc_gyro(&mut self, acc_mps2: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> UnitQuaternion<T> {
+    fn fuse_acc_gyro(&mut self, acc_mps2: Vector3<T>, gyro_rps: Vector3<T>, dt: T) -> UnitQuaternion<T> {
         // Calculate the corrective step.
         let acc_norm = acc_mps2.norm();
         let mut acc = acc_mps2;
@@ -306,7 +306,7 @@ where
         let q_dot = q.derivative(gyro_rps) - step * (self.beta * w_dir);
 
         // Update the orientation quaternion using simple Euler integration
-        q += q_dot * delta_t;
+        q += q_dot * dt;
 
         // normalize the orientation quaternion and return it
         self.q = UnitQuaternion::from_quaternion(q);
@@ -319,7 +319,7 @@ where
         acc_mps2: Vector3<T>,
         gyro_rps: Vector3<T>,
         mag: Vector3<T>,
-        delta_t: T,
+        dt: T,
     ) -> UnitQuaternion<T> {
         // Calculate the corrective step.
         let acc_magnitude_squared = acc_mps2.norm_squared();
@@ -339,7 +339,7 @@ where
         let q_dot = q.derivative(gyro_rps) - step * (self.beta * w_dir);
 
         // Update the orientation quaternion using simple Euler integration
-        q += q_dot * delta_t;
+        q += q_dot * dt;
 
         // normalize the orientation quaternion and return it
 
@@ -347,10 +347,10 @@ where
         self.q
     }
 
-    /// Note `delta_t` is the time since `correct_yaw` was last called, distinct from the `delta_t` in `fuse_acc_gyro`.
+    /// Note `dt` is the time since `correct_yaw` was last called, distinct from the `dt` in `fuse_acc_gyro`.
     /// This function called at a frequency of ~10Hz if called from a GPS update, or ~200Hz for a magnetometer update.
     /// It is normally called withing the Gyro/PID loop and so should be as fast as possible to minimize jitter.
-    fn correct_yaw_with_gain(&mut self, yaw_radians: T, gain: T, delta_t: T) -> UnitQuaternion<T> {
+    fn correct_yaw_with_gain(&mut self, yaw_radians: T, gain: T, dt: T) -> UnitQuaternion<T> {
         // Create a target yaw quaternion from the yaw heading.
         // This represents a flat orientation pointing in the direction of travel.
         let mut target = UnitQuaternion::<T>::from_yaw_radians(yaw_radians);
@@ -381,7 +381,7 @@ where
         //let q_dot = Quaternion { w: self.q.z, x: -self.q.y, y: self.q.x, z: -self.q.w } * (error_z * self.beta_yaw);
 
         // Euler integration & renormalization
-        q += q_dot * (delta_t * gain);
+        q += q_dot * (dt * gain);
         self.q = UnitQuaternion::from_quaternion(q);
 
         self.q
@@ -451,11 +451,11 @@ mod tests {
 
         madgwick_filter.set_beta(1.0);
 
-        let delta_t: f32 = 0.0;
+        let dt: f32 = 0.0;
         let acc_mps2 = Vector3f32::default();
         let gyro_rps = Vector3f32::default();
 
-        let orientation = madgwick_filter.fuse_acc_gyro(acc_mps2, gyro_rps, delta_t);
+        let orientation = madgwick_filter.fuse_acc_gyro(acc_mps2, gyro_rps, dt);
         //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
         assert!(orientation.is_near_one(1.2e-4));
     }
@@ -464,11 +464,11 @@ mod tests {
     fn fuse_acc_gyro_using() {
         let mut madgwick_filter = MadgwickFilterf32::default();
 
-        let delta_t: f32 = 0.0;
+        let dt: f32 = 0.0;
         let acc_mps2 = Vector3f32::default();
         let gyro_rps = Vector3f32::default();
 
-        let orientation = (acc_mps2, gyro_rps).fuse_acc_gyro_using(&mut madgwick_filter, delta_t);
+        let orientation = (acc_mps2, gyro_rps).fuse_acc_gyro_using(&mut madgwick_filter, dt);
         //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
         assert!(orientation.is_near_one(1.2e-4));
     }
@@ -482,18 +482,18 @@ mod tests {
 
         let mut filter = MadgwickFilterf32::new().with_orientation(initial_q);
         let gain = 5.0;
-        let delta_t = 0.1;
+        let dt = 0.1;
         filter.set_beta_yaw(gain);
 
         let target_yaw = 178.0_f32;
-        let filtered_q = filter.correct_yaw_with_gain(target_yaw.to_radians(), gain, delta_t);
+        let filtered_q = filter.correct_yaw_with_gain(target_yaw.to_radians(), gain, dt);
         let final_yaw = filtered_q.calculate_yaw_degrees();
         println!("Yaw, initial: {initial_yaw:.4}° | target: {target_yaw:.4}° | filtered: {final_yaw:.4}°");
         assert!((178.5 - final_yaw).abs() < 5e-4);
 
         filter.set_orientation(initial_q);
         let target_yaw = 179.5_f32;
-        let filtered_q = filter.correct_yaw_with_gain(target_yaw.to_radians(), gain, delta_t);
+        let filtered_q = filter.correct_yaw_with_gain(target_yaw.to_radians(), gain, dt);
         let final_yaw = filtered_q.calculate_yaw_degrees();
         println!("Yaw, initial: {initial_yaw:.4}° | target: {target_yaw:.4}° | filtered: {final_yaw:.4}°");
         assert!((179.25 - final_yaw).abs() < 2e-4);
@@ -502,7 +502,7 @@ mod tests {
         let initial_q = UnitQuaternionf32::from_yaw_degrees(initial_yaw);
         filter.set_orientation(initial_q);
         let target_yaw = 181.0_f32;
-        let filtered_q = filter.correct_yaw_with_gain(target_yaw.to_radians(), gain, delta_t);
+        let filtered_q = filter.correct_yaw_with_gain(target_yaw.to_radians(), gain, dt);
         let final_yaw = filtered_q.calculate_yaw_degrees();
         println!("Yaw, initial: {initial_yaw:.4}° | target: {target_yaw:.4}° | filtered: {final_yaw:.4}°");
         assert!((-179.625 - final_yaw).abs() < 4e-4);

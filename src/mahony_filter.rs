@@ -76,7 +76,7 @@ where
     }
 
     /// Fuses accelerometer and gyroscope readings to give the orientation quaternion.
-    fn fuse_acc_gyro(&mut self, acc_mps2: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> UnitQuaternion<T> {
+    fn fuse_acc_gyro(&mut self, acc_mps2: Vector3<T>, gyro_rps: Vector3<T>, dt: T) -> UnitQuaternion<T> {
         // Normalize acceleration
         let acc = acc_mps2.normalize();
 
@@ -101,7 +101,7 @@ where
 
         // Apply integral feedback if ki set
         //if self.ki > T::zero() {
-        self.error_integral += error * (self.ki * delta_t); // note brackets to ensure scalar multiplication is performed before vector multiplication
+        self.error_integral += error * (self.ki * dt); // note brackets to ensure scalar multiplication is performed before vector multiplication
         gyro += self.error_integral;
         //}
 
@@ -110,7 +110,7 @@ where
         if self.use_matrix_exponential_approximation {
             // Matrix Exponential Approximation (From Attitude Representation and Kinematic Propagation for Low-Cost UAVs by Robert T. Casey, Equation 12)
             let gyro_magnitude = gyro.norm();
-            let theta = gyro_magnitude * T::HALF * delta_t;
+            let theta = gyro_magnitude * T::HALF * dt;
             let (sin, cos) = theta.sin_cos();
             let t1 = cos;
             let t2 = (T::TWO / gyro_magnitude) * sin;
@@ -118,7 +118,7 @@ where
             q = q * t1 + q_dot * t2;
         } else {
             // Update the attitude quaternion using simple Euler integration
-            q += q_dot * delta_t;
+            q += q_dot * dt;
         }
 
         // normalize the orientation quaternion and return it
@@ -131,12 +131,12 @@ where
         acc: Vector3<T>,
         gyro_rps: Vector3<T>,
         _mag: Vector3<T>,
-        delta_t: T,
+        dt: T,
     ) -> UnitQuaternion<T> {
-        self.fuse_acc_gyro(acc, gyro_rps, delta_t)
+        self.fuse_acc_gyro(acc, gyro_rps, dt)
     }
 
-    fn correct_yaw_with_gain(&mut self, _yaw_radians: T, _gain: T, _delta_t: T) -> UnitQuaternion<T> {
+    fn correct_yaw_with_gain(&mut self, _yaw_radians: T, _gain: T, _dt: T) -> UnitQuaternion<T> {
         self.q
     }
 }
@@ -167,11 +167,11 @@ mod tests {
 
         sensor_fusion.set_proportional_integral(10.0, 0.0);
 
-        let delta_t: f32 = 0.0;
+        let dt: f32 = 0.0;
         let acc = Vector3f32::default();
         let gyro_rps = Vector3f32::default();
 
-        let orientation = sensor_fusion.fuse_acc_gyro(acc, gyro_rps, delta_t);
+        let orientation = sensor_fusion.fuse_acc_gyro(acc, gyro_rps, dt);
         //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
         assert!(orientation.is_near_one(1.2e-4));
     }
