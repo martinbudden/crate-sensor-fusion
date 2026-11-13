@@ -22,6 +22,10 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 - Changed `ImuIntegrator`, `ComplementaryFilter`, `MadgwickFilter`, and `MahonyFilter` to use `UnitQuaternion`.
 - Renamed all instances of `delta_t` to `dt`.
 
+### Removed
+
+- Removed unused `acc_magnitude_squared_max` from `ComplementaryFilter`.
+
 ## [0.1.14] - 2026-11-13
 
 ### Added

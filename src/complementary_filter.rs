@@ -14,7 +14,6 @@ pub type ComplementaryFilterf64 = ComplementaryFilter<f64>;
 pub struct ComplementaryFilter<T> {
     /// orientation quaternion.
     q: UnitQuaternion<T>,
-    acc_magnitude_squared_max: T,
     alpha: T,
 }
 
@@ -36,7 +35,6 @@ where
     pub fn new() -> Self {
         ComplementaryFilter {
             q: UnitQuaternion::default(),
-            acc_magnitude_squared_max: T::one() + T::one() + T::one() + T::one(),
             alpha: T::one(),
         }
     }
