@@ -1,8 +1,8 @@
 use core::ops::Neg;
 use num_traits::{One, Zero, float::FloatCore};
 
-use super::{SensorFusion, SensorFusionMath};
-use vqm::{MathMethods, Quaternion, QuaternionMath, Vector3};
+use super::SensorFusion;
+use vqm::{MathMethods, QuaternionMath, UnitQuaternion, Vector3};
 
 /// Complementary filter for `f32`<br>
 pub type ComplementaryFilterf32 = ComplementaryFilter<f32>;
@@ -13,7 +13,7 @@ pub type ComplementaryFilterf64 = ComplementaryFilter<f64>;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ComplementaryFilter<T> {
     /// orientation quaternion.
-    q: Quaternion<T>,
+    q: UnitQuaternion<T>,
     acc_magnitude_squared_max: T,
     alpha: T,
 }
@@ -35,7 +35,7 @@ where
     #[must_use]
     pub fn new() -> Self {
         ComplementaryFilter {
-            q: Quaternion::default(),
+            q: UnitQuaternion::default(),
             acc_magnitude_squared_max: T::one() + T::one() + T::one() + T::one(),
             alpha: T::one(),
         }
@@ -61,7 +61,7 @@ where
 
 impl<T> SensorFusion<T> for ComplementaryFilter<T>
 where
-    T: Copy + FloatCore + MathMethods + QuaternionMath + SensorFusionMath,
+    T: Copy + FloatCore + MathMethods + QuaternionMath,
 {
     fn set_gains(&mut self, gain0: T, _gain1: T) {
         self.alpha = gain0;
@@ -75,26 +75,25 @@ where
     }
 
     /// Fuses accelerometer and gyroscope readings to give the orientation quaternion.
-    fn fuse_acc_gyro(&mut self, acc_mps2: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> Quaternion<T> {
+    fn fuse_acc_gyro(&mut self, acc_mps2: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> UnitQuaternion<T> {
         // Calculate quaternion derivative (qDot) from angular rate https://ahrs.readthedocs.io/en/latest/filters/angular.html#quaternion-derivative
-        // Twice the actual value is used to reduce the number of multiplications needed
-        let q_dot = SensorFusionMath::derivative(self.q, gyro_rps);
+        let mut q = self.q.q();
+        let q_dot = q.derivative(gyro_rps);
 
         // Update the attitude quaternion using simple Euler integration (qNew = qOld + qDot*deltaT).
-        // Note: to reduce the number of multiplications, _2qDot and halfDeltaT are used, ie qNew = qOld +_2qDot*deltaT*0.5.
-        self.q += q_dot * delta_t;
+        q += q_dot * delta_t;
 
         // use the normalized accelerometer data to calculate an estimate of the attitude
         let acc_mps2: Vector3<T> = acc_mps2.normalize();
         let roll_radians: T = ComplementaryFilter::roll_radians_from_acc_normalized(acc_mps2);
         let pitch_radians = ComplementaryFilter::pitch_radians_from_acc_normalized(acc_mps2);
-        let q: Quaternion<T> = Quaternion::from_roll_pitch_radians(roll_radians, pitch_radians);
+        let a = UnitQuaternion::from_roll_pitch_radians(roll_radians, pitch_radians).q();
 
         // use a complementary filter to combine the gyro attitude estimate(q) with the accelerometer attitude estimate(a)
-        self.q = (self.q - q) * self.alpha + q; // optimized form of `self.alpha * q + (1.0 - self.alpha) * q` : uses fewer operations and can take advantage of multiply-add instruction
+        q = (q - a) * self.alpha + a; // optimized form of `self.alpha * q + (1.0 - self.alpha) * q` : uses fewer operations and can take advantage of multiply-add instruction
 
         // normalize the orientation quaternion and return it
-        self.q = self.q.normalize();
+        self.q = UnitQuaternion::from_quaternion(q);
         self.q
     }
 
@@ -104,11 +103,11 @@ where
         gyro_rps: Vector3<T>,
         _mag: Vector3<T>,
         delta_t: T,
-    ) -> Quaternion<T> {
+    ) -> UnitQuaternion<T> {
         self.fuse_acc_gyro(acc_mps2, gyro_rps, delta_t)
     }
 
-    fn correct_yaw_with_gain(&mut self, _yaw_radians: T, _gain: T, _delta_t: T) -> Quaternion<T> {
+    fn correct_yaw_with_gain(&mut self, _yaw_radians: T, _gain: T, _delta_t: T) -> UnitQuaternion<T> {
         self.q
     }
 }

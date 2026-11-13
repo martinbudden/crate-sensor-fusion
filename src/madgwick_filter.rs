@@ -1,8 +1,8 @@
 use core::{f32, f64, ops::Sub};
 
-use super::{SensorFusion, SensorFusionMath};
+use super::SensorFusion;
 use num_traits::{ConstOne, ConstZero, float::FloatCore};
-use vqm::{MathMethods, Quaternion, QuaternionMath, Vector3};
+use vqm::{MathMethods, Quaternion, QuaternionMath, UnitQuaternion, Vector3};
 
 /// Madgwick filter for `f32`<br>
 pub type MadgwickFilterf32 = MadgwickFilter<f32>;
@@ -32,7 +32,7 @@ impl MadgwickConstants for f64 {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MadgwickFilter<T> {
     /// orientation quaternion.
-    q: Quaternion<T>,
+    q: UnitQuaternion<T>,
     /// Lower confidence angle for accelerometer, below this angle accelerometer is fully trusted.
     cos_theta1: T,
     /// Upper confidence angle for accelerometer, above this angle accelerometer is completely rejected.
@@ -60,12 +60,12 @@ where
 impl<T> MadgwickFilter<T> {
     /// Constructor.
     #[must_use]
-    pub const fn new() -> Self
+    pub fn new() -> Self
     where
         T: Copy + ConstZero + ConstOne + MadgwickConstants,
     {
         MadgwickFilter {
-            q: Quaternion { w: T::ONE, x: T::ZERO, y: T::ZERO, z: T::ZERO },
+            q: UnitQuaternion::default(),
             cos_theta1: MadgwickConstants::COS_5_DEGREES,
             acc_directional_weight_denominator: (MadgwickConstants::ACC_DIRECTIONAL_WEIGHT_DENOMINATOR_DEFAULT),
             beta: T::ONE,
@@ -85,7 +85,7 @@ impl<T> MadgwickFilter<T> {
 
     /// Set the orientation of a newly constructed filter.
     #[must_use]
-    pub const fn with_orientation(mut self, orientation: Quaternion<T>) -> Self
+    pub const fn with_orientation(mut self, orientation: UnitQuaternion<T>) -> Self
     where
         T: Copy,
     {
@@ -117,7 +117,7 @@ impl<T> MadgwickFilter<T> {
 }
 
 impl<T> MadgwickFilter<T> {
-    pub fn set_orientation(&mut self, orientation: Quaternion<T>)
+    pub fn set_orientation(&mut self, orientation: UnitQuaternion<T>)
     where
         T: Copy,
     {
@@ -138,9 +138,9 @@ impl<T> MadgwickFilter<T> {
         self.beta_yaw = beta_yaw;
     }
 
-    pub fn correct_yaw(&mut self, yaw_radians: T, delta_t: T) -> Quaternion<T>
+    pub fn correct_yaw(&mut self, yaw_radians: T, delta_t: T) -> UnitQuaternion<T>
     where
-        T: Copy + FloatCore + QuaternionMath + SensorFusionMath + MathMethods + MadgwickConstants,
+        T: Copy + FloatCore + QuaternionMath + MathMethods + MadgwickConstants,
     {
         self.correct_yaw_with_gain(yaw_radians, self.beta_yaw, delta_t)
     }
@@ -150,17 +150,19 @@ impl<T> MadgwickFilter<T> {
     // In these maneuvers the acc reading deviates from the estimated gravity direction.
     pub fn acc_directional_confidence_weight(&self, acc: Vector3<T>) -> T
     where
-        T: Copy + FloatCore + SensorFusionMath,
+        T: FloatCore,
     {
-        let gravity = SensorFusionMath::gravity(self.q); // 13 arithmetic operations
+        let gravity = self.q.gravity(); // 13 arithmetic operations
         let acc_dot_gravity = acc.dot(gravity).clamp(-T::one(), T::one());
         ((acc_dot_gravity - self.cos_theta1) / self.acc_directional_weight_denominator).clamp(-T::one(), T::one())
     }
-    pub fn step_acc(q: Quaternion<T>, a: Vector3<T>) -> Quaternion<T>
+
+    pub fn step_acc(q: UnitQuaternion<T>, a: Vector3<T>) -> Quaternion<T>
     where
-        T: Copy + FloatCore,
+        T: FloatCore,
     {
         let two = T::one() + T::one();
+        let q = q.q();
         let wz_common = two * (q.x * q.x + q.y * q.y);
         let xy_common = two * (q.w * q.w + q.z * q.z - T::one() + two * wz_common + a.z);
         Quaternion {
@@ -175,7 +177,7 @@ impl<T> MadgwickFilter<T> {
     #[inline]
     pub fn step_acc_mag(q: Quaternion<T>, a: Vector3<T>, m: Vector3<T>) -> Quaternion<T>
     where
-        T: Copy + FloatCore + MathMethods + QuaternionMath,
+        T: FloatCore + MathMethods,
     {
         // make copies of the components of q to simplify the algebraic expressions
         let q0 = q.w;
@@ -245,7 +247,6 @@ impl<T> MadgwickFilter<T> {
             z: q0 * m_bx.y - q1 * (a_dash.x + m_bx.z + _4bx_bz * (half * sum_squares_minus_one + q3q3)) - q2 * a_dash.y
                 + q3 * two * (wz_common + m_bx.x * yz_common),
         }
-        .normalize()
     }
 }
 
@@ -265,7 +266,7 @@ impl<T> MadgwickFilter<T> {
 ///
 impl<T> SensorFusion<T> for MadgwickFilter<T>
 where
-    T: Copy + FloatCore + QuaternionMath + SensorFusionMath + MathMethods,
+    T: Copy + FloatCore + QuaternionMath + MathMethods,
 {
     fn set_gains(&mut self, gain0: T, gain1: T) {
         self.beta = gain0;
@@ -281,7 +282,7 @@ where
     }
 
     /// Fuses accelerometer and gyroscope readings to give the orientation quaternion.
-    fn fuse_acc_gyro(&mut self, acc_mps2: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> Quaternion<T> {
+    fn fuse_acc_gyro(&mut self, acc_mps2: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> UnitQuaternion<T> {
         // Calculate the corrective step.
         let acc_norm = acc_mps2.norm();
         let mut acc = acc_mps2;
@@ -299,15 +300,16 @@ where
 
         // Calculate the adaptive step.
         let step = Self::step_acc(self.q, acc);
+        let mut q = self.q.q();
         // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate
         // and subtract the corrective step attenuated by the acc directional confidence.
-        let q_dot = SensorFusionMath::derivative(self.q, gyro_rps) - step * self.beta * w_dir;
+        let q_dot = q.derivative(gyro_rps) - step * (self.beta * w_dir);
 
         // Update the orientation quaternion using simple Euler integration
-        self.q += q_dot * delta_t;
+        q += q_dot * delta_t;
 
         // normalize the orientation quaternion and return it
-        self.q = self.q.normalize();
+        self.q = UnitQuaternion::from_quaternion(q);
         self.q
     }
 
@@ -318,7 +320,7 @@ where
         gyro_rps: Vector3<T>,
         mag: Vector3<T>,
         delta_t: T,
-    ) -> Quaternion<T> {
+    ) -> UnitQuaternion<T> {
         // Calculate the corrective step.
         let acc_magnitude_squared = acc_mps2.norm_squared();
         let mut acc = acc_mps2;
@@ -327,26 +329,31 @@ where
         } else {
             acc *= acc_magnitude_squared.sqrt_reciprocal();
         }
-        let step = Self::step_acc_mag(self.q, acc, mag.normalize());
+
+        let w_dir = self.acc_directional_confidence_weight(acc);
+
+        let mut q = self.q.q();
+        let step = Self::step_acc_mag(q, acc, mag.normalize());
 
         // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate and subtract the corrective step.
-        let q_dot = SensorFusionMath::derivative(self.q, gyro_rps) - step * self.beta;
+        let q_dot = q.derivative(gyro_rps) - step * (self.beta * w_dir);
 
         // Update the orientation quaternion using simple Euler integration
-        self.q += q_dot * delta_t;
+        q += q_dot * delta_t;
 
         // normalize the orientation quaternion and return it
-        self.q = self.q.normalize();
+
+        self.q = UnitQuaternion::from_quaternion(q);
         self.q
     }
 
     /// Note `delta_t` is the time since `correct_yaw` was last called, distinct from the `delta_t` in `fuse_acc_gyro`.
     /// This function called at a frequency of ~10Hz if called from a GPS update, or ~200Hz for a magnetometer update.
     /// It is normally called withing the Gyro/PID loop and so should be as fast as possible to minimize jitter.
-    fn correct_yaw_with_gain(&mut self, yaw_radians: T, gain: T, delta_t: T) -> Quaternion<T> {
+    fn correct_yaw_with_gain(&mut self, yaw_radians: T, gain: T, delta_t: T) -> UnitQuaternion<T> {
         // Create a target yaw quaternion from the yaw heading.
         // This represents a flat orientation pointing in the direction of travel.
-        let mut target = Quaternion::<T>::from_yaw_radians(yaw_radians);
+        let mut target = UnitQuaternion::<T>::from_yaw_radians(yaw_radians);
 
         // The dot product between two quaternions tells you how well aligned they are.
         // If the dot product is positive, the two quaternions are on the same hemisphere, and moving directly toward the target is the shortest path.
@@ -363,18 +370,19 @@ where
         let error = self.q * target.conjugate();
 
         // Construct a pure rotational velocity quaternion around the Z-axis
-        let omega = Quaternion::<T>::new(T::zero(), T::zero(), T::zero(), -error.z);
+        let omega = Quaternion::<T>::new(T::zero(), T::zero(), T::zero(), -error.q().z);
 
         // Calculate kinematic derivative: q_dot = 0.5 * q * omega
         // The 0.5 factor is absorbed into the `beta_yaw` value, so does not appear here.
-        let q_dot = self.q * omega;
+        let mut q = self.q.q();
+        let q_dot = q * omega;
 
         //let error_z = -self.q.w * target.z - self.q.x * target.y + self.q.y * target.x + self.q.z * target.w;
         //let q_dot = Quaternion { w: self.q.z, x: -self.q.y, y: self.q.x, z: -self.q.w } * (error_z * self.beta_yaw);
 
         // Euler integration & renormalization
-        self.q += q_dot * (delta_t * gain);
-        self.q = self.q.normalize();
+        q += q_dot * (delta_t * gain);
+        self.q = UnitQuaternion::from_quaternion(q);
 
         self.q
     }
@@ -397,7 +405,7 @@ mod tests {
     use {
         super::*,
         crate::FuseAccGyro,
-        vqm::{Quaternionf32, Vector3f32},
+        vqm::{Quaternionf32, UnitQuaternionf32, Vector3f32},
     };
 
     #[test]
@@ -469,7 +477,7 @@ mod tests {
     #[test]
     fn yaw_correction() {
         let initial_yaw = 179.0f32;
-        let initial_q = Quaternionf32::from_yaw_degrees(initial_yaw);
+        let initial_q = UnitQuaternionf32::from_yaw_degrees(initial_yaw);
         //println!("Initial q: {initial_q}");
 
         let mut filter = MadgwickFilterf32::new().with_orientation(initial_q);
@@ -491,7 +499,7 @@ mod tests {
         assert!((179.25 - final_yaw).abs() < 2e-4);
 
         let initial_yaw = 179.75f32;
-        let initial_q = Quaternionf32::from_yaw_degrees(initial_yaw);
+        let initial_q = UnitQuaternionf32::from_yaw_degrees(initial_yaw);
         filter.set_orientation(initial_q);
         let target_yaw = 181.0_f32;
         let filtered_q = filter.correct_yaw_with_gain(target_yaw.to_radians(), gain, delta_t);

@@ -1,4 +1,4 @@
-use vqm::{Quaternionf32, Vector3f32};
+use vqm::{UnitQuaternionf32, Vector3f32};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ImuIntegrator {
@@ -82,9 +82,8 @@ impl ImuIntegrator {
     /// - `acc_body_mps2` is in the body frame.
     /// - The caller does not integrate beyond interval completion.
     #[inline]
-    pub fn integrate(&mut self, acc_body_mps2: Vector3f32, orientation: Quaternionf32, dt: f32) {
+    pub fn integrate(&mut self, acc_body_mps2: Vector3f32, orientation: UnitQuaternionf32, dt: f32) {
         debug_assert!(acc_body_mps2.is_finite());
-        debug_assert!(orientation.is_normalized(1e-5));
         debug_assert!(dt != 0.0);
         debug_assert!(dt.is_finite());
         // Rotate acc_body_mps2 into NED and compensate for gravity.

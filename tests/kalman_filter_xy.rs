@@ -1,5 +1,5 @@
 use sensor_fusion::{ImuIntegrator, KalmanFilterXy, KalmanFilterXyWithSensors};
-use vqm::{Matrix3x3xM2x2f32, Quaternionf32, Vector2f32, Vector3f32};
+use vqm::{Matrix3x3xM2x2f32, UnitQuaternionf32, Vector2f32, Vector3f32};
 
 #[cfg(test)]
 mod tests {
@@ -12,7 +12,7 @@ mod tests {
     fn test_2d_position_convergence() {
         let mut filter = KalmanFilterXy::new();
         let mut integrator = ImuIntegrator::new();
-        let orientation = Quaternionf32::identity();
+        let orientation = UnitQuaternionf32::identity();
 
         // Capture initial uncertainty variance values from the main diagonal blocks
         let init_p_pos_x = filter.pp_for_test()[M11];

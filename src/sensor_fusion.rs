@@ -1,4 +1,4 @@
-use vqm::{Quaternion, Quaternionf32, Vector3};
+use vqm::{UnitQuaternion, Vector3};
 
 /// Common interface for the sensor fusion filters (Madgwick, Mahony, complementary).
 /// ```
@@ -20,9 +20,15 @@ pub trait SensorFusion<T> {
 
     fn requires_initialization() -> bool;
 
-    fn fuse_acc_gyro(&mut self, acc: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> Quaternion<T>;
-    fn fuse_acc_gyro_mag(&mut self, acc: Vector3<T>, gyro: Vector3<T>, mag: Vector3<T>, delta_t: T) -> Quaternion<T>;
-    fn correct_yaw_with_gain(&mut self, yaw_radians: T, gain: T, delta_t: T) -> Quaternion<T>;
+    fn fuse_acc_gyro(&mut self, acc: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> UnitQuaternion<T>;
+    fn fuse_acc_gyro_mag(
+        &mut self,
+        acc: Vector3<T>,
+        gyro: Vector3<T>,
+        mag: Vector3<T>,
+        delta_t: T,
+    ) -> UnitQuaternion<T>;
+    fn correct_yaw_with_gain(&mut self, yaw_radians: T, gain: T, delta_t: T) -> UnitQuaternion<T>;
 }
 
 /// Trait to allow sensor fusion filters to be used with method-call syntax, ie:<br>
@@ -41,11 +47,11 @@ pub trait SensorFusion<T> {
 /// assert!(orientation.is_near_one(1.2e-4));
 /// ```
 pub trait FuseAccGyro<T> {
-    fn fuse_acc_gyro_using<F: SensorFusion<T>>(self, filter: &mut F, delta_t: T) -> Quaternion<T>;
+    fn fuse_acc_gyro_using<F: SensorFusion<T>>(self, filter: &mut F, delta_t: T) -> UnitQuaternion<T>;
 }
 
 impl<T> FuseAccGyro<T> for (Vector3<T>, Vector3<T>) {
-    fn fuse_acc_gyro_using<F: SensorFusion<T>>(self, filter: &mut F, delta_t: T) -> Quaternion<T> {
+    fn fuse_acc_gyro_using<F: SensorFusion<T>>(self, filter: &mut F, delta_t: T) -> UnitQuaternion<T> {
         let (acc, gyro) = self;
         filter.fuse_acc_gyro(acc, gyro, delta_t)
     }
@@ -65,11 +71,16 @@ impl<T> FuseAccGyro<T> for (Vector3<T>, Vector3<T>) {
 /// assert!(orientation.is_near_one(1.2e-4));
 /// ```
 pub trait FuseAccGyroMag<T> {
-    fn fuse_acc_gyro_mag_using<F: SensorFusion<T>>(self, sensor_fusion_filter: &mut F, delta_t: T) -> Quaternion<T>;
+    fn fuse_acc_gyro_mag_using<F: SensorFusion<T>>(self, sensor_fusion_filter: &mut F, delta_t: T)
+    -> UnitQuaternion<T>;
 }
 
 impl<T> FuseAccGyroMag<T> for (Vector3<T>, Vector3<T>, Vector3<T>) {
-    fn fuse_acc_gyro_mag_using<F: SensorFusion<T>>(self, sensor_fusion_filter: &mut F, delta_t: T) -> Quaternion<T> {
+    fn fuse_acc_gyro_mag_using<F: SensorFusion<T>>(
+        self,
+        sensor_fusion_filter: &mut F,
+        delta_t: T,
+    ) -> UnitQuaternion<T> {
         let (acc, gyro, mag) = self;
         sensor_fusion_filter.fuse_acc_gyro_mag(acc, gyro, mag, delta_t)
     }
@@ -79,7 +90,7 @@ impl<T> FuseAccGyroMag<T> for (Vector3<T>, Vector3<T>, Vector3<T>) {
 mod tests {
     #![allow(clippy::wildcard_imports)]
     use super::*;
-    use vqm::Vector3f32;
+    use vqm::{UnitQuaternionf32, Vector3f32};
 
     #[allow(unused)]
     struct TestStruct;
@@ -93,8 +104,8 @@ mod tests {
         fn requires_initialization() -> bool {
             true
         }
-        fn fuse_acc_gyro(&mut self, _acc: Vector3f32, _gyro_rps: Vector3f32, _delta_t: f32) -> Quaternionf32 {
-            Quaternionf32::default()
+        fn fuse_acc_gyro(&mut self, _acc: Vector3f32, _gyro_rps: Vector3f32, _delta_t: f32) -> UnitQuaternionf32 {
+            UnitQuaternionf32::default()
         }
         fn fuse_acc_gyro_mag(
             &mut self,
@@ -102,11 +113,11 @@ mod tests {
             gyro_rps: Vector3f32,
             _mag: Vector3f32,
             delta_t: f32,
-        ) -> Quaternionf32 {
+        ) -> UnitQuaternionf32 {
             self.fuse_acc_gyro(acc, gyro_rps, delta_t)
         }
-        fn correct_yaw_with_gain(&mut self, _yaw_radians: f32, _gain: f32, _delta_t: f32) -> Quaternionf32 {
-            Quaternionf32::default()
+        fn correct_yaw_with_gain(&mut self, _yaw_radians: f32, _gain: f32, _delta_t: f32) -> UnitQuaternionf32 {
+            UnitQuaternionf32::default()
         }
     }
 
@@ -123,7 +134,7 @@ mod tests {
         let gyro_rps = Vector3f32::default();
 
         let orientation = test_struct.fuse_acc_gyro(acc, gyro_rps, delta_t);
-        assert_eq!(orientation, Quaternion::default());
+        assert_eq!(orientation, UnitQuaternion::default());
     }
 
     #[test]

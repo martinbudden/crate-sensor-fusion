@@ -43,7 +43,6 @@ mod kalman_filter_xyz_history;
 mod kalman_filter_xyz_with_sensors;
 
 mod sensor_fusion;
-mod sensor_fusion_math;
 
 mod trilaterate_2d;
 mod trilaterate_3d;
@@ -53,7 +52,6 @@ pub use madgwick_filter::{MadgwickFilter, MadgwickFilterf32, MadgwickFilterf64};
 pub use mahony_filter::{MahonyFilter, MahonyFilterf32, MahonyFilterf64};
 
 pub use sensor_fusion::{FuseAccGyro, FuseAccGyroMag, SensorFusion};
-pub use sensor_fusion_math::SensorFusionMath;
 
 pub use imu_integrator::{ImuIntegral, ImuIntegrator};
 

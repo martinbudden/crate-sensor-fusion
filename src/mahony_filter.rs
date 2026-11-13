@@ -1,7 +1,7 @@
 use num_traits::{ConstOne, ConstZero, float::FloatCore};
 
-use super::{SensorFusion, SensorFusionMath};
-use vqm::{MathConstants, MathMethods, Quaternion, QuaternionMath, Vector3};
+use super::SensorFusion;
+use vqm::{MathConstants, MathMethods, QuaternionMath, UnitQuaternion, Vector3};
 
 /// Mahony filter for `f32`<br>
 pub type MahonyFilterf32 = MahonyFilter<f32>;
@@ -12,7 +12,7 @@ pub type MahonyFilterf64 = MahonyFilter<f64>;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MahonyFilter<T> {
     /// orientation quaternion.
-    q: Quaternion<T>,
+    q: UnitQuaternion<T>,
     kp: T,
     ki: T,
     error_integral: Vector3<T>,
@@ -37,9 +37,9 @@ where
 {
     /// Constructor.
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         MahonyFilter {
-            q: Quaternion { w: T::ONE, x: T::ZERO, y: T::ZERO, z: T::ZERO },
+            q: UnitQuaternion::default(),
             kp: T::TEN,
             ki: T::ZERO,
             error_integral: Vector3 { x: T::ZERO, y: T::ZERO, z: T::ZERO },
@@ -53,7 +53,7 @@ where
 
 impl<T> MahonyFilter<T>
 where
-    T: Copy + FloatCore + MathMethods + MathConstants + QuaternionMath + SensorFusionMath,
+    T: FloatCore + MathMethods + MathConstants + QuaternionMath,
 {
     pub fn set_proportional_integral(&mut self, kp: T, ki: T) {
         self.set_gains(kp, ki);
@@ -62,7 +62,7 @@ where
 
 impl<T> SensorFusion<T> for MahonyFilter<T>
 where
-    T: Copy + FloatCore + MathMethods + MathConstants + QuaternionMath + SensorFusionMath,
+    T: FloatCore + MathMethods + MathConstants + QuaternionMath,
 {
     fn set_gains(&mut self, gain0: T, gain1: T) {
         self.kp = gain0;
@@ -76,7 +76,7 @@ where
     }
 
     /// Fuses accelerometer and gyroscope readings to give the orientation quaternion.
-    fn fuse_acc_gyro(&mut self, acc_mps2: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> Quaternion<T> {
+    fn fuse_acc_gyro(&mut self, acc_mps2: Vector3<T>, gyro_rps: Vector3<T>, delta_t: T) -> UnitQuaternion<T> {
         // Normalize acceleration
         let acc = acc_mps2.normalize();
 
@@ -105,7 +105,8 @@ where
         gyro += self.error_integral;
         //}
 
-        let q_dot = SensorFusionMath::derivative(self.q, gyro);
+        let mut q = self.q.q();
+        let q_dot = q.derivative(gyro);
         if self.use_matrix_exponential_approximation {
             // Matrix Exponential Approximation (From Attitude Representation and Kinematic Propagation for Low-Cost UAVs by Robert T. Casey, Equation 12)
             let gyro_magnitude = gyro.norm();
@@ -114,14 +115,14 @@ where
             let t1 = cos;
             let t2 = (T::TWO / gyro_magnitude) * sin;
 
-            self.q = self.q * t1 + q_dot * t2;
+            q = q * t1 + q_dot * t2;
         } else {
             // Update the attitude quaternion using simple Euler integration
-            self.q += q_dot * delta_t;
+            q += q_dot * delta_t;
         }
 
         // normalize the orientation quaternion and return it
-        self.q = self.q.normalize();
+        self.q = UnitQuaternion::from_quaternion(q);
         self.q
     }
 
@@ -131,11 +132,11 @@ where
         gyro_rps: Vector3<T>,
         _mag: Vector3<T>,
         delta_t: T,
-    ) -> Quaternion<T> {
+    ) -> UnitQuaternion<T> {
         self.fuse_acc_gyro(acc, gyro_rps, delta_t)
     }
 
-    fn correct_yaw_with_gain(&mut self, _yaw_radians: T, _gain: T, _delta_t: T) -> Quaternion<T> {
+    fn correct_yaw_with_gain(&mut self, _yaw_radians: T, _gain: T, _delta_t: T) -> UnitQuaternion<T> {
         self.q
     }
 }
