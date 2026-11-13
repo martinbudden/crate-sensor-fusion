@@ -2,7 +2,7 @@ use vqm::{Quaternion, Quaternionf32, Vector3};
 
 /// Common interface for the sensor fusion filters (Madgwick, Mahony, complementary).
 /// ```
-/// use vqm::{Vector3f32,Quaternionf32};
+/// use vqm::{Vector3f32, Quaternionf32};
 /// use sensor_fusion::{MadgwickFilterf32, SensorFusion};
 ///
 /// let mut madgwick_filter = MadgwickFilterf32::default();
@@ -74,21 +74,6 @@ impl<T> FuseAccGyroMag<T> for (Vector3<T>, Vector3<T>, Vector3<T>) {
         sensor_fusion_filter.fuse_acc_gyro_mag(acc, gyro, mag, delta_t)
     }
 }
-
-/*
-/// Calculate quaternion derivative (dq/dt aka q_dot) from angular rate <https://ahrs.readthedocs.io/en/latest/filters/angular.html#quaternion-derivative>
-pub fn q_dot<T>(q: Quaternion<T>, gyro_rps: Vector3<T>) -> Quaternion<T>
-where
-    T: Copy + One + Neg<Output = T> + Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Div<Output = T>,
-{
-    let half = T::one() / (T::one() + T::one());
-    Quaternion {
-        w: (-q.x * gyro_rps.x - q.y * gyro_rps.y - q.z * gyro_rps.z) * half,
-        x: (q.w * gyro_rps.x + q.y * gyro_rps.z - q.z * gyro_rps.y) * half,
-        y: (q.w * gyro_rps.y - q.x * gyro_rps.z + q.z * gyro_rps.x) * half,
-        z: (q.w * gyro_rps.z + q.x * gyro_rps.y - q.y * gyro_rps.x) * half,
-    }
-}*/
 
 #[cfg(any(debug_assertions, test))]
 mod tests {

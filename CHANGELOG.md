@@ -15,7 +15,7 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 - May port  **VQF** (Versatile Quaternion Filter) from my C++ library [Library-SensorFusion](https://github.com/martinbudden/Library-SensorFusion).
 
-## [0.1.14] - 2026-11-xx
+## [0.1.14] - 2026-11-13
 
 ### Added
 
@@ -35,6 +35,7 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 - Improved diagnostics.
 - Improved snapshot history.
 - Placed snapshot, history and out of order corrections under `oooc` feature flag.
+- Moved madgwick_step out of `SensorFusionMath` into `MadgwickFilter`.
 
 ## [0.1.13] - 2026-10-28
 

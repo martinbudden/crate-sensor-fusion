@@ -114,7 +114,9 @@ impl<T> MadgwickFilter<T> {
         self.acc_directional_weight_denominator = theta0.cos() - self.cos_theta1;
         self
     }
+}
 
+impl<T> MadgwickFilter<T> {
     pub fn set_orientation(&mut self, orientation: Quaternion<T>)
     where
         T: Copy,
@@ -135,13 +137,115 @@ impl<T> MadgwickFilter<T> {
     {
         self.beta_yaw = beta_yaw;
     }
-}
-impl<T> MadgwickFilter<T>
-where
-    T: Copy + FloatCore + QuaternionMath + SensorFusionMath + MathMethods + MadgwickConstants,
-{
-    pub fn correct_yaw(&mut self, yaw_radians: T, delta_t: T) -> Quaternion<T> {
+
+    pub fn correct_yaw(&mut self, yaw_radians: T, delta_t: T) -> Quaternion<T>
+    where
+        T: Copy + FloatCore + QuaternionMath + SensorFusionMath + MathMethods + MadgwickConstants,
+    {
         self.correct_yaw_with_gain(yaw_radians, self.beta_yaw, delta_t)
+    }
+
+    // Calculate the acc directional confidence weight, `w_dir`.
+    // In high g maneuvers the accelerometer is a less reliable direction indicator.
+    // In these maneuvers the acc reading deviates from the estimated gravity direction.
+    pub fn acc_directional_confidence_weight(&self, acc: Vector3<T>) -> T
+    where
+        T: Copy + FloatCore + SensorFusionMath,
+    {
+        let gravity = SensorFusionMath::gravity(self.q); // 13 arithmetic operations
+        let acc_dot_gravity = acc.dot(gravity).clamp(-T::one(), T::one());
+        ((acc_dot_gravity - self.cos_theta1) / self.acc_directional_weight_denominator).clamp(-T::one(), T::one())
+    }
+    pub fn step_acc(q: Quaternion<T>, a: Vector3<T>) -> Quaternion<T>
+    where
+        T: Copy + FloatCore,
+    {
+        let two = T::one() + T::one();
+        let wz_common = two * (q.x * q.x + q.y * q.y);
+        let xy_common = two * (q.w * q.w + q.z * q.z - T::one() + two * wz_common + a.z);
+        Quaternion {
+            w: q.w * wz_common + q.y * a.x - q.x * a.y,
+            z: q.z * wz_common - q.x * a.x - q.y * a.y,
+            x: q.x * xy_common - q.z * a.x - q.w * a.y,
+            y: q.y * xy_common + q.w * a.x - q.z * a.y,
+        }
+    }
+
+    #[allow(clippy::many_single_char_names)]
+    #[inline]
+    pub fn step_acc_mag(q: Quaternion<T>, a: Vector3<T>, m: Vector3<T>) -> Quaternion<T>
+    where
+        T: Copy + FloatCore + MathMethods + QuaternionMath,
+    {
+        // make copies of the components of q to simplify the algebraic expressions
+        let q0 = q.w;
+        let q1 = q.x;
+        let q2 = q.y;
+        let q3 = q.z;
+        // Auxiliary variables to avoid repeated arithmetic
+        let q0q0 = q0 * q0;
+        let q0q1 = q0 * q1;
+        let q0q2 = q0 * q2;
+        let q0q3 = q0 * q3;
+        let q1q1 = q1 * q1;
+        let q1q2 = q1 * q2;
+        let q1q3 = q1 * q3;
+        let q2q2 = q2 * q2;
+        let q2q3 = q2 * q3;
+        let q3q3 = q3 * q3;
+
+        let q1q1_plus_q2q2 = q1q1 + q2q2;
+        let q2q2_plus_q3q3 = q2q2 + q3q3;
+
+        let two = T::one() + T::one();
+        let four = two + two;
+        let half = T::one() / two;
+        // Reference direction of Earth's magnetic field
+        let h = Vector3 {
+            x: m.x * (q0q0 + q1q1 - q2q2_plus_q3q3) + two * (m.y * (q1q2 - q0q3) + m.z * (q0q2 + q1q3)),
+            y: (m.x * (q0q3 + q1q2) + m.y * (q0q0 - q1q1 + q2q2 - q3q3) + m.z * (q2q3 - q0q1)) * two,
+            z: T::zero(),
+        };
+
+        let bx_bx = h.x * h.x + h.y * h.y;
+        let b = Vector3 {
+            x: bx_bx.sqrt(),
+            y: T::zero(),
+            z: two * (m.x * (q1q3 - q0q2) + m.y * (q0q1 + q2q3)) + m.z * (q0q0 - q1q1_plus_q2q2 + q3q3),
+        };
+
+        let a_dash = Vector3 { x: a.x + m.x * b.z, y: a.y + m.y * b.z, z: T::zero() };
+        let bz_bz = b.z * b.z;
+        let _4bx_bz = four * b.x * b.z;
+
+        let m_bx = m * b.x;
+        let mz_bz = m.z * b.z;
+
+        let sum_squares_minus_one = q0q0 + q1q1_plus_q2q2 + q3q3 - T::one();
+        let xy_common = sum_squares_minus_one + q1q1_plus_q2q2;
+        let yz_common = sum_squares_minus_one + q2q2_plus_q3q3;
+        let wz_common = q1q1_plus_q2q2 * (T::one() + bz_bz) + bx_bx;
+
+        // Gradient decent algorithm corrective step
+        #[allow(clippy::used_underscore_binding)]
+        Quaternion {
+            w: q0 * two * (wz_common * q2q2_plus_q3q3) - q1 * a_dash.y
+                + q2 * (a_dash.x - m_bx.z)
+                + q3 * (m_bx.y - _4bx_bz * q0q1),
+
+            x: -q0 * a_dash.y
+                + q1 * two * (xy_common * (T::one() + two * bz_bz) + mz_bz + bx_bx * q2q2_plus_q3q3 + a.z)
+                - q2 * m_bx.y
+                - q3 * (a_dash.x + m_bx.z + _4bx_bz * (half * sum_squares_minus_one + q1q1)),
+
+            y: q0 * (a_dash.x - m_bx.z) - q1 * m_bx.y
+                + q2 * two * (xy_common * (T::one() + bz_bz) + mz_bz + m_bx.x + bx_bx * yz_common + a.z)
+                - q3 * (a_dash.y + _4bx_bz * q1q2),
+
+            z: q0 * m_bx.y - q1 * (a_dash.x + m_bx.z + _4bx_bz * (half * sum_squares_minus_one + q3q3)) - q2 * a_dash.y
+                + q3 * two * (wz_common + m_bx.x * yz_common),
+        }
+        .normalize()
     }
 }
 
@@ -167,6 +271,7 @@ where
         self.beta = gain0;
         self.beta_yaw = gain1;
     }
+
     fn gains(&self) -> (T, T) {
         (self.beta, self.beta_yaw)
     }
@@ -190,17 +295,12 @@ where
         //let e = (acc_norm - MadgwickConstants::G_MPS2).abs();
         //let w_mag = if e > self.e0 { (self.e1 - e) / (self.e1 - self.e0) } else { T::one() };
 
-        // Calculate the acc directional confidence weight, `w_dir`.
-        // In high g maneuvers the accelerometer is a less reliable direction indicator.
-        // In these maneuvers the acc reading deviates from the estimated gravity direction.
-        let gravity = SensorFusionMath::estimate_gravity(self.q); // 15 arithmetic operations
-        let acc_dot_gravity = acc.dot(gravity).clamp(-T::one(), T::one());
-        let w_dir =
-            ((acc_dot_gravity - self.cos_theta1) / self.acc_directional_weight_denominator).clamp(-T::one(), T::one());
+        let w_dir = self.acc_directional_confidence_weight(acc);
 
         // Calculate the adaptive step.
-        let step = SensorFusionMath::madgwick_step_acc(self.q, acc);
-        // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate and subtract the corrective step.
+        let step = Self::step_acc(self.q, acc);
+        // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate
+        // and subtract the corrective step attenuated by the acc directional confidence.
         let q_dot = SensorFusionMath::derivative(self.q, gyro_rps) - step * self.beta * w_dir;
 
         // Update the orientation quaternion using simple Euler integration
@@ -227,7 +327,7 @@ where
         } else {
             acc *= acc_magnitude_squared.sqrt_reciprocal();
         }
-        let step = SensorFusionMath::madgwick_step_acc_mag(self.q, acc, mag.normalize());
+        let step = Self::step_acc_mag(self.q, acc, mag.normalize());
 
         // Calculate quaternion derivative (q_dot, aka dq/dt) from the angular rate and subtract the corrective step.
         let q_dot = SensorFusionMath::derivative(self.q, gyro_rps) - step * self.beta;
