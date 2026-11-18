@@ -440,7 +440,7 @@ mod tests {
 
         let orientation = madgwick_filter.fuse_acc_gyro(acc_mps2, gyro_rps, dt);
         //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
-        assert!(orientation.is_near_one(1.2e-4));
+        assert!(orientation.is_approx_one(1.2e-4));
     }
 
     #[test]
@@ -457,7 +457,7 @@ mod tests {
 
         let orientation = madgwick_filter.fuse_acc_gyro(acc_mps2, gyro_rps, dt);
         //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
-        assert!(orientation.is_near_one(1.2e-4));
+        assert!(orientation.is_approx_one(1.2e-4));
     }
 
     #[test]
@@ -470,7 +470,7 @@ mod tests {
 
         let orientation = (acc_mps2, gyro_rps).fuse_acc_gyro_using(&mut madgwick_filter, dt);
         //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
-        assert!(orientation.is_near_one(1.2e-4));
+        assert!(orientation.is_approx_one(1.2e-4));
     }
 
     #[allow(clippy::float_cmp)]

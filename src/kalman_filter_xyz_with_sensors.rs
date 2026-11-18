@@ -38,6 +38,8 @@ pub struct KalmanFilterXyzWithSensors {
     pub R_optical_flow: Vector2f32,
     /// Absolute Measurement Noise variance for ultra-wideband indoor positioning system..
     pub R_ultra_wideband: f32,
+    /// Latest delta velocity, for corrections with delay compensation.
+    pub latest_delta_vel_ned_mps: Vector3f32,
     /// Delayed State Buffer for Retrodictive Updates.
     #[cfg(feature = "oooc")]
     pub history: KalmanFilterXyzHistory,
@@ -83,6 +85,7 @@ impl KalmanFilterXyzWithSensors {
             R_optical_flow: Vector2f32 { x: 0.04, y: 0.04 },
             // 1cm to 10cm typical accuracy, use 10cm = 0.10m, = 0.01 variance for cheap modules.
             R_ultra_wideband: 0.01,
+            latest_delta_vel_ned_mps: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
             #[cfg(feature = "oooc")]
             history: KalmanFilterXyzHistory::new(),
         }
@@ -122,6 +125,7 @@ impl KalmanFilterXyzWithSensors {
         // Propagate covariance uncertainty blocks forward (stochastic)
         self.predict_covariance(dt);
 
+        self.latest_delta_vel_ned_mps = delta_vel_ned_mps;
         #[cfg(feature = "oooc")]
         self.push_snapshot(timestamp_us, delta_pos_ned_m, delta_vel_ned_mps);
         _ = timestamp_us;
@@ -178,6 +182,33 @@ impl KalmanFilterXyzWithSensors {
         self.base.correct_position(position_m, r_gps, Self::NIS_THRESHOLD_3D)
     }
 
+    /// Correct position using GPS position measurement (typically at a 1Hz to 10Hz rate).
+    pub fn correct_position_and_velocity_using_gps(
+        &mut self,
+        timestamp_us: u64,
+        position_m: Vector3f32,
+        velocity_mps: Vector3f32,
+    ) -> KalmanFilterDiagnostics {
+        _ = timestamp_us;
+        let r_gps_position = Vector3f32 {
+            x: self.R_gps_position_horizontal,
+            y: self.R_gps_position_horizontal,
+            z: self.R_gps_position_vertical,
+        };
+        let r_gps_velocity = Vector3f32 {
+            x: self.R_gps_velocity_horizontal,
+            y: self.R_gps_velocity_horizontal,
+            z: self.R_gps_velocity_vertical,
+        };
+        self.base.correct_position_and_velocity(
+            position_m,
+            r_gps_position,
+            velocity_mps,
+            r_gps_velocity,
+            Self::NIS_THRESHOLD_3D,
+        )
+    }
+
     /// Use the GPS velocity to predict the GPS position forward to the current time,
     /// And use that to correct the position estimate.
     pub fn correct_position_using_gps_with_delay_compensation(
@@ -196,20 +227,20 @@ impl KalmanFilterXyzWithSensors {
         #[allow(clippy::cast_precision_loss)]
         let dt = (dt_us as f32) * 1e-6;
         // Estimate the current position and use that for the correction.
-        let position = position_m + velocity_mps * dt;
-        self.base.correct_position(position, r_gps, Self::NIS_THRESHOLD_3D)
+        let position_m = position_m + velocity_mps * dt;
+        self.base.correct_position(position_m, r_gps, Self::NIS_THRESHOLD_3D)
     }
 
     /// Correct velocity using GPS velocity measurement (typically at a 1Hz to 10Hz rate).
     /// GPS velocity measurements are often considerably more accurate than GPS position measurements, sometimes by an order of magnitude or more.
     /// This is because the measurements are done by measuring Doppler shift.
-    pub fn correct_position_and_velocity_using_gps(
+    pub fn correct_position_and_velocity_using_gps_with_delay_compensation(
         &mut self,
+        time_us: u64,
         timestamp_us: u64,
         position_m: Vector3f32,
         velocity_mps: Vector3f32,
     ) -> KalmanFilterDiagnostics {
-        _ = timestamp_us;
         let r_gps_position = Vector3f32 {
             x: self.R_gps_position_horizontal,
             y: self.R_gps_position_horizontal,
@@ -220,6 +251,15 @@ impl KalmanFilterXyzWithSensors {
             y: self.R_gps_velocity_horizontal,
             z: self.R_gps_velocity_vertical,
         };
+
+        let dt_us = time_us - timestamp_us;
+        #[allow(clippy::cast_precision_loss)]
+        let dt = (dt_us as f32) * 1e-6;
+        // Estimate the current position and use that for the correction.
+        let position_m = position_m + velocity_mps * dt;
+        // Estimate the current velocity and use that for the correction.
+        let velocity_mps = velocity_mps + self.latest_delta_vel_ned_mps * dt;
+
         self.base.correct_position_and_velocity(
             position_m,
             r_gps_position,

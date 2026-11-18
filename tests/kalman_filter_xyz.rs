@@ -280,12 +280,12 @@ mod test_anchors {
 
         let scale = 1.0 / 1.01;
 
-        assert!(kf.pos_m().is_near(v(3.0 + 0.6 * scale, 4.0 + 0.8 * scale, 0.0), EPS));
+        assert!(kf.pos_m().is_approx(v(3.0 + 0.6 * scale, 4.0 + 0.8 * scale, 0.0), EPS));
 
         // No cross covariance, so velocity and bias should not change.
-        assert!(kf.vel_mps().is_near(v(0.0, 0.0, 0.0), EPS));
+        assert!(kf.vel_mps().is_approx(v(0.0, 0.0, 0.0), EPS));
 
-        assert!(kf.acc_bias_mps2().is_near(v(0.0, 0.0, 0.0), EPS));
+        assert!(kf.acc_bias_mps2().is_approx(v(0.0, 0.0, 0.0), EPS));
     }
 
     #[test]
@@ -325,7 +325,7 @@ mod test_anchors {
 
         let scale = 1.0 / 1.01;
 
-        assert!(kf.vel_mps().is_near(v(0.3 * scale, 0.4 * scale, 0.0), EPS));
+        assert!(kf.vel_mps().is_approx(v(0.3 * scale, 0.4 * scale, 0.0), EPS));
     }
 
     #[test]
@@ -362,7 +362,7 @@ mod test_anchors {
 
         let scale = 1.0 / 1.01;
 
-        assert!(kf.acc_bias_mps2().is_near(v(0.12 * scale, 0.24 * scale, 0.0), EPS));
+        assert!(kf.acc_bias_mps2().is_approx(v(0.12 * scale, 0.24 * scale, 0.0), EPS));
     }
 
     #[test]
@@ -378,9 +378,9 @@ mod test_anchors {
         // Predicted range is exactly 5.
         _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 5.0, 100.0, 0.01);
 
-        assert!(kf.pos_m().is_near(original_pos, EPS));
-        assert!(kf.vel_mps().is_near(original_vel, EPS));
-        assert!(kf.acc_bias_mps2().is_near(original_bias, EPS));
+        assert!(kf.pos_m().is_approx(original_pos, EPS));
+        assert!(kf.vel_mps().is_approx(original_vel, EPS));
+        assert!(kf.acc_bias_mps2().is_approx(original_bias, EPS));
     }
 
     #[test]
@@ -398,19 +398,19 @@ mod test_anchors {
         // 100 m is obviously an outlier.
         _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 100.0, 6.63, 0.01);
 
-        assert!(kf.pos_m().is_near(original_pos, EPS));
-        assert!(kf.vel_mps().is_near(original_vel, EPS));
-        assert!(kf.acc_bias_mps2().is_near(original_bias, EPS));
+        assert!(kf.pos_m().is_approx(original_pos, EPS));
+        assert!(kf.vel_mps().is_approx(original_vel, EPS));
+        assert!(kf.acc_bias_mps2().is_approx(original_bias, EPS));
 
-        assert!(kf.p_for_test()[KalmanFilterXyz::PP].is_near(original_p[KalmanFilterXyz::PP], EPS));
-        assert!(kf.p_for_test()[KalmanFilterXyz::PV].is_near(original_p[KalmanFilterXyz::PV], EPS));
-        assert!(kf.p_for_test()[KalmanFilterXyz::PB].is_near(original_p[KalmanFilterXyz::PB], EPS));
-        assert!(kf.p_for_test()[KalmanFilterXyz::VP].is_near(original_p[KalmanFilterXyz::VP], EPS));
-        assert!(kf.p_for_test()[KalmanFilterXyz::VV].is_near(original_p[KalmanFilterXyz::VV], EPS));
-        assert!(kf.p_for_test()[KalmanFilterXyz::VB].is_near(original_p[KalmanFilterXyz::VB], EPS));
-        assert!(kf.p_for_test()[KalmanFilterXyz::BP].is_near(original_p[KalmanFilterXyz::BP], EPS));
-        assert!(kf.p_for_test()[KalmanFilterXyz::BV].is_near(original_p[KalmanFilterXyz::BV], EPS));
-        assert!(kf.p_for_test()[KalmanFilterXyz::BB].is_near(original_p[KalmanFilterXyz::BB], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::PP].is_approx(original_p[KalmanFilterXyz::PP], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::PV].is_approx(original_p[KalmanFilterXyz::PV], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::PB].is_approx(original_p[KalmanFilterXyz::PB], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::VP].is_approx(original_p[KalmanFilterXyz::VP], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::VV].is_approx(original_p[KalmanFilterXyz::VV], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::VB].is_approx(original_p[KalmanFilterXyz::VB], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::BP].is_approx(original_p[KalmanFilterXyz::BP], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::BV].is_approx(original_p[KalmanFilterXyz::BV], EPS));
+        assert!(kf.p_for_test()[KalmanFilterXyz::BB].is_approx(original_p[KalmanFilterXyz::BB], EPS));
     }
     #[test]
     fn range_update_reduces_radial_position_variance() {
