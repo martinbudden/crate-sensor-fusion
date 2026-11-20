@@ -7,6 +7,7 @@ pub type Anchor3df32 = Anchor3d<f32>;
 /// 3-dimensional anchor of `f64` values<br><br>
 pub type Anchor3df64 = Anchor3d<f64>;
 
+/// 3d anchor for trilateration.<br><br>.
 #[derive(Clone, Copy, Debug, PartialEq)]
 //#[cfg_attr(feature = "std", derive(derive_more::Display))]
 //#[cfg_attr(feature = "std", display("V{{x:{x}, y:{y}}}"))]

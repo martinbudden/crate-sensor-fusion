@@ -5,9 +5,10 @@ use super::{FusionStatus, KalmanFilterDiagnostics};
 /// `f32` variant of `KalmanFilterZ`.
 pub type KalmanFilterZf32 = KalmanFilterZ;
 
-/// `f32` variant of `KalmanStateXyz`.
+/// `f32` variant of `KalmanStateXyz`.<br>
 pub type KalmanStateZf32 = KalmanStateZ;
 
+/// Altitude Kalman filter.
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterZ {
@@ -524,6 +525,7 @@ impl KalmanFilterZ {
     }
 }
 
+/// Kinematic state for `KalmanFilterZ`<br><br>
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanStateZ {
     // 3D Kinematic State Vectors

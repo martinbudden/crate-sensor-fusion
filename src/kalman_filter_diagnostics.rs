@@ -25,7 +25,7 @@ pub enum FusionStatus {
     SnapshotNotFound,
 }
 
-/// `KalmanFilterDiagnostics`.
+/// Diagnostics information for Kalman filter.
 ///
 /// |Symptom                           | Cause                                                             | Mitigation|
 /// |NIS stays very high (>10.0)       | The filter's state estimate is far away from what the sensor sees | `Q_velocity` might be set too low (the filter is ignoring reality), or your sensor has a permanent structural calibration shift|

@@ -1,5 +1,7 @@
 use vqm::{UnitQuaternionf32, Vector3f32};
 
+/// Converts acceleration from sensor frame to NED frame, and integrates it
+/// to give `delta_pos` and `delta_vel` values.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ImuIntegrator {
     pub count: u32,
@@ -22,6 +24,7 @@ impl ImuIntegrator {
     // NED: positive Z points down.
     const GRAVITY_NED_MPS2: Vector3f32 = Vector3f32 { x: 0.0, y: 0.0, z: Self::G_MPS2 };
 
+    /// Constructor.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -63,6 +66,7 @@ impl ImuIntegrator {
         self.count >= self.denominator
     }
 
+    /// Integrate the unfiltered acc in the NED frame to provide `delta_pos` and `delta_vel` for the Kalman filter.
     #[inline]
     fn integrate_acc(&mut self, acc_ned_mps2: Vector3f32, dt: f32) {
         self.count += 1;
@@ -97,6 +101,7 @@ impl ImuIntegrator {
         self.integrate_acc(acc_ned_mps2, dt);
     }
 
+    /// Returns integrated `delta_pos`, `delta_vel`m and `dt` values.
     #[must_use]
     pub fn imu_integral(&self) -> ImuIntegral {
         ImuIntegral {
@@ -108,6 +113,7 @@ impl ImuIntegrator {
     }
 }
 
+/// Convenience wrapper for output from IMU integrator.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 pub struct ImuIntegral {
@@ -135,6 +141,13 @@ impl ImuIntegral {
             dt: 0.0,
             count: 0,
         }
+    }
+    #[inline]
+    pub fn reset(&mut self) {
+        self.count = 0;
+        self.dt = 0.0;
+        self.delta_vel_ned_mps = Vector3f32 { x: 0.0, y: 0.0, z: 0.0 };
+        self.delta_pos_ned_m = Vector3f32 { x: 0.0, y: 0.0, z: 0.0 };
     }
 }
 

@@ -17,6 +17,7 @@ Desired Physical Noise (σ)            Equivalent R Variance Code Value (σ²)
 1.0 meter (Good Commercial GPS)       1.0
 2.0 meters (Standard Multi-path GPS)  4.0
 */
+/// Kalman filter including noise covariance values for various sensors.
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterXyzWithSensors {
@@ -131,6 +132,7 @@ impl KalmanFilterXyzWithSensors {
         _ = timestamp_us;
     }
 
+    /// Predict state, given delta velocity and delta position in NED frame.
     pub fn predict_state(&mut self, delta_vel_ned_mps: Vector3f32, delta_pos_ned_m: Vector3f32, dt: f32) {
         self.base.predict_state(delta_vel_ned_mps, delta_pos_ned_m, dt);
     }

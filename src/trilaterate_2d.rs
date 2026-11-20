@@ -7,6 +7,7 @@ pub type Anchor2df32 = Anchor2d<f32>;
 /// 2-dimensional anchor of `f64` values<br><br>
 pub type Anchor2df64 = Anchor2d<f64>;
 
+/// 2d anchor for trilateration.
 #[derive(Clone, Copy, Debug, PartialEq)]
 //#[cfg_attr(feature = "std", derive(derive_more::Display))]
 //#[cfg_attr(feature = "std", display("V{{x:{x}, y:{y}}}"))]

@@ -1412,6 +1412,7 @@ impl KalmanFilterXyz {
     }
 }
 
+/// Kinematic state vectors for `KalmanFilterXyz`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanStateXyz {
     // 3D Kinematic State Vectors

@@ -182,13 +182,13 @@ the Kalman filter and use a another sensor fusion filter (ie a Mahony or Madgwic
 │ Imu ├─▶┤ FILTER │ Accₛ  ┌──────────┐             │ CONTROLLER │
 │     │  │        ├───▶───┤ MADGWICK ├─────▶───────┤   (PIDS)   │
 ╰──┬──╯  └────────┘ Gyroₛ │  FILTER  │ Orientation └────────────┘
-   │                      └─┬──┬───┬─┘
-   ▼ Accₛ(unfiltered)       │  │   │ 
-   │                        │  │   │ Yaw ╭──────────────╮
-   │            Orientation ▼  ▲   └──◀──┤ Magnetometer │
-┌──┴─────────┐              │  │         ╰──────────────╯
+   │                      └─┬──┬──┬──┘
+   ▼ Accₛ(unfiltered)       │  │  ▲ Yaw
+   │                        │  │  │   ╭──────────────╮
+   │            Orientation ▼  │  └─◀─┤ Magnetometer │
+┌──┴─────────┐              │  │      ╰──────────────╯
 │    IMU     ├─────◀────────┘  │
-│ INTEGRATOR │                 │ Yaw(calculated)
+│ INTEGRATOR │                 ▲ Yaw(calculated)
 └──┬─────────┘     Positionₑ ╭─┴───╮
    │                    ┌──◀─┤ Gps │
  delta_posₑ             │    ╰─────╯

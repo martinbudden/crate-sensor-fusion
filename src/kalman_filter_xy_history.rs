@@ -4,6 +4,7 @@ use vqm::Vector2f32;
 
 use super::KalmanStateXy;
 
+/// Snapshot of Kalman filter, for rewind/fast-forward.
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SnapshotXy {
@@ -34,6 +35,7 @@ impl SnapshotXy {
         }
     }
 }
+/// Kalman filter history, for rewind/fast-forward.
 #[allow(non_snake_case)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct KalmanFilterXyHistory {
