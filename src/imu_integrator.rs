@@ -4,11 +4,8 @@ use vqm::{UnitQuaternionf32, Vector3f32};
 /// to give `delta_pos` and `delta_vel` values.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ImuIntegrator {
-    pub count: u32,
+    pub integral: ImuIntegral,
     pub denominator: u32,
-    pub dt_sum: f32,
-    pub delta_vel_ned_mps: Vector3f32,
-    pub delta_pos_ned_m: Vector3f32,
     pub acc_bias_ned_mps2: Vector3f32,
 }
 
@@ -28,11 +25,8 @@ impl ImuIntegrator {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            count: 0,
+            integral: ImuIntegral::new(),
             denominator: Self::DEFAULT_DENOMINATOR,
-            dt_sum: 0.0,
-            delta_vel_ned_mps: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
-            delta_pos_ned_m: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
             acc_bias_ned_mps2: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
         }
     }
@@ -54,27 +48,13 @@ impl ImuIntegrator {
 
     #[inline]
     pub fn reset(&mut self) {
-        self.count = 0;
-        self.dt_sum = 0.0;
-        self.delta_vel_ned_mps = Vector3f32 { x: 0.0, y: 0.0, z: 0.0 };
-        self.delta_pos_ned_m = Vector3f32 { x: 0.0, y: 0.0, z: 0.0 };
+        self.integral.reset();
     }
 
     #[inline]
     #[must_use]
     pub fn integration_complete(&self) -> bool {
-        self.count >= self.denominator
-    }
-
-    /// Integrate the unfiltered acc in the NED frame to provide `delta_pos` and `delta_vel` for the Kalman filter.
-    #[inline]
-    fn integrate_acc(&mut self, acc_ned_mps2: Vector3f32, dt: f32) {
-        self.count += 1;
-        self.dt_sum += dt;
-
-        let dv_ned_mps = acc_ned_mps2 * dt;
-        self.delta_pos_ned_m += (self.delta_vel_ned_mps + 0.5 * dv_ned_mps) * dt;
-        self.delta_vel_ned_mps += dv_ned_mps;
+        self.integral.count >= self.denominator
     }
 
     /// Integrates acceleration over one IMU sample interval.
@@ -94,26 +74,21 @@ impl ImuIntegrator {
         // Rotate takes ~45 arithmetic operations.
         let mut acc_ned_mps2 = orientation.rotate(acc_body_mps2) + Self::GRAVITY_NED_MPS2;
 
-        // Correct bias in NED.
+        // Correct acc bias in NED.
         acc_ned_mps2 -= self.acc_bias_ned_mps2;
 
         // Integrate the unfiltered acc in the NED frame to provide delta_pos and delta_vel for the Kalman filter.
-        self.integrate_acc(acc_ned_mps2, dt);
+        self.integral.integrate_acc(acc_ned_mps2, dt);
     }
 
     /// Returns integrated `delta_pos`, `delta_vel`m and `dt` values.
     #[must_use]
     pub fn imu_integral(&self) -> ImuIntegral {
-        ImuIntegral {
-            delta_pos_ned_m: self.delta_pos_ned_m,
-            delta_vel_ned_mps: self.delta_vel_ned_mps,
-            dt: self.dt_sum,
-            count: self.count,
-        }
+        self.integral
     }
 }
 
-/// Convenience wrapper for output from IMU integrator.
+/// Integral values for IMU integrator.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 pub struct ImuIntegral {
@@ -148,6 +123,17 @@ impl ImuIntegral {
         self.dt = 0.0;
         self.delta_vel_ned_mps = Vector3f32 { x: 0.0, y: 0.0, z: 0.0 };
         self.delta_pos_ned_m = Vector3f32 { x: 0.0, y: 0.0, z: 0.0 };
+    }
+
+    /// Integrate the unfiltered acc in the NED frame to provide `delta_pos` and `delta_vel` for the Kalman filter.
+    #[inline]
+    fn integrate_acc(&mut self, acc_ned_mps2: Vector3f32, dt: f32) {
+        self.count += 1;
+        self.dt += dt;
+
+        let dv_ned_mps = acc_ned_mps2 * dt;
+        self.delta_pos_ned_m += (self.delta_vel_ned_mps + 0.5 * dv_ned_mps) * dt;
+        self.delta_vel_ned_mps += dv_ned_mps;
     }
 }
 
