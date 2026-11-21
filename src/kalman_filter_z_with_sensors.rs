@@ -24,8 +24,12 @@ pub struct KalmanFilterZWithSensors {
     pub R_gps_velocity_vertical: f32,
     /// Absolute Measurement Noise variance for barometric pressure altimeter.
     pub R_barometer: f32,
+    /// NIS threshold for rejecting barometer measurements.
+    pub nis_threshold_barometer: f32,
     /// Absolute Measurement Noise variance for rangefinder.
     pub R_rangefinder: f32,
+    /// NIS threshold for rejecting rangefinder measurements.
+    pub nis_threshold_rangefinder: f32,
     /// Absolute Measurement Noise variance for optical flow.
     pub R_ultra_wideband: f32,
 }
@@ -53,7 +57,9 @@ impl KalmanFilterZWithSensors {
             // A standard barometric pressure sensor (e.g., BMP280, MS5611) typically has an RMS noise of around 10 to 20 centimeters
             // which corresponds to a variance of 0.01 to 0.04 m². However, the actual noise can vary based on environmental conditions and sensor quality.
             R_barometer: 0.03,
+            nis_threshold_barometer: Self::NIS_THRESHOLD_1D,
             R_rangefinder: 0.03,
+            nis_threshold_rangefinder: Self::NIS_THRESHOLD_1D,
             // 1cm to 10cm typical accuracy, use 10cm = 0.10m, = 0.01 variance for cheap modules.
             R_ultra_wideband: 0.01,
         }

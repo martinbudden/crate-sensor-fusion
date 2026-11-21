@@ -1,5 +1,7 @@
 use vqm::{Matrix3x3, Matrix3x3f32, Matrix3x3xM3x3f32, Vector2f32, Vector3f32};
 
+use crate::OrientationNoise;
+
 use super::{FusionStatus, KalmanFilterDiagnostics};
 
 /// `f32` variant of `KalmanFilterXyz`.
@@ -310,7 +312,7 @@ impl KalmanFilterXyz {
     /// Pₛ = Fₛ·Pₛ·Fₛᵀ + Qₛ
     /// ```
     #[allow(non_snake_case)]
-    pub fn predict_covariance(&mut self, dt: f32) {
+    pub fn predict_covariance(&mut self, orientation_noise: &OrientationNoise, dt: f32) {
         debug_assert!(dt != 0.0 && dt.is_finite());
         // =====================================================================
         // PROPAGATE THE COVARIANCE P_new = F·P_old·Fᵀ
@@ -392,6 +394,12 @@ impl KalmanFilterXyz {
         P[Self::PV] = P[Self::VP];
         P[Self::PB] = P[Self::BP];
         P[Self::VB] = P[Self::BV];
+
+        // Add attitude-induced uncertainty.
+        P[Self::PP] += orientation_noise.position;
+        P[Self::PV] += orientation_noise.position_velocity;
+        P[Self::VP] += orientation_noise.position_velocity.transpose();
+        P[Self::VV] += orientation_noise.velocity;
 
         // Random walk bias drift integration
         // Bias random-walk noise is added only to the bias covariance (BB).

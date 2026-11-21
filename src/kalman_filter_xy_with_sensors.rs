@@ -179,18 +179,18 @@ impl KalmanFilterXyWithSensors {
         )
     }
 
-    /// Correct position using optical flow position measurement.
+    /// Correct velocity using optical flow velocity measurement.
     /// Placeholder function, currently unimplemented.
-    pub fn correct_position_using_optical_flow(
+    pub fn correct_velocity_using_optical_flow(
         &mut self,
         timestamp_us: u64,
-        position_m: Vector2f32,
+        velocity_mps: Vector2f32,
     ) -> KalmanFilterDiagnostics {
         _ = self;
         _ = timestamp_us;
-        _ = position_m;
-        todo!("implement correct_position_using_optical_flow for xy");
-        //self.base.correct_position(position_m, self.R_optical_flow)
+        _ = velocity_mps;
+        todo!("implement correct_velocity_using_optical_flow for xy");
+        //self.base.correct_velocity(velocity_mps, self.R_optical_flow)
     }
 }
 

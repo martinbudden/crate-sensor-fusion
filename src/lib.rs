@@ -53,7 +53,7 @@ pub use mahony_filter::{MahonyFilter, MahonyFilterf32, MahonyFilterf64};
 
 pub use sensor_fusion::{FuseAccGyro, FuseAccGyroMag, SensorFusion};
 
-pub use imu_integrator::{ImuIntegral, ImuIntegrator};
+pub use imu_integrator::{ImuIntegral, ImuIntegrator, OrientationNoise};
 
 pub use kalman_filter_diagnostics::{EstimatorHealth, FusionStatus, KalmanFilterDiagnostics};
 pub use kalman_filter_z::{KalmanFilterZ, KalmanFilterZf32, KalmanStateZ, KalmanStateZf32};

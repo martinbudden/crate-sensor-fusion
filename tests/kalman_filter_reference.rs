@@ -605,6 +605,8 @@ mod test_gps_reference {
 
 #[cfg(test)]
 mod test_predict_covariance {
+    use sensor_fusion::OrientationNoise;
+
     use super::*;
 
     #[test]
@@ -640,8 +642,10 @@ mod test_predict_covariance {
                 + (dt as f64).powi(2) * P0[(6, 6)]
                 + q_velocity as f64 * dt as f64
         );
+
+        let orientation_noise = OrientationNoise::default();
         // Run the actual production implementation.
-        filter.predict_covariance(dt);
+        filter.predict_covariance(&orientation_noise, dt);
 
         println!("\nProduction covariance after prediction:");
         println!("VV after prediction: {:?}", filter.covariance_for_test()[KalmanFilterXyz::VV]);

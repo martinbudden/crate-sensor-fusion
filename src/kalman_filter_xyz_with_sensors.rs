@@ -1,5 +1,7 @@
 use vqm::{Vector2f32, Vector3f32};
 
+use crate::{ImuIntegral, OrientationNoise};
+
 #[cfg(feature = "oooc")]
 use super::{FusionStatus, KalmanFilterXyzHistory, SnapshotXyz};
 
@@ -23,6 +25,8 @@ Desired Physical Noise (σ)            Equivalent R Variance Code Value (σ²)
 pub struct KalmanFilterXyzWithSensors {
     base: KalmanFilterXyz,
     // measurement noise covariance Matrix `R`
+    /// Assumed roll, pitch and yaw orientation error variances (rad²).
+    pub euler_variance: Vector3f32,
     /// Absolute Measurement Noise variance for horizontal GPS position.
     pub R_gps_position_horizontal: f32,
     /// Absolute Measurement Noise variance for vertical GPS position.
@@ -33,8 +37,12 @@ pub struct KalmanFilterXyzWithSensors {
     pub R_gps_velocity_vertical: f32,
     /// Absolute Measurement Noise variance for barometric pressure altimeter.
     pub R_barometer: f32,
+    /// NIS threshold for rejecting barometer measurements.
+    pub nis_threshold_barometer: f32,
     /// Absolute Measurement Noise variance for rangefinder.
     pub R_rangefinder: f32,
+    /// NIS threshold for rejecting rangefinder measurements.
+    pub nis_threshold_rangefinder: f32,
     /// Absolute Measurement Noise variance for optical flow.
     pub R_optical_flow: Vector2f32,
     /// Absolute Measurement Noise variance for ultra-wideband indoor positioning system..
@@ -68,6 +76,13 @@ impl KalmanFilterXyzWithSensors {
     pub fn new() -> Self {
         Self {
             base: KalmanFilterXyz::new(),
+            // Estimated attitude error variances (rad²).
+            // Typical MEMS IMU with calibrated magnetometer.
+            euler_variance: Vector3f32::new(
+                0.001_218, // Roll: 2 degrees
+                0.001_218, // Pitch: 2 degrees
+                0.007_615, // Yaw: 5 degrees
+            ),
             // Commercial GPS modules are typically accurate to within 1.5 to 3.0 meters horizontally, less vertically.
             R_gps_position_horizontal: 2.25,
             R_gps_position_vertical: 9.0,
@@ -82,7 +97,9 @@ impl KalmanFilterXyzWithSensors {
             // its real-world noise will be much higher than the datasheet specification.
             // A common practice is to multiply the datasheet variance by 4 to 10 to account for environmental pressure spikes.
             R_barometer: 0.1, // Slightly detuned to account for wind buffeting
+            nis_threshold_barometer: Self::NIS_THRESHOLD_1D,
             R_rangefinder: 0.03,
+            nis_threshold_rangefinder: Self::NIS_THRESHOLD_1D,
             R_optical_flow: Vector2f32 { x: 0.04, y: 0.04 },
             // 1cm to 10cm typical accuracy, use 10cm = 0.10m, = 0.01 variance for cheap modules.
             R_ultra_wideband: 0.01,
@@ -118,17 +135,19 @@ impl KalmanFilterXyzWithSensors {
         self.base.acc_bias_mps2()
     }
 
-    /// Called inside the main IMU execution loop (eg `gyro_pid` loop).
-    pub fn predict(&mut self, timestamp_us: u64, delta_vel_ned_mps: Vector3f32, delta_pos_ned_m: Vector3f32, dt: f32) {
+    /// Generally called inside the Autopilot task execution loop.
+    pub fn predict(&mut self, timestamp_us: u64, imu_integral: &ImuIntegral, dt: f32) {
         // Integrate physical kinematics forward (deterministic)
-        self.predict_state(delta_vel_ned_mps, delta_pos_ned_m, dt);
+        self.predict_state(imu_integral.delta_vel_ned_mps, imu_integral.delta_pos_ned_m, dt);
 
         // Propagate covariance uncertainty blocks forward (stochastic)
-        self.predict_covariance(dt);
+        let orientation_noise =
+            &imu_integral.calculate_orientation_process_noise(imu_integral.orientation, self.euler_variance);
+        self.predict_covariance(orientation_noise, dt);
 
-        self.latest_delta_vel_ned_mps = delta_vel_ned_mps;
+        self.latest_delta_vel_ned_mps = imu_integral.delta_vel_ned_mps;
         #[cfg(feature = "oooc")]
-        self.push_snapshot(timestamp_us, delta_pos_ned_m, delta_vel_ned_mps);
+        self.push_snapshot(timestamp_us, imu_integral.delta_pos_ned_m, imu_integral.delta_vel_ned_mps);
         _ = timestamp_us;
     }
 
@@ -137,8 +156,8 @@ impl KalmanFilterXyzWithSensors {
         self.base.predict_state(delta_vel_ned_mps, delta_pos_ned_m, dt);
     }
 
-    pub fn predict_covariance(&mut self, dt: f32) {
-        self.base.predict_covariance(dt);
+    pub fn predict_covariance(&mut self, orientation_noise: &OrientationNoise, dt: f32) {
+        self.base.predict_covariance(orientation_noise, dt);
     }
 
     /// Correct altitude using supplied R.
@@ -152,7 +171,7 @@ impl KalmanFilterXyzWithSensors {
     #[inline]
     pub fn correct_altitude_using_barometer(&mut self, timestamp_us: u64, altitude_m: f32) -> KalmanFilterDiagnostics {
         _ = timestamp_us;
-        self.base.correct_altitude(altitude_m, self.R_barometer, Self::NIS_THRESHOLD_1D)
+        self.base.correct_altitude(altitude_m, self.R_barometer, self.nis_threshold_barometer)
     }
 
     /// Correct altitude using the rangefinder measurement.
@@ -163,7 +182,7 @@ impl KalmanFilterXyzWithSensors {
         altitude_m: f32,
     ) -> KalmanFilterDiagnostics {
         _ = timestamp_us;
-        self.base.correct_altitude(altitude_m, self.R_rangefinder, Self::NIS_THRESHOLD_1D)
+        self.base.correct_altitude(altitude_m, self.R_rangefinder, self.nis_threshold_rangefinder)
     }
 
     /// Correct altitude using GPS vertical measurement.
@@ -273,17 +292,18 @@ impl KalmanFilterXyzWithSensors {
 
     /// Correct position using optical flow position measurement.
     /// Placeholder function, currently unimplemented.
-    pub fn correct_position_using_optical_flow(
+    pub fn correct_velocity_using_optical_flow(
         &mut self,
         timestamp_us: u64,
-        position_m: Vector2f32,
+        velocity_mps: Vector2f32,
     ) -> KalmanFilterDiagnostics {
         _ = self;
         _ = timestamp_us;
-        _ = position_m;
-        todo!("implement correct_position_using_optical_flow for xyx");
-        //self.base.correct_position_xy(position_m, self.R_optical_flow)
+        _ = velocity_mps;
+        todo!("implement correct_velocity_using_optical_flow for xyx");
+        //self.base.correct_velocity_xy(velocity_mps, self.R_optical_flow)
     }
+
     /// Flags that a fresh Barometric Altitude measurement occurred at the current step.
     pub fn register_barometer_event(&mut self, timestamp_us: u64, altitude_m: f32) {
         _ = timestamp_us;

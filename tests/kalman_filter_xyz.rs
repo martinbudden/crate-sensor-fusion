@@ -4,7 +4,7 @@ use vqm::{Matrix3x3f32, Matrix3x3xM3x3f32, UnitQuaternionf32, Vector3f32};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sensor_fusion::KalmanFilterXyzWithSensors;
+    use sensor_fusion::{KalmanFilterXyzWithSensors, OrientationNoise};
     const M11: usize = Matrix3x3xM3x3f32::M11;
     //const M22: usize = Matrix3x3xM3x3f32::M22;
     const M33: usize = Matrix3x3xM3x3f32::M33;
@@ -34,6 +34,7 @@ mod tests {
 
         // Prime the filter's initial position guess to match our starting point
         filter.set_position(true_pos_m);
+        let euler_variance = Vector3f32 { x: 0.0, y: 0.0, z: 0.0 };
 
         println!("\n--- PHASE 1: STATIONARY GPS LOCK (1 SECOND) ---");
         #[allow(clippy::cast_possible_truncation)]
@@ -44,10 +45,11 @@ mod tests {
             //let delta_vel_ned_mps = acc_measurement_mps2 * dt;
             integrator.integrate(acc_body_mps2, orientation, dt);
             let integral = integrator.imu_integral();
+            let orientation_noise = integral.calculate_orientation_process_noise(orientation, euler_variance);
             integrator.reset();
 
             filter.predict_state(integral.delta_vel_ned_mps, integral.delta_pos_ned_m, dt);
-            filter.predict_covariance(dt);
+            filter.predict_covariance(&orientation_noise, dt);
 
             //filter.correct_position(true_pos, r_gps);
             _ = filter.correct_position(true_pos_m, r_gps, KalmanFilterXyzWithSensors::NIS_THRESHOLD_3D);
@@ -88,7 +90,8 @@ mod tests {
             integrator.reset();
 
             filter.predict_state(integral.delta_vel_ned_mps, integral.delta_pos_ned_m, dt);
-            filter.predict_covariance(dt);
+            let orientation_noise = OrientationNoise::default();
+            filter.predict_covariance(&orientation_noise, dt);
 
             _ = filter.correct_position(true_pos_m, r_gps, KalmanFilterXyzWithSensors::NIS_THRESHOLD_3D);
         }
@@ -162,7 +165,8 @@ mod tests {
             integrator.reset();
 
             filter.predict_state(integral.delta_vel_ned_mps, integral.delta_pos_ned_m, dt);
-            filter.predict_covariance(dt);
+            let orientation_noise = OrientationNoise::default();
+            filter.predict_covariance(&orientation_noise, dt);
 
             // Step B: Measurement Update (Simulate stationary altitude updates)
             // Injecting a fixed R variance value
@@ -213,7 +217,8 @@ mod tests {
             integrator.reset();
 
             filter.predict_state(integral.delta_vel_ned_mps, integral.delta_pos_ned_m, dt);
-            filter.predict_covariance(dt);
+            let orientation_noise = OrientationNoise::default();
+            filter.predict_covariance(&orientation_noise, dt);
 
             // Step B: Measurement Update with simulated moving barometer data
             _ = filter.correct_altitude(true_pos_m.z, r_baro, KalmanFilterXyzWithSensors::NIS_THRESHOLD_1D);

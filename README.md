@@ -189,13 +189,14 @@ the Kalman filter and use a another sensor fusion filter (ie a Mahony or Madgwic
 ┌──┴─────────┐              │  │      ╰──────────────╯
 │    IMU     ├─────◀────────┘  │
 │ INTEGRATOR │                 ▲ Yaw(calculated)
-└──┬─────────┘     Positionₑ ╭─┴───╮
+└──┬─────────┘               ╭─┴───╮
    │                    ┌──◀─┤ Gps │
  delta_posₑ             │    ╰─────╯
- delta_velₑ             │
-   │                ┌───┴────┐       Positionₑ      ┌───────────┐
+ delta_velₑ           Positionₑ
+ OE sensitivities     Velocityₑ
+   │                ┌───┴────┐           Positionₑ  ┌───────────┐
    └──────▶─────────┤ KALMAN ├────────────▶─────────┤ AUTOPILOT │
-                    │ FILTER │       Velocityₑ      └───────────┘
+                    │ FILTER │           Velocityₑ  └───────────┘
                     └────┬───┘
                          │
        Barometer, etc ─▶─┘
@@ -205,6 +206,7 @@ the Kalman filter and use a another sensor fusion filter (ie a Mahony or Madgwic
 ╰───────╯
 The subscript ₛ denotes a value in the sensor frame (body frame).
 The subscript ₑ denotes a value in the earth frame (inertial frame).
+OE sensitivities = orientation error sensitivities, ie how orientations errors affect the estimated position and velocity.
 ```
 
 This reduces the covariance matrix to more manageable size of 9x9 for 3D (and 6x6 for 2D) and avoids the need
@@ -227,6 +229,7 @@ The IMU integrator serves two purposes:
 2. It integrates this `Accₑ` to give `delta_posₑ` and `delta_velₑ` values.
    These are needed because the Kalman filter runs at a lower rate than the IMU
    (the IMU can run at up to 8kHz, the Kalman filter typically runs at 500Hz or less).
+3. Calculates the orientation Jacobians, which are subsequently used to estimate the orientation process noise.
 
 ### Kalman Filter Optimization
 
