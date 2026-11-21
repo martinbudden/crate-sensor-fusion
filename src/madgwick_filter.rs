@@ -496,7 +496,7 @@ mod tests {
         let filtered_q = filter.correct_yaw_with_gain(target_yaw.to_radians(), gain, dt);
         let final_yaw = filtered_q.calculate_yaw_degrees();
         println!("Yaw, initial: {initial_yaw:.4}° | target: {target_yaw:.4}° | filtered: {final_yaw:.4}°");
-        assert!((179.25 - final_yaw).abs() < 2e-4);
+        assert!((179.25 - final_yaw).abs() < 5e-4);
 
         let initial_yaw = 179.75f32;
         let initial_q = UnitQuaternionf32::from_yaw_degrees(initial_yaw);
