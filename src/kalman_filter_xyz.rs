@@ -1452,36 +1452,42 @@ impl KalmanStateXyz {
         }
     }
 
+    /// Return position vector in meters.
     #[inline]
     #[must_use]
     pub fn pos_ned_m(&self) -> Vector3f32 {
         self.pos_ned_m
     }
 
+    /// Return z component of position vector in meters.
     #[inline]
     #[must_use]
     pub fn pos_z_m(&self) -> f32 {
         self.pos_ned_m.z
     }
 
+    /// Return velocity vector in meters per second.
     #[inline]
     #[must_use]
     pub fn vel_ned_mps(&self) -> Vector3f32 {
         self.vel_ned_mps / Self::SCALE_VELOCITY
     }
 
+    /// Return z component of velocity vector in meters per second.
     #[inline]
     #[must_use]
     pub fn vel_z_mps(&self) -> f32 {
         self.vel_ned_mps.z / Self::SCALE_VELOCITY
     }
 
+    /// Return acceleration bias vector in meters per second per second.
     #[inline]
     #[must_use]
     pub fn acc_bias_ned_mps2(&self) -> Vector3f32 {
         self.acc_bias_ned_mps2 / Self::SCALE_ACC_BIAS
     }
 
+    /// Return `z` component of acc bias vector in meters per second per second.
     #[inline]
     #[must_use]
     pub fn acc_bias_z_mps2(&self) -> f32 {

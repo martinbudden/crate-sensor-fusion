@@ -222,14 +222,15 @@ These corrections can come from two sources:
 1. a magnetometer for an absolute yaw value
 2. when in motion, the yaw value can be determined from the GPS velocity.
 
-The IMU integrator serves two purposes:
+The IMU integrator serves three purposes:
 
 1. It uses the orientation from the Madgwick filter to convert the acceleration `Accₛ` from the sensor
    frame to the earth frame (`Accₑ`).
-2. It integrates this `Accₑ` to give `delta_posₑ` and `delta_velₑ` values.
+2. It integrates this `Accₑ` to give `delta_posₑ` and `delta_velₑ` values, which are used in the `predict_state` function.
    These are needed because the Kalman filter runs at a lower rate than the IMU
    (the IMU can run at up to 8kHz, the Kalman filter typically runs at 500Hz or less).
-3. Calculates the orientation Jacobians, which are subsequently used to estimate the orientation process noise.
+3. Calculates the orientation position and velocity sensitivities (Jacobians), which are subsequently used to in the
+   `predict_covariance` function to estimate the orientation process noise.
 
 ### Kalman Filter Optimization
 
@@ -318,6 +319,8 @@ Further optimizations include:
 1. recognizing `R` is diagonal matrix, so multiplication by `R` is simplified.
 2. collapsing `Q` from a 9x9 matrix into the two scalars `Q_velocity` and `Q_bias`.
 3. don't explicitly create the matrix `H`: rather directly select the relevant submatrices when calculating `H·P·Hᵀ`, `P·Hᵀ·S⁻¹` and `H·x`.
+
+Outlier measurements whose Normalized Innovation Squared (NIS) (aka Mahalanobis Distance) exceeds a set threshold are rejected.
 
 ### Handling corrections using delayed GPS measurements
 

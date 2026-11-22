@@ -1,8 +1,6 @@
 use vqm::RollPitchYawf32;
 
-use crate::ImuIntegral;
-
-use super::{KalmanFilterDiagnostics, KalmanFilterZ, KalmanStateZ, OrientationNoise};
+use super::{ImuIntegral, KalmanFilterDiagnostics, KalmanFilterZ, KalmanStateZ, OrientationNoise};
 
 /// `f32` variant of `PositionKalmanFilterExtended`.
 pub type KalmanFilterZWithSensorsf32 = KalmanFilterZWithSensors;

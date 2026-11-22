@@ -64,6 +64,7 @@ impl<T> SensorFusion<T> for MahonyFilter<T>
 where
     T: FloatCore + MathMethods + MathConstants + QuaternionMath,
 {
+    /// Sets `kp` and `ki` gains.
     fn set_gains(&mut self, gain0: T, gain1: T) {
         self.kp = gain0;
         self.ki = gain1;

@@ -548,36 +548,42 @@ impl KalmanStateZ {
         }
     }
 
+    /// Return a position vector with the `x` and `y` components set to zero.
     #[inline]
     #[must_use]
     pub fn pos_ned_m(&self) -> Vector3f32 {
         Vector3f32 { x: 0.0, y: 0.0, z: self.pos_ned_m }
     }
 
+    /// Return the position in meters.
     #[inline]
     #[must_use]
     pub fn pos_z_m(&self) -> f32 {
         self.pos_ned_m
     }
 
+    /// Return a velocity vector with the `x` and `y` components set to zero.
     #[inline]
     #[must_use]
     pub fn vel_ned_mps(&self) -> Vector3f32 {
         Vector3f32 { x: 0.0, y: 0.0, z: self.vel_ned_mps }
     }
 
+    /// Return the velocity in meters per second.
     #[inline]
     #[must_use]
     pub fn vel_z_mps(&self) -> f32 {
         self.vel_ned_mps
     }
 
+    /// Return an accelerometer bias vector with the `x` and `y` components set to zero.
     #[inline]
     #[must_use]
     pub fn acc_bias_ned_mps2(&self) -> Vector3f32 {
         Vector3f32 { x: 0.0, y: 0.0, z: self.acc_bias_ned_mps2 }
     }
 
+    /// Return the accelerometer bias in meters per second per second.
     #[inline]
     #[must_use]
     pub fn acc_bias_z_mps2(&self) -> f32 {

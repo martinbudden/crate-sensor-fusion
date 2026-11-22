@@ -268,6 +268,7 @@ impl<T> SensorFusion<T> for MadgwickFilter<T>
 where
     T: Copy + FloatCore + QuaternionMath + MathMethods,
 {
+    /// Sets `beta` and `beta_yaw` gains.
     fn set_gains(&mut self, gain0: T, gain1: T) {
         self.beta = gain0;
         self.beta_yaw = gain1;

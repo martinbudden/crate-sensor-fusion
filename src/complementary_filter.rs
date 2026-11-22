@@ -45,10 +45,13 @@ where
     pub fn roll_radians_from_acc_normalized(acc_mps2: Vector3<T>) -> T {
         (acc_mps2.y).atan2(acc_mps2.z)
     }
+
     /// Calculate pitch (phi) from the normalized accelerometer readings.
     pub fn pitch_radians_from_acc_normalized(acc: Vector3<T>) -> T {
         (-acc.x).atan2((acc.y * acc.y + acc.z * acc.z).sqrt())
     }
+
+    /// Set the `alpha` value.
     pub fn set_alpha(&mut self, alpha: T) {
         self.alpha = alpha;
     }
@@ -58,6 +61,7 @@ impl<T> SensorFusion<T> for ComplementaryFilter<T>
 where
     T: Copy + FloatCore + MathMethods + QuaternionMath,
 {
+    /// Set the complementary filter `alpha` value.
     fn set_gains(&mut self, gain0: T, _gain1: T) {
         self.alpha = gain0;
     }

@@ -625,18 +625,21 @@ impl KalmanStateXy {
         }
     }
 
+    /// Return position vector in meters.
     #[inline]
     #[must_use]
     pub fn pos_ned_m(&self) -> Vector2f32 {
         self.pos_ned_m
     }
 
+    /// Return velocity vector in meters per second.
     #[inline]
     #[must_use]
     pub fn vel_ned_mps(&self) -> Vector2f32 {
         self.vel_ned_mps
     }
 
+    /// Return acceleration bias vector in meters per second per second.
     #[inline]
     #[must_use]
     pub fn acc_bias_ned_mps2(&self) -> Vector2f32 {
