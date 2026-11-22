@@ -1,5 +1,5 @@
 use num_traits::{ConstOne, ConstZero};
-use vqm::{MathMethods, Matrix3x3f32, UnitQuaternionf32, Vector3f32};
+use vqm::{MathMethods, Matrix3x3f32, RollPitchYawf32, UnitQuaternionf32, Vector3f32};
 
 /// Converts acceleration from sensor frame to NED frame, and integrates it
 /// to give `delta_pos` and `delta_vel` values.
@@ -166,7 +166,7 @@ impl ImuIntegral {
     pub fn calculate_orientation_process_noise(
         &self,
         orientation: UnitQuaternionf32,
-        euler_variance: Vector3f32,
+        euler_variance: RollPitchYawf32,
     ) -> OrientationNoise {
         let orientation_covariance = self.orientation_variance_to_ned(orientation, euler_variance);
         let jp = self.orientation_pos_jacobian;
@@ -184,7 +184,7 @@ impl ImuIntegral {
     pub fn orientation_variance_to_ned(
         &self,
         orientation: UnitQuaternionf32,
-        euler_variance: Vector3f32,
+        euler_variance: RollPitchYawf32,
     ) -> Matrix3x3f32 {
         let q = orientation.q();
 
@@ -210,7 +210,7 @@ impl ImuIntegral {
             sin_yaw_cos_pitch,  cos_yaw, 0.0,
            -sin_pitch,          0.0,     1.0,
         ]);
-        j.mul_diagonal_vector(euler_variance) * j.transpose()
+        j.mul_diagonal_array([euler_variance.roll, euler_variance.pitch, euler_variance.yaw]) * j.transpose()
     }
 }
 

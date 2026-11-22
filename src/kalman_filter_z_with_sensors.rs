@@ -1,4 +1,4 @@
-use vqm::Vector3f32;
+use vqm::RollPitchYawf32;
 
 use crate::ImuIntegral;
 
@@ -23,7 +23,7 @@ pub struct KalmanFilterZWithSensors {
     base: KalmanFilterZ,
     // measurement noise covariance Matrix `R`
     /// Assumed roll, pitch and yaw orientation error variances (rad²).
-    pub euler_variance: Vector3f32,
+    pub euler_variance: RollPitchYawf32,
     /// Absolute Measurement Noise variance for vertical GPS position.
     pub R_gps_position_vertical: f32,
     /// Absolute Measurement Noise variance for vertical GPS velocity.
@@ -58,7 +58,7 @@ impl KalmanFilterZWithSensors {
             base: KalmanFilterZ::new(),
             // Estimated attitude error variances (rad²).
             // Typical MEMS IMU with calibrated magnetometer.
-            euler_variance: Vector3f32::new(
+            euler_variance: RollPitchYawf32::new(
                 0.001_218, // Roll: 2 degrees
                 0.001_218, // Pitch: 2 degrees
                 0.007_615, // Yaw: 5 degrees

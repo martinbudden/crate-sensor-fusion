@@ -33,7 +33,7 @@ mod tests {
 
         // Prime the filter's initial position guess to match our starting point
         filter.set_position(true_pos_m.into());
-        let euler_variance = Vector3f32 { x: 0.0, y: 0.0, z: 0.0 };
+        let euler_variance = vqm::RollPitchYaw { roll: 0.0, pitch: 0.0, yaw: 0.0 };
 
         println!("\n--- PHASE 1: STATIONARY GPS LOCK (1 SECOND) ---");
         #[allow(clippy::cast_possible_truncation)]

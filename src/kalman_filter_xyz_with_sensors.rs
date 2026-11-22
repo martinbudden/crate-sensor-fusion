@@ -1,4 +1,4 @@
-use vqm::{Vector2f32, Vector3f32};
+use vqm::{RollPitchYawf32, Vector2f32, Vector3f32};
 
 #[cfg(feature = "oooc")]
 use super::{FusionStatus, KalmanFilterXyzHistory, SnapshotXyz};
@@ -24,7 +24,7 @@ pub struct KalmanFilterXyzWithSensors {
     base: KalmanFilterXyz,
     // measurement noise covariance Matrix `R`
     /// Assumed roll, pitch and yaw orientation error variances (rad²).
-    pub euler_variance: Vector3f32,
+    pub euler_variance: RollPitchYawf32,
     /// Absolute Measurement Noise variance for horizontal GPS position.
     pub R_gps_position_horizontal: f32,
     /// Absolute Measurement Noise variance for vertical GPS position.
@@ -76,7 +76,7 @@ impl KalmanFilterXyzWithSensors {
             base: KalmanFilterXyz::new(),
             // Estimated attitude error variances (rad²).
             // Typical MEMS IMU with calibrated magnetometer.
-            euler_variance: Vector3f32::new(
+            euler_variance: RollPitchYawf32::new(
                 0.001_218, // Roll: 2 degrees
                 0.001_218, // Pitch: 2 degrees
                 0.007_615, // Yaw: 5 degrees
