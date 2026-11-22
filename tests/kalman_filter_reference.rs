@@ -347,7 +347,7 @@ fn compare_results(
     actual_nis: f64,
     expected_nis: f64,
 ) {
-    let actual_state = to_na_state(&filter.state_for_test());
+    let actual_state = to_na_state(&filter.state());
     let actual_P = to_na9(&filter.covariance_for_test());
     //println!("\nCovariance block errors:");
 
@@ -433,7 +433,7 @@ mod test_gps_reference {
 
         let (measurement_m, velocity_mps, R_position, R_velocity) = test_measurements();
 
-        let initial_state = initial_filter.state_for_test();
+        let initial_state = initial_filter.state();
         let initial_P = initial_filter.covariance_for_test();
 
         let predicted_measurement_m = initial_state.pos_ned_m;
@@ -482,10 +482,10 @@ mod test_gps_reference {
 
         let (measurement_m, velocity_mps, R_position, R_velocity) = test_measurements();
 
-        let predicted_velocity_mps = initial_filter.state_for_test().vel_ned_mps;
+        let predicted_velocity_mps = initial_filter.state().vel_ned_mps;
 
         let (expected_state, expected_P, expected_nis) = reference_9x9_update(
-            &initial_filter.state_for_test(),
+            &initial_filter.state(),
             &initial_filter.covariance_for_test(),
             measurement_m,
             velocity_mps,
@@ -512,12 +512,12 @@ mod test_gps_reference {
 
         let (measurement_m, velocity_mps, R_position, R_velocity) = test_measurements();
 
-        let predicted_measurement_m = initial_filter.state_for_test().pos_ned_m;
+        let predicted_measurement_m = initial_filter.state().pos_ned_m;
 
-        let predicted_velocity_mps = initial_filter.state_for_test().vel_ned_mps;
+        let predicted_velocity_mps = initial_filter.state().vel_ned_mps;
 
         let (expected_state, expected_P, expected_nis) = reference_9x9_update(
-            &initial_filter.state_for_test(),
+            &initial_filter.state(),
             &initial_filter.covariance_for_test(),
             measurement_m,
             velocity_mps,
@@ -559,7 +559,7 @@ mod test_gps_reference {
         let (measurement_m, velocity_mps, R_position, R_velocity) = test_measurements();
 
         let (expected_state, expected_P, expected_nis) = reference_9x9_update(
-            &initial_filter.state_for_test(),
+            &initial_filter.state(),
             &initial_filter.covariance_for_test(),
             measurement_m,
             velocity_mps,
@@ -571,7 +571,7 @@ mod test_gps_reference {
         // First correct velocity.
         let diagnostics_velocity = filter.correct_velocity_joseph_stabilized_form(
             velocity_mps,
-            initial_filter.state_for_test().vel_ned_mps,
+            initial_filter.state().vel_ned_mps,
             R_velocity,
             f32::MAX,
         );
@@ -579,7 +579,7 @@ mod test_gps_reference {
         assert_eq!(diagnostics_velocity.status, FusionStatus::Accepted);
 
         // Then correct position using the updated predicted position.
-        let predicted_measurement_m = filter.state_for_test().pos_ned_m;
+        let predicted_measurement_m = filter.state().pos_ned_m;
 
         let diagnostics_position = filter.correct_position_joseph_stabilized_form(
             measurement_m,

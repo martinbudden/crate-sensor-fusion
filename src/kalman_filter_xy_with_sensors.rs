@@ -1,5 +1,7 @@
 use vqm::Vector2f32;
 
+use crate::ImuIntegral;
+
 #[cfg(feature = "oooc")]
 use super::{FusionStatus, KalmanFilterXyHistory, SnapshotXy};
 
@@ -91,30 +93,10 @@ impl KalmanFilterXyWithSensors {
         self.base.state()
     }
 
-    /// Returns position vector, in meters.
-    #[inline]
-    #[must_use]
-    pub fn pos_m(&self) -> Vector2f32 {
-        self.base.pos_m()
-    }
-
-    /// Returns velocity vector, in meters per second.
-    #[inline]
-    #[must_use]
-    pub fn vel_mps(&self) -> Vector2f32 {
-        self.base.vel_mps()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn acc_bias_mps2(&self) -> Vector2f32 {
-        self.base.acc_bias_mps2()
-    }
-
     /// Called inside the main IMU execution loop (eg `gyro_pid` loop).
-    pub fn predict(&mut self, timestamp_us: u64, delta_vel_ned_mps: Vector2f32, delta_pos_ned_m: Vector2f32, dt: f32) {
+    pub fn predict(&mut self, timestamp_us: u64, imu_integral: &ImuIntegral, dt: f32) {
         // Integrate physical kinematics forward (deterministic)
-        self.predict_state(delta_vel_ned_mps, delta_pos_ned_m, dt);
+        self.predict_state(imu_integral.delta_vel_ned_mps.into(), imu_integral.delta_pos_ned_m.into(), dt);
 
         // Propagate covariance uncertainty blocks forward (stochastic)
         self.predict_covariance(dt);

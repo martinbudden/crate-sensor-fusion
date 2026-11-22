@@ -140,30 +140,6 @@ impl KalmanFilterZ {
     pub fn state(&self) -> KalmanStateZ {
         self.state
     }
-
-    #[inline]
-    #[must_use]
-    pub fn pos_m(&self) -> f32 {
-        self.state.pos_ned_m
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn vel_mps(&self) -> f32 {
-        self.state.vel_ned_mps()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn acc_bias_mps2(&self) -> f32 {
-        self.state.acc_bias_ned_mps2()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn p(&self) -> &Matrix3x3f32 {
-        &self.P
-    }
 }
 
 // **** Predict ****
@@ -571,13 +547,37 @@ impl KalmanStateZ {
 
     #[inline]
     #[must_use]
-    pub fn vel_ned_mps(&self) -> f32 {
+    pub fn pos_ned_m(&self) -> Vector3f32 {
+        Vector3f32 { x: 0.0, y: 0.0, z: self.pos_ned_m }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn pos_z_m(&self) -> f32 {
+        self.pos_ned_m
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn vel_ned_mps(&self) -> Vector3f32 {
+        Vector3f32 { x: 0.0, y: 0.0, z: self.vel_ned_mps }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn vel_z_mps(&self) -> f32 {
         self.vel_ned_mps
     }
 
     #[inline]
     #[must_use]
-    pub fn acc_bias_ned_mps2(&self) -> f32 {
+    pub fn acc_bias_ned_mps2(&self) -> Vector3f32 {
+        Vector3f32 { x: 0.0, y: 0.0, z: self.acc_bias_ned_mps2 }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn acc_bias_z_mps2(&self) -> f32 {
         self.acc_bias_ned_mps2
     }
 }

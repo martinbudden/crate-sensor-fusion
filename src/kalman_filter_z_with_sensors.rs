@@ -1,3 +1,5 @@
+use crate::ImuIntegral;
+
 use super::{KalmanFilterDiagnostics, KalmanFilterZ, KalmanStateZ};
 
 /// `f32` variant of `PositionKalmanFilterExtended`.
@@ -73,32 +75,14 @@ impl KalmanFilterZWithSensors {
         self.base.state()
     }
 
-    #[inline]
-    #[must_use]
-    pub fn pos_m(&self) -> f32 {
-        self.base.pos_m()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn vel_mps(&self) -> f32 {
-        self.base.vel_mps()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn acc_bias_mps2(&self) -> f32 {
-        self.base.acc_bias_mps2()
-    }
-
     /// Called inside the main IMU execution loop (eg `gyro_pid` loop).
-    pub fn predict(&mut self, timestamp_us: u64, delta_vel_mps: f32, delta_pos_m: f32, dt: f32) {
-        _ = timestamp_us;
+    pub fn predict(&mut self, timestamp_us: u64, imu_integral: &ImuIntegral, dt: f32) {
         // Integrate physical kinematics forward (deterministic)
-        self.predict_state(delta_vel_mps, delta_pos_m, dt);
+        self.predict_state(imu_integral.delta_vel_ned_mps.z, imu_integral.delta_pos_ned_m.z, dt);
 
         // Propagate covariance uncertainty blocks forward (stochastic)
         self.predict_covariance(dt);
+        _ = timestamp_us;
     }
 
     /// Predict state, given delta velocity and delta position in NED frame.

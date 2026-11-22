@@ -56,17 +56,24 @@ mod tests {
         }
 
         // --- PHASE 1 AUDIT LOGS ---
-        println!("Stationary -> True Pos X: {:.4}, Estimated Pos X: {:.4}", true_pos_m.x, filter.pos_m().x);
-        println!("Stationary -> True Vel X: {:.4}, Estimated Vel X: {:.4}", true_vel_mps.x, filter.vel_mps().x);
+        println!("Stationary -> True Pos X: {:.4}, Estimated Pos X: {:.4}", true_pos_m.x, filter.state().pos_ned_m().x);
+        println!(
+            "Stationary -> True Vel X: {:.4}, Estimated Vel X: {:.4}",
+            true_vel_mps.x,
+            filter.state().vel_ned_mps().x
+        );
         println!(
             "Stationary -> True Bias X: {:.4}, Estimated Bias X: {:.4}",
             true_bias_mps2.x,
-            filter.acc_bias_mps2().x
+            filter.state().acc_bias_ned_mps2().x
         );
 
         // Verification assertions for Phase 1
-        assert!((filter.pos_m().x - true_pos_m.x).abs() < 0.05, "Position drifted while stationary!");
-        assert!((filter.vel_mps().x - true_vel_mps.x).abs() < 0.05, "Velocity accumulated noise while stationary!");
+        assert!((filter.state().pos_ned_m().x - true_pos_m.x).abs() < 0.05, "Position drifted while stationary!");
+        assert!(
+            (filter.state().vel_ned_mps().x - true_vel_mps.x).abs() < 0.05,
+            "Velocity accumulated noise while stationary!"
+        );
 
         // Ensure covariance has shrunk significantly below the starting bounds
         let post_stat_p_pos_x = filter.pp_for_test()[M11];
@@ -97,28 +104,42 @@ mod tests {
         }
 
         // --- PHASE 2 AUDIT LOGS ---
-        println!("Maneuver -> True Final Pos X: {:.4}, Estimated Final Pos X: {:.4}", true_pos_m.x, filter.pos_m().x);
-        println!("Maneuver -> True Final Pos Y: {:.4}, Estimated Final Pos Y: {:.4}", true_pos_m.y, filter.pos_m().y);
+        println!(
+            "Maneuver -> True Final Pos X: {:.4}, Estimated Final Pos X: {:.4}",
+            true_pos_m.x,
+            filter.state().pos_ned_m().x
+        );
+        println!(
+            "Maneuver -> True Final Pos Y: {:.4}, Estimated Final Pos Y: {:.4}",
+            true_pos_m.y,
+            filter.state().pos_ned_m().y
+        );
         println!(
             "Maneuver -> True Final Vel X: {:.4}, Estimated Final Vel X: {:.4}",
             true_vel_mps.x,
-            filter.vel_mps().x
+            filter.state().vel_ned_mps().x
         );
         println!(
             "Maneuver -> True Final Vel Y: {:.4}, Estimated Final Vel Y: {:.4}",
             true_vel_mps.y,
-            filter.vel_mps().y
+            filter.state().vel_ned_mps().y
         );
 
         // Tracking precision assertions
-        assert!((filter.pos_m().x - true_pos_m.x).abs() < 0.1, "Filter missed true physical X position track!");
-        assert!((filter.pos_m().y - true_pos_m.y).abs() < 0.1, "Filter missed true physical Y position track!");
         assert!(
-            (filter.vel_mps().x - true_vel_mps.x).abs() < 0.1,
+            (filter.state().pos_ned_m().x - true_pos_m.x).abs() < 0.1,
+            "Filter missed true physical X position track!"
+        );
+        assert!(
+            (filter.state().pos_ned_m().y - true_pos_m.y).abs() < 0.1,
+            "Filter missed true physical Y position track!"
+        );
+        assert!(
+            (filter.state().vel_ned_mps().x - true_vel_mps.x).abs() < 0.1,
             "Filter velocity tracking tracking failed on X axis!"
         );
         assert!(
-            (filter.vel_mps().y - true_vel_mps.y).abs() < 0.1,
+            (filter.state().vel_ned_mps().y - true_vel_mps.y).abs() < 0.1,
             "Filter velocity tracking tracking failed on Y axis!"
         );
 
@@ -184,13 +205,16 @@ mod tests {
         }
 
         // --- VERIFICATIONS FOR PHASE 1 ---
-        println!("True Pos Z: {:.4}, Estimated Pos Z: {:.4}", true_pos_m.z, filter.pos_m().z);
-        println!("True Vel Z: {:.4}, Estimated Vel Z: {:.4}", true_vel_mps.z, filter.vel_mps().z);
-        println!("True Bias Z: {:.4}, Estimated Bias Z: {:.4}", true_bias_mps2.z, filter.acc_bias_mps2().z);
+        println!("True Pos Z: {:.4}, Estimated Pos Z: {:.4}", true_pos_m.z, filter.state().pos_ned_m().z);
+        println!("True Vel Z: {:.4}, Estimated Vel Z: {:.4}", true_vel_mps.z, filter.state().vel_ned_mps().z);
+        println!("True Bias Z: {:.4}, Estimated Bias Z: {:.4}", true_bias_mps2.z, filter.state().acc_bias_ned_mps2().z);
 
         // Assertions: The filter should remain near zero despite raw measurements reading ~ -9.81
-        assert!((filter.pos_m().z - true_pos_m.z).abs() < 0.05, "Position drifted significantly while resting!");
-        assert!((filter.vel_mps().z - true_vel_mps.z).abs() < 0.05, "Velocity accumulated phantom motion!");
+        assert!(
+            (filter.state().pos_ned_m().z - true_pos_m.z).abs() < 0.05,
+            "Position drifted significantly while resting!"
+        );
+        assert!((filter.state().vel_ned_mps().z - true_vel_mps.z).abs() < 0.05, "Velocity accumulated phantom motion!");
 
         // Assertions: Covariance bounds MUST contract if the sensor math is operating properly
         let post_stationary_p_pos = filter.pp_for_test()[M33];
@@ -225,12 +249,22 @@ mod tests {
         }
 
         // --- VERIFICATIONS FOR PHASE 2 ---
-        println!("True Final Pos Z: {:.4}, Estimated Final Pos Z: {:.4}", true_pos_m.z, filter.pos_m().z);
-        println!("True Final Vel Z: {:.4}, Estimated Final Vel Z: {:.4}", true_vel_mps.z, filter.vel_mps().z);
+        println!("True Final Pos Z: {:.4}, Estimated Final Pos Z: {:.4}", true_pos_m.z, filter.state().pos_ned_m().z);
+        println!(
+            "True Final Vel Z: {:.4}, Estimated Final Vel Z: {:.4}",
+            true_vel_mps.z,
+            filter.state().vel_ned_mps().z
+        );
 
         // The filter tracking error should be tight
-        assert!((filter.pos_m().z - true_pos_m.z).abs() < 0.1, "Filter failed to track dynamic trajectory accurately!");
-        assert!((filter.vel_mps().z - true_vel_mps.z).abs() < 0.1, "Filter velocity tracking diverged during climb!");
+        assert!(
+            (filter.state().pos_ned_m().z - true_pos_m.z).abs() < 0.1,
+            "Filter failed to track dynamic trajectory accurately!"
+        );
+        assert!(
+            (filter.state().vel_ned_mps().z - true_vel_mps.z).abs() < 0.1,
+            "Filter velocity tracking diverged during climb!"
+        );
 
         println!("\n✅ All Kalman Filter math, indices, and coordinate signs verified successfully!");
     }
@@ -285,12 +319,12 @@ mod test_anchors {
 
         let scale = 1.0 / 1.01;
 
-        assert!(kf.pos_m().is_approx(v(3.0 + 0.6 * scale, 4.0 + 0.8 * scale, 0.0), EPS));
+        assert!(kf.state().pos_ned_m().is_approx(v(3.0 + 0.6 * scale, 4.0 + 0.8 * scale, 0.0), EPS));
 
         // No cross covariance, so velocity and bias should not change.
-        assert!(kf.vel_mps().is_approx(v(0.0, 0.0, 0.0), EPS));
+        assert!(kf.state().vel_ned_mps().is_approx(v(0.0, 0.0, 0.0), EPS));
 
-        assert!(kf.acc_bias_mps2().is_approx(v(0.0, 0.0, 0.0), EPS));
+        assert!(kf.state().acc_bias_ned_mps2().is_approx(v(0.0, 0.0, 0.0), EPS));
     }
 
     #[test]
@@ -330,7 +364,7 @@ mod test_anchors {
 
         let scale = 1.0 / 1.01;
 
-        assert!(kf.vel_mps().is_approx(v(0.3 * scale, 0.4 * scale, 0.0), EPS));
+        assert!(kf.state().vel_ned_mps().is_approx(v(0.3 * scale, 0.4 * scale, 0.0), EPS));
     }
 
     #[test]
@@ -367,7 +401,7 @@ mod test_anchors {
 
         let scale = 1.0 / 1.01;
 
-        assert!(kf.acc_bias_mps2().is_approx(v(0.12 * scale, 0.24 * scale, 0.0), EPS));
+        assert!(kf.state().acc_bias_ned_mps2().is_approx(v(0.12 * scale, 0.24 * scale, 0.0), EPS));
     }
 
     #[test]
@@ -376,16 +410,16 @@ mod test_anchors {
 
         let mut kf = make_filter();
 
-        let original_pos = kf.pos_m();
-        let original_vel = kf.vel_mps();
-        let original_bias = kf.acc_bias_mps2();
+        let original_pos = kf.state().pos_ned_m();
+        let original_vel = kf.state().vel_ned_mps();
+        let original_bias = kf.state().acc_bias_ned_mps2();
 
         // Predicted range is exactly 5.
         _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 5.0, 100.0, 0.01);
 
-        assert!(kf.pos_m().is_approx(original_pos, EPS));
-        assert!(kf.vel_mps().is_approx(original_vel, EPS));
-        assert!(kf.acc_bias_mps2().is_approx(original_bias, EPS));
+        assert!(kf.state().pos_ned_m().is_approx(original_pos, EPS));
+        assert!(kf.state().vel_ned_mps().is_approx(original_vel, EPS));
+        assert!(kf.state().acc_bias_ned_mps2().is_approx(original_bias, EPS));
     }
 
     #[test]
@@ -394,18 +428,18 @@ mod test_anchors {
 
         let mut kf = make_filter();
 
-        let original_pos = kf.pos_m();
-        let original_vel = kf.vel_mps();
-        let original_bias = kf.acc_bias_mps2();
+        let original_pos = kf.state().pos_ned_m();
+        let original_vel = kf.state().vel_ned_mps();
+        let original_bias = kf.state().acc_bias_ned_mps2();
         let original_p = *kf.p_for_test();
 
         // Predicted range = 5.
         // 100 m is obviously an outlier.
         _ = kf.correct_position_using_anchor_distance(v(0.0, 0.0, 0.0), 100.0, 6.63, 0.01);
 
-        assert!(kf.pos_m().is_approx(original_pos, EPS));
-        assert!(kf.vel_mps().is_approx(original_vel, EPS));
-        assert!(kf.acc_bias_mps2().is_approx(original_bias, EPS));
+        assert!(kf.state().pos_ned_m().is_approx(original_pos, EPS));
+        assert!(kf.state().vel_ned_mps().is_approx(original_vel, EPS));
+        assert!(kf.state().acc_bias_ned_mps2().is_approx(original_bias, EPS));
 
         assert!(kf.p_for_test()[KalmanFilterXyz::PP].is_approx(original_p[KalmanFilterXyz::PP], EPS));
         assert!(kf.p_for_test()[KalmanFilterXyz::PV].is_approx(original_p[KalmanFilterXyz::PV], EPS));

@@ -53,17 +53,24 @@ mod tests {
         }
 
         // --- PHASE 1 AUDIT LOGS ---
-        println!("Stationary -> True Pos X: {:.4}, Estimated Pos X: {:.4}", true_pos_m.x, filter.pos_m().x);
-        println!("Stationary -> True Vel X: {:.4}, Estimated Vel X: {:.4}", true_vel_mps.x, filter.vel_mps().x);
+        println!("Stationary -> True Pos X: {:.4}, Estimated Pos X: {:.4}", true_pos_m.x, filter.state().pos_ned_m().x);
+        println!(
+            "Stationary -> True Vel X: {:.4}, Estimated Vel X: {:.4}",
+            true_vel_mps.x,
+            filter.state().vel_ned_mps().x
+        );
         println!(
             "Stationary -> True Bias X: {:.4}, Estimated Bias X: {:.4}",
             true_bias_mps2.x,
-            filter.acc_bias_mps2().x
+            filter.state().acc_bias_ned_mps2().x
         );
 
         // Verification assertions for Phase 1
-        assert!((filter.pos_m().x - true_pos_m.x).abs() < 0.05, "Position drifted while stationary!");
-        assert!((filter.vel_mps().x - true_vel_mps.x).abs() < 0.05, "Velocity accumulated noise while stationary!");
+        assert!((filter.state().pos_ned_m().x - true_pos_m.x).abs() < 0.05, "Position drifted while stationary!");
+        assert!(
+            (filter.state().vel_ned_mps().x - true_vel_mps.x).abs() < 0.05,
+            "Velocity accumulated noise while stationary!"
+        );
 
         // Ensure covariance has shrunk significantly below the starting bounds
         let post_stat_p_pos_x = filter.pp_for_test()[M11];
@@ -93,28 +100,42 @@ mod tests {
         }
 
         // --- PHASE 2 AUDIT LOGS ---
-        println!("Maneuver -> True Final Pos X: {:.4}, Estimated Final Pos X: {:.4}", true_pos_m.x, filter.pos_m().x);
-        println!("Maneuver -> True Final Pos Y: {:.4}, Estimated Final Pos Y: {:.4}", true_pos_m.y, filter.pos_m().y);
+        println!(
+            "Maneuver -> True Final Pos X: {:.4}, Estimated Final Pos X: {:.4}",
+            true_pos_m.x,
+            filter.state().pos_ned_m().x
+        );
+        println!(
+            "Maneuver -> True Final Pos Y: {:.4}, Estimated Final Pos Y: {:.4}",
+            true_pos_m.y,
+            filter.state().pos_ned_m().y
+        );
         println!(
             "Maneuver -> True Final Vel X: {:.4}, Estimated Final Vel X: {:.4}",
             true_vel_mps.x,
-            filter.vel_mps().x
+            filter.state().vel_ned_mps().x
         );
         println!(
             "Maneuver -> True Final Vel Y: {:.4}, Estimated Final Vel Y: {:.4}",
             true_vel_mps.y,
-            filter.vel_mps().y
+            filter.state().vel_ned_mps().y
         );
 
         // Tracking precision assertions
-        assert!((filter.pos_m().x - true_pos_m.x).abs() < 0.1, "Filter missed true physical X position track!");
-        assert!((filter.pos_m().y - true_pos_m.y).abs() < 0.1, "Filter missed true physical Y position track!");
         assert!(
-            (filter.vel_mps().x - true_vel_mps.x).abs() < 0.1,
+            (filter.state().pos_ned_m().x - true_pos_m.x).abs() < 0.1,
+            "Filter missed true physical X position track!"
+        );
+        assert!(
+            (filter.state().pos_ned_m().y - true_pos_m.y).abs() < 0.1,
+            "Filter missed true physical Y position track!"
+        );
+        assert!(
+            (filter.state().vel_ned_mps().x - true_vel_mps.x).abs() < 0.1,
             "Filter velocity tracking tracking failed on X axis!"
         );
         assert!(
-            (filter.vel_mps().y - true_vel_mps.y).abs() < 0.1,
+            (filter.state().vel_ned_mps().y - true_vel_mps.y).abs() < 0.1,
             "Filter velocity tracking tracking failed on Y axis!"
         );
 

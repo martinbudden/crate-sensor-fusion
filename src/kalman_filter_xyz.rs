@@ -154,24 +154,6 @@ impl KalmanFilterXyz {
     pub fn state(&self) -> KalmanStateXyz {
         self.state
     }
-
-    #[inline]
-    #[must_use]
-    pub fn pos_m(&self) -> Vector3f32 {
-        self.state.pos_ned_m
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn vel_mps(&self) -> Vector3f32 {
-        self.state.vel_ned_mps()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn acc_bias_mps2(&self) -> Vector3f32 {
-        self.state.acc_bias_ned_mps2()
-    }
 }
 
 // **** Predict ****
@@ -1476,14 +1458,38 @@ impl KalmanStateXyz {
 
     #[inline]
     #[must_use]
+    pub fn pos_ned_m(&self) -> Vector3f32 {
+        self.pos_ned_m
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn pos_z_m(&self) -> f32 {
+        self.pos_ned_m.z
+    }
+
+    #[inline]
+    #[must_use]
     pub fn vel_ned_mps(&self) -> Vector3f32 {
         self.vel_ned_mps / Self::SCALE_VELOCITY
     }
 
     #[inline]
     #[must_use]
+    pub fn vel_z_mps(&self) -> f32 {
+        self.vel_ned_mps.z / Self::SCALE_VELOCITY
+    }
+
+    #[inline]
+    #[must_use]
     pub fn acc_bias_ned_mps2(&self) -> Vector3f32 {
         self.acc_bias_ned_mps2 / Self::SCALE_ACC_BIAS
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn acc_bias_z_mps2(&self) -> f32 {
+        self.acc_bias_ned_mps2.z / Self::SCALE_ACC_BIAS
     }
 }
 
@@ -1494,12 +1500,6 @@ impl KalmanFilterXyz {
     #[must_use]
     pub fn new_for_test(state: KalmanStateXyz, P: Matrix3x3xM3x3f32, Q_velocity: f32, Q_bias: f32) -> Self {
         Self { state, P, Q_velocity, Q_bias }
-    }
-
-    /// Return state for test code.
-    #[must_use]
-    pub fn state_for_test(&self) -> KalmanStateXyz {
-        self.state
     }
 
     /// Return covariance for test code.

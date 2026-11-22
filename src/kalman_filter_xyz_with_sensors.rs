@@ -117,24 +117,6 @@ impl KalmanFilterXyzWithSensors {
         self.base.state()
     }
 
-    #[inline]
-    #[must_use]
-    pub fn pos_m(&self) -> Vector3f32 {
-        self.base.pos_m()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn vel_mps(&self) -> Vector3f32 {
-        self.base.vel_mps()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn acc_bias_mps2(&self) -> Vector3f32 {
-        self.base.acc_bias_mps2()
-    }
-
     /// Generally called inside the Autopilot task execution loop.
     pub fn predict(&mut self, timestamp_us: u64, imu_integral: &ImuIntegral, dt: f32) {
         // Integrate physical kinematics forward (deterministic)
