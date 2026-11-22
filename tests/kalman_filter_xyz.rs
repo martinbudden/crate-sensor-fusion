@@ -1,10 +1,9 @@
-use sensor_fusion::{ImuIntegrator, KalmanFilterXyz};
+use sensor_fusion::{ImuIntegrator, KalmanFilterXyz, KalmanFilterXyzWithSensors, OrientationNoise};
 use vqm::{Matrix3x3f32, Matrix3x3xM3x3f32, UnitQuaternionf32, Vector3f32};
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sensor_fusion::{KalmanFilterXyzWithSensors, OrientationNoise};
     const M11: usize = Matrix3x3xM3x3f32::M11;
     //const M22: usize = Matrix3x3xM3x3f32::M22;
     const M33: usize = Matrix3x3xM3x3f32::M33;

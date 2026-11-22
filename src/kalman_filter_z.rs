@@ -1,6 +1,6 @@
 use vqm::{Matrix3x3f32, Vector3f32};
 
-use super::{FusionStatus, KalmanFilterDiagnostics};
+use super::{FusionStatus, KalmanFilterDiagnostics, OrientationNoise};
 
 /// `f32` variant of `KalmanFilterZ`.
 pub type KalmanFilterZf32 = KalmanFilterZ;
@@ -132,9 +132,7 @@ impl KalmanFilterZ {
 
         // Off-diagonal blocks (PV, PB, VP, VB, BP, BV) remain pure zero matrices, as no cross-correlations exist yet.
     }
-}
 
-impl KalmanFilterZ {
     #[inline]
     #[must_use]
     pub fn state(&self) -> KalmanStateZ {
@@ -185,7 +183,7 @@ impl KalmanFilterZ {
     ///     └                            ┘
     /// ```
     #[allow(non_snake_case)]
-    pub fn predict_covariance(&mut self, dt: f32) {
+    pub fn predict_covariance(&mut self, orientation_noise: &OrientationNoise, dt: f32) {
         debug_assert!(dt != 0.0 && dt.is_finite());
         // =====================================================================
         // PROPAGATE THE COVARIANCE P_new = F·P_old·Fᵀ
@@ -244,6 +242,11 @@ impl KalmanFilterZ {
         P[Self::PV] += q_cross;
         P[Self::VP] += q_cross;
         P[Self::VV] += q_vel; // Random walk bias drift integration
+        // Add attitude-induced uncertainty.
+        P[Self::PP] += orientation_noise.position[Matrix3x3f32::M11];
+        P[Self::PV] += orientation_noise.position[Matrix3x3f32::M11];
+        P[Self::VP] += orientation_noise.position_velocity[Matrix3x3f32::M11];
+        P[Self::VV] += orientation_noise.velocity[Matrix3x3f32::M11];
         // Bias random-walk noise is added only to the bias covariance (BB).
         // Its indirect contribution to position, velocity, and their cross-covariances during this interval is neglected as an approximation,
         // since these are second order in dt.

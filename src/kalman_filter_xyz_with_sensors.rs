@@ -1,11 +1,9 @@
 use vqm::{Vector2f32, Vector3f32};
 
-use crate::{ImuIntegral, OrientationNoise};
-
 #[cfg(feature = "oooc")]
 use super::{FusionStatus, KalmanFilterXyzHistory, SnapshotXyz};
 
-use super::{KalmanFilterDiagnostics, KalmanFilterXyz, KalmanStateXyz};
+use super::{ImuIntegral, KalmanFilterDiagnostics, KalmanFilterXyz, KalmanStateXyz, OrientationNoise};
 
 /// `f32` variant of `KalmanFilterXyzWithSensors`.
 pub type KalmanFilterXyzWithSensorsf32 = KalmanFilterXyzWithSensors;
@@ -108,15 +106,15 @@ impl KalmanFilterXyzWithSensors {
             history: KalmanFilterXyzHistory::new(),
         }
     }
-}
 
-impl KalmanFilterXyzWithSensors {
     #[inline]
     #[must_use]
     pub fn state(&self) -> KalmanStateXyz {
         self.base.state()
     }
+}
 
+impl KalmanFilterXyzWithSensors {
     /// Generally called inside the Autopilot task execution loop.
     pub fn predict(&mut self, timestamp_us: u64, imu_integral: &ImuIntegral, dt: f32) {
         // Integrate physical kinematics forward (deterministic)
@@ -272,18 +270,14 @@ impl KalmanFilterXyzWithSensors {
         )
     }
 
-    /// Correct position using optical flow position measurement.
-    /// Placeholder function, currently unimplemented.
+    /// Correct velocity using optical flow velocity measurement.
     pub fn correct_velocity_using_optical_flow(
         &mut self,
         timestamp_us: u64,
         velocity_mps: Vector2f32,
     ) -> KalmanFilterDiagnostics {
-        _ = self;
         _ = timestamp_us;
-        _ = velocity_mps;
-        todo!("implement correct_velocity_using_optical_flow for xyx");
-        //self.base.correct_velocity_xy(velocity_mps, self.R_optical_flow)
+        self.base.correct_velocity_xy(velocity_mps, self.R_optical_flow, Self::NIS_THRESHOLD_2D)
     }
 
     /// Flags that a fresh Barometric Altitude measurement occurred at the current step.

@@ -1,8 +1,6 @@
 use vqm::{Matrix3x3, Matrix3x3f32, Matrix3x3xM3x3f32, Vector2f32, Vector3f32};
 
-use crate::OrientationNoise;
-
-use super::{FusionStatus, KalmanFilterDiagnostics};
+use super::{FusionStatus, KalmanFilterDiagnostics, OrientationNoise};
 
 /// `f32` variant of `KalmanFilterXyz`.
 pub type KalmanFilterXyzf32 = KalmanFilterXyz;
@@ -146,9 +144,7 @@ impl KalmanFilterXyz {
 
         // Off-diagonal blocks (PV, PB, VP, VB, BP, BV) remain pure zero matrices, as no cross-correlations exist yet.
     }
-}
 
-impl KalmanFilterXyz {
     #[inline]
     #[must_use]
     pub fn state(&self) -> KalmanStateXyz {
@@ -798,20 +794,21 @@ impl KalmanFilterXyz {
 
         // Reassemble J and K·R·Kᵀ into P.
 
-        self.P[Self::PP] = J[0] + K_pos_R * K_pos_t;
-        self.P[Self::VP] = J[1] + K_vel_R * K_pos_t;
-        self.P[Self::BP] = J[2] + K_acc_bias_R * K_pos_t;
+        self.P[Self::PP] = J[Self::PP] + K_pos_R * K_pos_t;
+        self.P[Self::VP] = J[Self::VP] + K_vel_R * K_pos_t;
+        self.P[Self::BP] = J[Self::BP] + K_acc_bias_R * K_pos_t;
 
-        self.P[Self::PV] = J[3] + K_pos_R * K_vel_t;
-        self.P[Self::VV] = J[4] + K_vel_R * K_vel_t;
-        self.P[Self::BV] = J[5] + K_acc_bias_R * K_vel_t;
+        self.P[Self::PV] = J[Self::PV] + K_pos_R * K_vel_t;
+        self.P[Self::VV] = J[Self::VV] + K_vel_R * K_vel_t;
+        self.P[Self::BV] = J[Self::BV] + K_acc_bias_R * K_vel_t;
 
-        self.P[Self::PB] = J[6] + K_pos_R * K_acc_bias_t;
-        self.P[Self::VB] = J[7] + K_vel_R * K_acc_bias_t;
-        self.P[Self::BB] = J[8] + K_acc_bias_R * K_acc_bias_t;
+        self.P[Self::PB] = J[Self::PB] + K_pos_R * K_acc_bias_t;
+        self.P[Self::VB] = J[Self::VB] + K_vel_R * K_acc_bias_t;
+        self.P[Self::BB] = J[Self::BB] + K_acc_bias_R * K_acc_bias_t;
 
         // Ensure numerical stability by enforcing symmetry.
         self.P.enforce_symmetry();
+
         diagnostics
     }
 
@@ -1207,32 +1204,31 @@ impl KalmanFilterXyz {
         diagnostics
     }
 
-    // TODO: correct_position_xy_joseph_stabilized_form to support optical flow corrections
-    pub fn correct_position_xy_joseph_stabilized_form(
+    // TODO: correct_velocity_xy to support optical flow corrections
+    pub fn correct_velocity_xy_joseph_stabilized_form(
         &mut self,
-        position_m: Vector2f32,
-        past_pos_m: Vector3f32,
+        velocity_mps: Vector2f32,
+        predicted_velocity_mps: Vector2f32,
         R: Vector2f32,
         nis_threshold: f32,
     ) -> KalmanFilterDiagnostics {
-        debug_assert!(position_m.is_finite());
-        debug_assert!(past_pos_m.is_finite());
+        debug_assert!(velocity_mps.is_finite());
+        debug_assert!(predicted_velocity_mps.is_finite());
         // TODO: implement correct_position_xy_delayed.
-        _ = self;
-        _ = position_m;
-        _ = past_pos_m;
+        _ = velocity_mps;
+        _ = predicted_velocity_mps;
         _ = R;
         _ = nis_threshold;
-        unimplemented!();
+        todo!("implement correct_velocity_using_optical_flow for xyx");
     }
 
-    pub fn correct_position_xy(
+    pub fn correct_velocity_xy(
         &mut self,
-        position_m: Vector2f32,
+        velocity_mps: Vector2f32,
         R: Vector2f32,
         nis_threshold: f32,
     ) -> KalmanFilterDiagnostics {
-        self.correct_position_xy_joseph_stabilized_form(position_m, self.state.pos_ned_m, R, nis_threshold)
+        self.correct_velocity_xy_joseph_stabilized_form(velocity_mps, self.state.vel_ned_mps().into(), R, nis_threshold)
     }
 }
 

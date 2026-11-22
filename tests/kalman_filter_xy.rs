@@ -1,4 +1,4 @@
-use sensor_fusion::{ImuIntegrator, KalmanFilterXy, KalmanFilterXyWithSensors};
+use sensor_fusion::{ImuIntegrator, KalmanFilterXy, KalmanFilterXyWithSensors, OrientationNoise};
 use vqm::{Matrix3x3xM2x2f32, UnitQuaternionf32, Vector2f32, Vector3f32};
 
 #[cfg(test)]
@@ -33,6 +33,7 @@ mod tests {
 
         // Prime the filter's initial position guess to match our starting point
         filter.set_position(true_pos_m.into());
+        let euler_variance = Vector3f32 { x: 0.0, y: 0.0, z: 0.0 };
 
         println!("\n--- PHASE 1: STATIONARY GPS LOCK (1 SECOND) ---");
         #[allow(clippy::cast_possible_truncation)]
@@ -43,10 +44,11 @@ mod tests {
             //let delta_vel_ned_mps = acc_measurement_mps2 * dt;
             integrator.integrate(acc_body_mps2, orientation, dt);
             let integral = integrator.imu_integral();
+            let orientation_noise = integral.calculate_orientation_process_noise(orientation, euler_variance);
             integrator.reset();
 
             filter.predict_state(integral.delta_vel_ned_mps.into(), integral.delta_pos_ned_m.into(), dt);
-            filter.predict_covariance(dt);
+            filter.predict_covariance(&orientation_noise, dt);
 
             //filter.correct_position(true_pos, r_gps);
             _ = filter.correct_position(true_pos_m.into(), r_gps, KalmanFilterXyWithSensors::NIS_THRESHOLD_2D);
@@ -94,7 +96,8 @@ mod tests {
             integrator.reset();
 
             filter.predict_state(integral.delta_vel_ned_mps.into(), integral.delta_pos_ned_m.into(), dt);
-            filter.predict_covariance(dt);
+            let orientation_noise = OrientationNoise::default();
+            filter.predict_covariance(&orientation_noise, dt);
 
             _ = filter.correct_position(true_pos_m.into(), r_gps, KalmanFilterXyWithSensors::NIS_THRESHOLD_2D);
         }

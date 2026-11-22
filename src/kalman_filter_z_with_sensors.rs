@@ -1,6 +1,8 @@
+use vqm::Vector3f32;
+
 use crate::ImuIntegral;
 
-use super::{KalmanFilterDiagnostics, KalmanFilterZ, KalmanStateZ};
+use super::{KalmanFilterDiagnostics, KalmanFilterZ, KalmanStateZ, OrientationNoise};
 
 /// `f32` variant of `PositionKalmanFilterExtended`.
 pub type KalmanFilterZWithSensorsf32 = KalmanFilterZWithSensors;
@@ -20,6 +22,8 @@ Desired Physical Noise (σ)            Equivalent R Variance Code Value (σ²)
 pub struct KalmanFilterZWithSensors {
     base: KalmanFilterZ,
     // measurement noise covariance Matrix `R`
+    /// Assumed roll, pitch and yaw orientation error variances (rad²).
+    pub euler_variance: Vector3f32,
     /// Absolute Measurement Noise variance for vertical GPS position.
     pub R_gps_position_vertical: f32,
     /// Absolute Measurement Noise variance for vertical GPS velocity.
@@ -32,7 +36,7 @@ pub struct KalmanFilterZWithSensors {
     pub R_rangefinder: f32,
     /// NIS threshold for rejecting rangefinder measurements.
     pub nis_threshold_rangefinder: f32,
-    /// Absolute Measurement Noise variance for optical flow.
+    /// Absolute Measurement Noise variance for ultra wideband distance sensors flow.
     pub R_ultra_wideband: f32,
 }
 
@@ -52,6 +56,13 @@ impl KalmanFilterZWithSensors {
     pub fn new() -> Self {
         Self {
             base: KalmanFilterZ::new(),
+            // Estimated attitude error variances (rad²).
+            // Typical MEMS IMU with calibrated magnetometer.
+            euler_variance: Vector3f32::new(
+                0.001_218, // Roll: 2 degrees
+                0.001_218, // Pitch: 2 degrees
+                0.007_615, // Yaw: 5 degrees
+            ),
             // Commercial GPS modules are typically accurate to within 1.5 to 3.0 meters horizontally, less vertically.
             R_gps_position_vertical: 9.0,
             R_gps_velocity_vertical: 0.08, // m/s
@@ -66,22 +77,24 @@ impl KalmanFilterZWithSensors {
             R_ultra_wideband: 0.01,
         }
     }
-}
 
-impl KalmanFilterZWithSensors {
     #[inline]
     #[must_use]
     pub fn state(&self) -> KalmanStateZ {
         self.base.state()
     }
+}
 
-    /// Called inside the main IMU execution loop (eg `gyro_pid` loop).
+impl KalmanFilterZWithSensors {
+    /// Generally called inside the Autopilot task execution loop.
     pub fn predict(&mut self, timestamp_us: u64, imu_integral: &ImuIntegral, dt: f32) {
         // Integrate physical kinematics forward (deterministic)
         self.predict_state(imu_integral.delta_vel_ned_mps.z, imu_integral.delta_pos_ned_m.z, dt);
 
         // Propagate covariance uncertainty blocks forward (stochastic)
-        self.predict_covariance(dt);
+        let orientation_noise =
+            &imu_integral.calculate_orientation_process_noise(imu_integral.orientation, self.euler_variance);
+        self.predict_covariance(orientation_noise, dt);
         _ = timestamp_us;
     }
 
@@ -90,8 +103,8 @@ impl KalmanFilterZWithSensors {
         self.base.predict_state(delta_vel_mps, delta_pos_m, dt);
     }
 
-    pub fn predict_covariance(&mut self, dt: f32) {
-        self.base.predict_covariance(dt);
+    pub fn predict_covariance(&mut self, orientation_noise: &OrientationNoise, dt: f32) {
+        self.base.predict_covariance(orientation_noise, dt);
     }
 
     /// Correct altitude using supplied R.

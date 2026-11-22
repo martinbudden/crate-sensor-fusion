@@ -1,11 +1,9 @@
-use vqm::Vector2f32;
-
-use crate::ImuIntegral;
+use vqm::{Vector2f32, Vector3f32};
 
 #[cfg(feature = "oooc")]
 use super::{FusionStatus, KalmanFilterXyHistory, SnapshotXy};
 
-use super::{KalmanFilterDiagnostics, KalmanFilterXy, KalmanStateXy};
+use super::{ImuIntegral, KalmanFilterDiagnostics, KalmanFilterXy, KalmanStateXy, OrientationNoise};
 
 /// `f32` variant of `PositionKalmanFilterExtended`.
 pub type KalmanFilterXyWithSensorsf32 = KalmanFilterXyWithSensors;
@@ -25,6 +23,8 @@ Desired Physical Noise (σ)            Equivalent R Variance Code Value (σ²)
 pub struct KalmanFilterXyWithSensors {
     base: KalmanFilterXy,
     // measurement noise covariance Matrix `R`
+    /// Assumed roll, pitch and yaw orientation error variances (rad²).
+    pub euler_variance: Vector3f32,
     /// Absolute Measurement Noise variance for horizontal GPS position.
     pub R_gps_position_horizontal: f32,
     /// Absolute Measurement Noise variance for vertical GPS position.
@@ -65,6 +65,13 @@ impl KalmanFilterXyWithSensors {
     pub fn new() -> Self {
         Self {
             base: KalmanFilterXy::new(),
+            // Estimated attitude error variances (rad²).
+            // Typical MEMS IMU with calibrated magnetometer.
+            euler_variance: Vector3f32::new(
+                0.001_218, // Roll: 2 degrees
+                0.001_218, // Pitch: 2 degrees
+                0.007_615, // Yaw: 5 degrees
+            ),
             // Commercial GPS modules are typically accurate to within 1.5 to 3.0 meters horizontally, less vertically.
             R_gps_position_horizontal: 2.25,
             R_gps_position_vertical: 9.0,
@@ -84,25 +91,27 @@ impl KalmanFilterXyWithSensors {
             history: KalmanFilterXyHistory::new(),
         }
     }
-}
 
-impl KalmanFilterXyWithSensors {
     #[inline]
     #[must_use]
     pub fn state(&self) -> KalmanStateXy {
         self.base.state()
     }
+}
 
-    /// Called inside the main IMU execution loop (eg `gyro_pid` loop).
+impl KalmanFilterXyWithSensors {
+    /// Generally called inside the Autopilot task execution loop.
     pub fn predict(&mut self, timestamp_us: u64, imu_integral: &ImuIntegral, dt: f32) {
         // Integrate physical kinematics forward (deterministic)
         self.predict_state(imu_integral.delta_vel_ned_mps.into(), imu_integral.delta_pos_ned_m.into(), dt);
 
         // Propagate covariance uncertainty blocks forward (stochastic)
-        self.predict_covariance(dt);
+        let orientation_noise =
+            &imu_integral.calculate_orientation_process_noise(imu_integral.orientation, self.euler_variance);
+        self.predict_covariance(orientation_noise, dt);
 
         #[cfg(feature = "oooc")]
-        self.push_snapshot(timestamp_us, delta_pos_ned_m, delta_vel_ned_mps);
+        self.push_snapshot(timestamp_us, imu_integral.delta_pos_ned_m, imu_integral.delta_vel_ned_mps);
         _ = timestamp_us;
     }
 
@@ -111,8 +120,8 @@ impl KalmanFilterXyWithSensors {
         self.base.predict_state(delta_vel_ned_mps, delta_pos_ned_m, dt);
     }
 
-    pub fn predict_covariance(&mut self, dt: f32) {
-        self.base.predict_covariance(dt);
+    pub fn predict_covariance(&mut self, orientation_noise: &OrientationNoise, dt: f32) {
+        self.base.predict_covariance(orientation_noise, dt);
     }
 
     /// Correct position using GPS position measurement (typically at a 1Hz to 10Hz rate).
@@ -162,17 +171,13 @@ impl KalmanFilterXyWithSensors {
     }
 
     /// Correct velocity using optical flow velocity measurement.
-    /// Placeholder function, currently unimplemented.
     pub fn correct_velocity_using_optical_flow(
         &mut self,
         timestamp_us: u64,
         velocity_mps: Vector2f32,
     ) -> KalmanFilterDiagnostics {
-        _ = self;
         _ = timestamp_us;
-        _ = velocity_mps;
-        todo!("implement correct_velocity_using_optical_flow for xy");
-        //self.base.correct_velocity(velocity_mps, self.R_optical_flow)
+        self.base.correct_velocity(velocity_mps, self.R_optical_flow, Self::NIS_THRESHOLD_2D)
     }
 }
 
@@ -183,6 +188,7 @@ impl KalmanFilterXyWithSensors {
     /// When a delayed measurement arrives, we calculate the innovation error using the past state vector (`past.pos`).
     /// We calculate the Kalman Gain vectors using the current active P matrix.
     /// We correct the current state vector directly.
+    #[cfg(feature = "oooc")]
     pub fn correct_position_delayed(
         &mut self,
         timestamp_us: u64,

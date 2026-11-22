@@ -1,6 +1,6 @@
 use vqm::{Matrix2x2f32, Matrix3x3xM2x2f32, Vector2f32};
 
-use super::{FusionStatus, KalmanFilterDiagnostics};
+use super::{FusionStatus, KalmanFilterDiagnostics, OrientationNoise};
 
 /// `f32` variant of `KalmanFilterXy`.
 pub type KalmanFilterXyf32 = KalmanFilterXy;
@@ -144,9 +144,7 @@ impl KalmanFilterXy {
 
         // Off-diagonal blocks (PV, PB, VP, VB, BP, BV) remain pure zero matrices, as no cross-correlations exist yet.
     }
-}
 
-impl KalmanFilterXy {
     #[inline]
     #[must_use]
     pub fn state(&self) -> KalmanStateXy {
@@ -159,7 +157,9 @@ impl KalmanFilterXy {
 impl KalmanFilterXy {
     /// Predicts the state vectors (`x`) using the control input vectors (`u`) `delta_vel_mps` and `delta_pos_m` from the IMU integrator.
     /// ```text
-    /// x = F·x + B.u
+    /// x = F·x + B·u
+    ///
+    /// where
     ///     ┌          ┐
     ///     │  ½·dt·I₂ │
     /// B = │    I₂    │
@@ -204,7 +204,7 @@ impl KalmanFilterXy {
     ///     └                                ┘
     /// ```
     #[allow(non_snake_case)]
-    pub fn predict_covariance(&mut self, dt: f32) {
+    pub fn predict_covariance(&mut self, orientation_noise: &OrientationNoise, dt: f32) {
         debug_assert!(dt != 0.0 && dt.is_finite());
         // =====================================================================
         // PROPAGATE THE COVARIANCE P_new = F·P_old·Fᵀ
@@ -264,6 +264,11 @@ impl KalmanFilterXy {
         P[Self::PV].add_diagonal_scalar_in_place(q_cross);
         P[Self::VP].add_diagonal_scalar_in_place(q_cross);
         P[Self::VV].add_diagonal_scalar_in_place(q_vel);
+        // Add attitude-induced uncertainty.
+        P[Self::PP] += orientation_noise.position.into();
+        P[Self::PV] += orientation_noise.position_velocity.into();
+        P[Self::VP] += orientation_noise.position_velocity.transpose().into();
+        P[Self::VV] += orientation_noise.velocity.into();
 
         // Random walk bias drift integration
         // Bias random-walk noise is added only to the bias covariance (BB).
@@ -426,7 +431,6 @@ impl KalmanFilterXy {
                 covariance_reciprocal_condition: Some(reciprocal_condition),
                 ..Default::default()
             };
-
             self.P.enforce_components_diagonal_lower_bound(1e-6);
             return diagnostics;
         }
@@ -487,9 +491,10 @@ impl KalmanFilterXy {
         let K_pos_t = K_pos.transpose();
         let K_vel_t = K_vel.transpose();
         let K_acc_bias_t = K_acc_bias.transpose();
+
         let I_minus_K_pos_t = Matrix2x2f32::identity() - K_pos_t;
 
-        // Calculate J = A·(I - KH)ᵀ.
+        // Calculate J = A·(I - K·H)ᵀ.
         // Only calculate the values that are different from A.
         let J = [
             A[Self::PP] * I_minus_K_pos_t - A[Self::PV] * K_vel_t - A[Self::PB] * K_acc_bias_t,
@@ -542,6 +547,33 @@ impl KalmanFilterXy {
         _ = R_velocity;
         // TODO: implement correct_position_and_velocity for xy, currently it just calls correct_position.
         self.correct_position_joseph_stabilized_form(position_m, self.state.pos_ned_m, R_position, nis_threshold)
+    }
+
+    // TODO: correct_velocity to support optical flow corrections
+    pub fn correct_velocity_joseph_stabilized_form(
+        &mut self,
+        velocity_mps: Vector2f32,
+        predicted_velocity_mps: Vector2f32,
+        R: Vector2f32,
+        nis_threshold: f32,
+    ) -> KalmanFilterDiagnostics {
+        debug_assert!(velocity_mps.is_finite());
+        debug_assert!(predicted_velocity_mps.is_finite());
+        // TODO: implement correct_position_xy_delayed.
+        _ = velocity_mps;
+        _ = predicted_velocity_mps;
+        _ = R;
+        _ = nis_threshold;
+        todo!("implement correct_velocity_using_optical_flow for xyx");
+    }
+
+    pub fn correct_velocity(
+        &mut self,
+        velocity_mps: Vector2f32,
+        R: Vector2f32,
+        nis_threshold: f32,
+    ) -> KalmanFilterDiagnostics {
+        self.correct_velocity_joseph_stabilized_form(velocity_mps, self.state.vel_ned_mps(), R, nis_threshold)
     }
 }
 
