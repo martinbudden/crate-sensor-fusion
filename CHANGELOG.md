@@ -15,6 +15,18 @@ Once the API has stabilized this project will adopt semantic versioning, the fir
 
 - May port  **VQF** (Versatile Quaternion Filter) from my C++ library [Library-SensorFusion](https://github.com/martinbudden/Library-SensorFusion).
 
+## [0.1.16] - 2026-11-xx
+
+### Changed
+
+- Moved `dt_sum` from `ImuIntegrator` to `ImuIntegral`.
+- Change `euler_variance` to use `RollPitchYaw` struct.
+- Better alignment of Kalman filter `Xyz`, `Xy`, and `Z` variants.
+
+### Removed
+
+- Functions to directly access Kalman filter state. (Access via `state()` instead.)
+
 ## [0.1.15] - 2026-11-21
 
 ### Changed

@@ -77,7 +77,6 @@ impl ImuIntegrator {
         debug_assert!(dt.is_finite());
 
         self.count += 1;
-        self.dt_sum += dt;
         self.integral.integrate(acc_body_mps2, self.acc_bias_ned_mps2, orientation, dt);
     }
 
@@ -90,6 +89,7 @@ impl ImuIntegrator {
 /// Integral values for IMU integrator.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ImuIntegral {
+    pub dt_sum: f32,
     pub delta_pos_ned_m: Vector3f32,
     pub delta_vel_ned_mps: Vector3f32,
     pub orientation: UnitQuaternionf32,
@@ -101,7 +101,7 @@ pub struct ImuIntegral {
 }
 
 //#[cfg(not(any(feature = "servos", feature = "eight_motors")))]
-const _: () = assert!(size_of::<ImuIntegral>() == 112);
+const _: () = assert!(size_of::<ImuIntegral>() == 128);
 
 impl Default for ImuIntegral {
     fn default() -> Self {
@@ -117,6 +117,7 @@ impl ImuIntegral {
     #[must_use]
     pub const fn new() -> Self {
         Self {
+            dt_sum: 0.0,
             delta_pos_ned_m: Vector3f32::ZERO,
             delta_vel_ned_mps: Vector3f32::ZERO,
             orientation: UnitQuaternionf32::ONE,
@@ -126,6 +127,7 @@ impl ImuIntegral {
     }
     #[inline]
     pub fn reset(&mut self) {
+        self.dt_sum = 0.0;
         self.delta_vel_ned_mps = Vector3f32::ZERO;
         self.delta_pos_ned_m = Vector3f32::ZERO;
         self.orientation_pos_jacobian = Matrix3x3f32::ZERO;
@@ -140,6 +142,7 @@ impl ImuIntegral {
         orientation: UnitQuaternionf32,
         dt: f32,
     ) {
+        self.dt_sum += dt;
         self.orientation = orientation;
 
         // Rotate acceleration into NED.
@@ -162,13 +165,14 @@ impl ImuIntegral {
         self.delta_vel_ned_mps += dv_ned_mps;
     }
 
+    /// Called within Kalman filter `predict` function.
     #[must_use]
     pub fn calculate_orientation_process_noise(
         &self,
         orientation: UnitQuaternionf32,
         euler_variance: RollPitchYawf32,
     ) -> OrientationNoise {
-        let orientation_covariance = self.orientation_variance_to_ned(orientation, euler_variance);
+        let orientation_covariance = Self::orientation_variance_to_ned(orientation, euler_variance);
         let jp = self.orientation_pos_jacobian;
         let jv = self.orientation_vel_jacobian;
         let jp_oc = jp * orientation_covariance;
@@ -181,8 +185,7 @@ impl ImuIntegral {
     }
 
     #[must_use]
-    pub fn orientation_variance_to_ned(
-        &self,
+    fn orientation_variance_to_ned(
         orientation: UnitQuaternionf32,
         euler_variance: RollPitchYawf32,
     ) -> Matrix3x3f32 {
