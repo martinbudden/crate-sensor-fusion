@@ -165,12 +165,12 @@ impl<T> MadgwickFilter<T> {
         let q = q.q();
         let wz_common = two * (q.x * q.x + q.y * q.y);
         let xy_common = two * (q.w * q.w + q.z * q.z - T::one() + two * wz_common + a.z);
-        Quaternion {
-            w: q.w * wz_common + q.y * a.x - q.x * a.y,
-            z: q.z * wz_common - q.x * a.x - q.y * a.y,
-            x: q.x * xy_common - q.z * a.x - q.w * a.y,
-            y: q.y * xy_common + q.w * a.x - q.z * a.y,
-        }
+        Quaternion::new(
+            q.w * wz_common + q.y * a.x - q.x * a.y,
+            q.z * wz_common - q.x * a.x - q.y * a.y,
+            q.x * xy_common - q.z * a.x - q.w * a.y,
+            q.y * xy_common + q.w * a.x - q.z * a.y,
+        )
     }
 
     #[allow(clippy::many_single_char_names)]
@@ -203,20 +203,20 @@ impl<T> MadgwickFilter<T> {
         let four = two + two;
         let half = T::one() / two;
         // Reference direction of Earth's magnetic field
-        let h = Vector3 {
-            x: m.x * (q0q0 + q1q1 - q2q2_plus_q3q3) + two * (m.y * (q1q2 - q0q3) + m.z * (q0q2 + q1q3)),
-            y: (m.x * (q0q3 + q1q2) + m.y * (q0q0 - q1q1 + q2q2 - q3q3) + m.z * (q2q3 - q0q1)) * two,
-            z: T::zero(),
-        };
+        let h = Vector3::new(
+            m.x * (q0q0 + q1q1 - q2q2_plus_q3q3) + two * (m.y * (q1q2 - q0q3) + m.z * (q0q2 + q1q3)),
+            (m.x * (q0q3 + q1q2) + m.y * (q0q0 - q1q1 + q2q2 - q3q3) + m.z * (q2q3 - q0q1)) * two,
+            T::zero(),
+        );
 
         let bx_bx = h.x * h.x + h.y * h.y;
-        let b = Vector3 {
-            x: bx_bx.sqrt(),
-            y: T::zero(),
-            z: two * (m.x * (q1q3 - q0q2) + m.y * (q0q1 + q2q3)) + m.z * (q0q0 - q1q1_plus_q2q2 + q3q3),
-        };
+        let b = Vector3::new(
+            bx_bx.sqrt(),
+            T::zero(),
+            two * (m.x * (q1q3 - q0q2) + m.y * (q0q1 + q2q3)) + m.z * (q0q0 - q1q1_plus_q2q2 + q3q3),
+        );
 
-        let a_dash = Vector3 { x: a.x + m.x * b.z, y: a.y + m.y * b.z, z: T::zero() };
+        let a_dash = Vector3::new(a.x + m.x * b.z, a.y + m.y * b.z, T::zero());
         let bz_bz = b.z * b.z;
         let _4bx_bz = four * b.x * b.z;
 
@@ -288,7 +288,7 @@ where
         let acc_norm = acc_mps2.norm();
         let mut acc = acc_mps2;
         if acc_norm == T::zero() {
-            acc = Vector3 { x: T::zero(), y: T::zero(), z: T::zero() };
+            acc = Vector3::new(T::zero(), T::zero(), T::zero());
         } else {
             acc /= acc_norm;
         }
@@ -326,7 +326,7 @@ where
         let acc_magnitude_squared = acc_mps2.norm_squared();
         let mut acc = acc_mps2;
         if acc_magnitude_squared == T::zero() {
-            acc = Vector3 { x: T::zero(), y: T::zero(), z: T::zero() };
+            acc = Vector3::new(T::zero(), T::zero(), T::zero());
         } else {
             acc *= acc_magnitude_squared.sqrt_reciprocal();
         }
@@ -379,7 +379,7 @@ where
         let q_dot = q * omega;
 
         //let error_z = -self.q.w * target.z - self.q.x * target.y + self.q.y * target.x + self.q.z * target.w;
-        //let q_dot = Quaternion { w: self.q.z, x: -self.q.y, y: self.q.x, z: -self.q.w } * (error_z * self.beta_yaw);
+        //let q_dot = Quaternion::new( self.q.z, -self.q.y, self.q.x, -self.q.w } * (error_z * self.beta_yaw);
 
         // Euler integration & renormalization
         q += q_dot * (dt * gain);
@@ -422,12 +422,12 @@ mod tests {
         assert_eq!(53.0, error.z);
         let omega = Quaternionf32::new(0.0, 0.0, 0.0, -error.z);
         let q_dot = q * omega;
-        assert_eq!(Quaternionf32 { w: 371.0, x: -265.0, y: 159.0, z: -106.0 }, q_dot);
+        assert_eq!(Quaternionf32::new(371.0, -265.0, 159.0, -106.0), q_dot);
 
         let error_z = -q.w * target.z - q.x * target.y + q.y * target.x + q.z * target.w;
         assert_eq!(53.0, error_z);
         assert_eq!(error.z, error_z);
-        let q_dot2 = Quaternion { w: q.z * error_z, x: -q.y * error_z, y: q.x * error_z, z: -q.w * error_z };
+        let q_dot2 = Quaternion::new(q.z * error_z, -q.y * error_z, q.x * error_z, -q.w * error_z);
         assert_eq!(q_dot, q_dot2);
     }
 
@@ -440,7 +440,6 @@ mod tests {
         let gyro_rps = Vector3f32::default();
 
         let orientation = madgwick_filter.fuse_acc_gyro(acc_mps2, gyro_rps, dt);
-        //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
         assert!(orientation.is_approx_one(1.2e-4));
     }
 
@@ -457,7 +456,6 @@ mod tests {
         let gyro_rps = Vector3f32::default();
 
         let orientation = madgwick_filter.fuse_acc_gyro(acc_mps2, gyro_rps, dt);
-        //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
         assert!(orientation.is_approx_one(1.2e-4));
     }
 
@@ -470,7 +468,6 @@ mod tests {
         let gyro_rps = Vector3f32::default();
 
         let orientation = (acc_mps2, gyro_rps).fuse_acc_gyro_using(&mut madgwick_filter, dt);
-        //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
         assert!(orientation.is_approx_one(1.2e-4));
     }
 

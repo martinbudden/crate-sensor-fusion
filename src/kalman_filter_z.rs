@@ -325,7 +325,7 @@ impl KalmanFilterZ {
             covariance_reciprocal_condition: None,
 
             nis,
-            innovation_m: Vector3f32 { x: 0.0, y: 0.0, z: innovation_m },
+            innovation_m: Vector3f32::new(0.0, 0.0, innovation_m),
         };
 
         if nis > nis_threshold {
@@ -426,7 +426,7 @@ impl KalmanFilterZ {
             covariance_trace: self.P[Self::PP],
             covariance_reciprocal_condition: None,
             nis,
-            innovation_m: Vector3f32 { x: 0.0, y: 0.0, z: innovation_m },
+            innovation_m: Vector3f32::new(0.0, 0.0, innovation_m),
         };
 
         if nis > nis_threshold {
@@ -552,7 +552,7 @@ impl KalmanStateZ {
     #[inline]
     #[must_use]
     pub fn pos_ned_m(&self) -> Vector3f32 {
-        Vector3f32 { x: 0.0, y: 0.0, z: self.pos_ned_m }
+        Vector3f32::new(0.0, 0.0, self.pos_ned_m)
     }
 
     /// Return the position in meters.
@@ -566,7 +566,7 @@ impl KalmanStateZ {
     #[inline]
     #[must_use]
     pub fn vel_ned_mps(&self) -> Vector3f32 {
-        Vector3f32 { x: 0.0, y: 0.0, z: self.vel_ned_mps }
+        Vector3f32::new(0.0, 0.0, self.vel_ned_mps)
     }
 
     /// Return the velocity in meters per second.
@@ -580,7 +580,7 @@ impl KalmanStateZ {
     #[inline]
     #[must_use]
     pub fn acc_bias_ned_mps2(&self) -> Vector3f32 {
-        Vector3f32 { x: 0.0, y: 0.0, z: self.acc_bias_ned_mps2 }
+        Vector3f32::new(0.0, 0.0, self.acc_bias_ned_mps2)
     }
 
     /// Return the accelerometer bias in meters per second per second.

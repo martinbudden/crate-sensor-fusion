@@ -23,13 +23,13 @@ mod tests {
 
         // Define realistic GPS/UWB measurement noise variances (R)
         // Tracks ±1.5m horizontal variance and ±3.0m vertical variance
-        let r_gps = Vector3f32 { x: 2.25, y: 2.25, z: 9.0 };
+        let r_gps = Vector3f32::new(2.25, 2.25, 9.0);
 
         // Define the ground-truth physical state parameters
-        let mut true_pos_m = Vector3f32 { x: 10.0, y: -5.0, z: 0.0 }; // Start at an offset
+        let mut true_pos_m = Vector3f32::new(10.0, -5.0, 0.0); // Start at an offset
         let mut true_vel_mps = Vector3f32::default();
-        let true_bias_mps2 = Vector3f32 { x: -0.03, y: 0.04, z: 0.01 }; // System accelerometer bias
-        let gravity_mps2 = Vector3f32 { x: 0.0, y: 0.0, z: 9.80665 }; // NED gravity
+        let true_bias_mps2 = Vector3f32::new(-0.03, 0.04, 0.01); // System accelerometer bias
+        let gravity_mps2 = Vector3f32::new(0.0, 0.0, 9.80665); // NED gravity
 
         // Prime the filter's initial position guess to match our starting point
         filter.set_position(true_pos_m);
@@ -82,7 +82,7 @@ mod tests {
         // Simulate a diagonal lateral acceleration profile (+X, +Y)
         #[allow(clippy::cast_possible_truncation)]
         let loops_maneuver = (2.0 / dt) as i32;
-        let true_acc_kinematic = Vector3f32 { x: 1.5, y: 2.0, z: 0.0 };
+        let true_acc_kinematic = Vector3f32::new(1.5, 2.0, 0.0);
 
         for _ in 0..loops_maneuver {
             // Update truth kinematics using the exact model equations (Trapezoidal Rule)
@@ -164,10 +164,10 @@ mod tests {
         let mut true_vel_mps = Vector3f32::default();
 
         // Explicitly track a constant real accelerometer bias in the hardware
-        let true_bias_mps2 = Vector3f32 { x: 0.02, y: -0.01, z: 0.05 };
+        let true_bias_mps2 = Vector3f32::new(0.02, -0.01, 0.05);
 
         // Aerospace NED Gravity vector (Positive down)
-        let gravity_mps2 = Vector3f32 { x: 0.0, y: 0.0, z: 9.80665 };
+        let gravity_mps2 = Vector3f32::new(0.0, 0.0, 9.80665);
 
         println!("\n--- PHASE 1: STATIONARY BENCH TEST (2 SECONDS) ---");
         // During this phase, an IMU resting horizontally on the ground in an NED frame
@@ -224,7 +224,7 @@ mod tests {
         // of 1.0 m/s^2 for a clean mathematical trajectory.
         #[allow(clippy::cast_possible_truncation)]
         let sim_loops_ascent = (3.0 / dt) as i32;
-        let true_acc_kinematic = Vector3f32 { x: 0.0, y: 0.0, z: 1.0 };
+        let true_acc_kinematic = Vector3f32::new(0.0, 0.0, 1.0);
 
         for _ in 0..sim_loops_ascent {
             // Update physical truths using the exact kinematic laws inside our test harness
@@ -276,7 +276,7 @@ mod test_anchors {
     use sensor_fusion::{KalmanFilterXyz, KalmanStateXyz};
 
     fn v(x: f32, y: f32, z: f32) -> Vector3f32 {
-        Vector3f32 { x, y, z }
+        Vector3f32::new(x, y, z)
     }
 
     fn assert_near(actual: f32, expected: f32, epsilon: f32) {

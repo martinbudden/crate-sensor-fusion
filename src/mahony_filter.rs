@@ -42,9 +42,9 @@ where
             q: UnitQuaternion::default(),
             kp: T::TEN,
             ki: T::ZERO,
-            error_integral: Vector3 { x: T::ZERO, y: T::ZERO, z: T::ZERO },
-            gyro_rps_1: Vector3 { x: T::ZERO, y: T::ZERO, z: T::ZERO },
-            gyro_rps_2: Vector3 { x: T::ZERO, y: T::ZERO, z: T::ZERO },
+            error_integral: Vector3::new(T::ZERO, T::ZERO, T::ZERO),
+            gyro_rps_1: Vector3::new(T::ZERO, T::ZERO, T::ZERO),
+            gyro_rps_2: Vector3::new(T::ZERO, T::ZERO, T::ZERO),
             use_quadratic_interpolation: false,
             use_matrix_exponential_approximation: false,
         }
@@ -173,7 +173,6 @@ mod tests {
         let gyro_rps = Vector3f32::default();
 
         let orientation = sensor_fusion.fuse_acc_gyro(acc, gyro_rps, dt);
-        //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
         assert!(orientation.is_approx_one(1.2e-4));
     }
 }

@@ -322,9 +322,9 @@ fn make_test_filter() -> KalmanFilterXyz {
     ]);
 
     let state = KalmanStateXyz {
-        pos_ned_m: Vector3f32 { x: 100.0, y: 200.0, z: 30.0 },
-        vel_ned_mps: Vector3f32 { x: 10.0, y: -5.0, z: 2.0 },
-        acc_bias_ned_mps2: Vector3f32 { x: 0.01, y: -0.02, z: 0.005 },
+        pos_ned_m: Vector3f32::new(100.0, 200.0, 30.0),
+        vel_ned_mps: Vector3f32::new(10.0, -5.0, 2.0),
+        acc_bias_ned_mps2: Vector3f32::new(0.01, -0.02, 0.005),
     };
 
     KalmanFilterXyz::new_for_test(state, P, 0.01, 0.001)
@@ -412,10 +412,10 @@ fn compare_results(
 
 fn test_measurements() -> (Vector3f32, Vector3f32, Vector3f32, Vector3f32) {
     (
-        Vector3f32 { x: 101.2, y: 198.5, z: 31.0 },
-        Vector3f32 { x: 10.4, y: -4.7, z: 1.8 },
-        Vector3f32 { x: 0.5, y: 0.5, z: 1.0 },
-        Vector3f32 { x: 0.04, y: 0.04, z: 0.09 },
+        Vector3f32::new(101.2, 198.5, 31.0),
+        Vector3f32::new(10.4, -4.7, 1.8),
+        Vector3f32::new(0.5, 0.5, 1.0),
+        Vector3f32::new(0.04, 0.04, 0.09),
     )
 }
 

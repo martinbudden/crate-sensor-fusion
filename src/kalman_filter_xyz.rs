@@ -70,13 +70,13 @@ impl KalmanFilterXyz {
         let mut P = Matrix3x3xM3x3f32::default();
 
         // Seed initial Position uncertainty (ie, confident within 1 meter)
-        P[Self::PP].set_diagonal_from_vector(Vector3f32 { x: 1.0, y: 1.0, z: 1.0 });
+        P[Self::PP].set_diagonal_from_vector(Vector3f32::new(1.0, 1.0, 1.0));
 
         // Seed initial Velocity uncertainty (ie, confident within 0.5 m/s)
-        P[Self::VV].set_diagonal_from_vector(Vector3f32 { x: 0.25, y: 0.25, z: 0.25 } * KalmanStateXyz::SCALE_VELOCITY);
+        P[Self::VV].set_diagonal_from_vector(Vector3f32::new(0.25, 0.25, 0.25) * KalmanStateXyz::SCALE_VELOCITY);
 
         // Seed initial Bias uncertainty (ie, accelerometer bias)
-        P[Self::BB].set_diagonal_from_vector(Vector3f32 { x: 0.01, y: 0.01, z: 0.01 } * KalmanStateXyz::SCALE_ACC_BIAS);
+        P[Self::BB].set_diagonal_from_vector(Vector3f32::new(0.01, 0.01, 0.01) * KalmanStateXyz::SCALE_ACC_BIAS);
 
         Self {
             state: KalmanStateXyz::new(),
@@ -463,7 +463,7 @@ impl KalmanFilterXyz {
             covariance_trace: self.P[Self::PP].trace(),
             covariance_reciprocal_condition: None,
             nis,
-            innovation_m: Vector3f32 { x: 0.0, y: 0.0, z: innovation_m },
+            innovation_m: Vector3f32::new(0.0, 0.0, innovation_m),
         };
         if nis > nis_threshold {
             // nis exceeds nis_threshold, so reject this measurement as an outlier.
@@ -1309,7 +1309,7 @@ impl KalmanFilterXyz {
             covariance_trace: self.P[Self::PP].trace(),
             covariance_reciprocal_condition: None,
             nis,
-            innovation_m: Vector3f32 { x: 0.0, y: 0.0, z: innovation_m },
+            innovation_m: Vector3f32::new(0.0, 0.0, innovation_m),
         };
 
         if nis > nis_threshold {
@@ -1427,9 +1427,9 @@ impl KalmanStateXyz {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            pos_ned_m: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
-            vel_ned_mps: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
-            acc_bias_ned_mps2: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
+            pos_ned_m: Vector3f32::new(0.0, 0.0, 0.0),
+            vel_ned_mps: Vector3f32::new(0.0, 0.0, 0.0),
+            acc_bias_ned_mps2: Vector3f32::new(0.0, 0.0, 0.0),
         }
     }
 }

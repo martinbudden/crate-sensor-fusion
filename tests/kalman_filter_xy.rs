@@ -23,13 +23,13 @@ mod tests {
 
         // Define realistic GPS/UWB measurement noise variances (R)
         // Tracks ±1.5m horizontal variance
-        let r_gps = Vector2f32 { x: 2.25, y: 2.25 };
+        let r_gps = Vector2f32::new(2.25, 2.25);
 
         // Define the ground-truth physical state parameters
-        let mut true_pos_m = Vector3f32 { x: 10.0, y: -5.0, z: 0.0 }; // Start at an offset
+        let mut true_pos_m = Vector3f32::new(10.0, -5.0, 0.0); // Start at an offset
         let mut true_vel_mps = Vector3f32::default();
-        let true_bias_mps2 = Vector3f32 { x: -0.03, y: 0.04, z: 0.0 }; // System accelerometer bias
-        let gravity_mps2 = Vector3f32 { x: 0.0, y: 0.0, z: 9.80665 }; // NED gravity
+        let true_bias_mps2 = Vector3f32::new(-0.03, 0.04, 0.0); // System accelerometer bias
+        let gravity_mps2 = Vector3f32::new(0.0, 0.0, 9.80665); // NED gravity
 
         // Prime the filter's initial position guess to match our starting point
         filter.set_position(true_pos_m.into());
@@ -82,7 +82,7 @@ mod tests {
         // Simulate a diagonal lateral acceleration profile (+X, +Y)
         #[allow(clippy::cast_possible_truncation)]
         let loops_maneuver = (2.0 / dt) as i32;
-        let true_acc_kinematic = Vector3f32 { x: 1.5, y: 2.0, z: 0.0 };
+        let true_acc_kinematic = Vector3f32::new(1.5, 2.0, 0.0);
 
         for _ in 0..loops_maneuver {
             // Update truth kinematics using the exact model equations (Trapezoidal Rule)

@@ -144,7 +144,6 @@ mod tests {
 
         let orientation = sensor_fusion.fuse_acc_gyro(acc_mps2, gyro_rps, dt);
 
-        //assert_eq!(orientation, Quaternion { w: 1.0, x: 0.0, y: 0.0, z: 0.0 });
         assert!(orientation.is_approx_one(1.2e-4));
     }
 }

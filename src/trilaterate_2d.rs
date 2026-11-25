@@ -32,7 +32,7 @@ where
     /// Constructor.
     #[must_use]
     pub fn new(x: T, y: T) -> Self {
-        Anchor2d { pos: Vector2 { x, y }, distance: T::zero() }
+        Anchor2d { pos: Vector2::new(x, y), distance: T::zero() }
     }
 }
 
@@ -72,7 +72,7 @@ where
     let mut AT_A: [T; 3] = [T::zero(); 3];
 
     // Initialize the 2x1 vector (Aᵀ·b)
-    let mut at_b = Vector2 { x: T::zero(), y: T::zero() };
+    let mut at_b = Vector2::new(T::zero(), T::zero());
 
     // Accumulate all rows, skipping the base anchor
     for (ii, anchor) in anchors.iter().enumerate() {

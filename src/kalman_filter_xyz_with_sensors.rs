@@ -98,10 +98,10 @@ impl KalmanFilterXyzWithSensors {
             nis_threshold_barometer: Self::NIS_THRESHOLD_1D,
             R_rangefinder: 0.03,
             nis_threshold_rangefinder: Self::NIS_THRESHOLD_1D,
-            R_optical_flow: Vector2f32 { x: 0.04, y: 0.04 },
+            R_optical_flow: Vector2f32::new(0.04, 0.04),
             // 1cm to 10cm typical accuracy, use 10cm = 0.10m, = 0.01 variance for cheap modules.
             R_ultra_wideband: 0.01,
-            latest_delta_vel_ned_mps: Vector3f32 { x: 0.0, y: 0.0, z: 0.0 },
+            latest_delta_vel_ned_mps: Vector3f32::new(0.0, 0.0, 0.0),
             #[cfg(feature = "oooc")]
             history: KalmanFilterXyzHistory::new(),
         }
@@ -175,11 +175,11 @@ impl KalmanFilterXyzWithSensors {
     /// Correct position using GPS position measurement (typically at a 1Hz to 10Hz rate).
     pub fn correct_position_using_gps(&mut self, timestamp_us: u64, position_m: Vector3f32) -> KalmanFilterDiagnostics {
         _ = timestamp_us;
-        let r_gps = Vector3f32 {
-            x: self.R_gps_position_horizontal,
-            y: self.R_gps_position_horizontal,
-            z: self.R_gps_position_vertical,
-        };
+        let r_gps = Vector3f32::new(
+            self.R_gps_position_horizontal,
+            self.R_gps_position_horizontal,
+            self.R_gps_position_vertical,
+        );
         self.base.correct_position(position_m, r_gps, Self::NIS_THRESHOLD_3D)
     }
 
@@ -191,16 +191,16 @@ impl KalmanFilterXyzWithSensors {
         velocity_mps: Vector3f32,
     ) -> KalmanFilterDiagnostics {
         _ = timestamp_us;
-        let r_gps_position = Vector3f32 {
-            x: self.R_gps_position_horizontal,
-            y: self.R_gps_position_horizontal,
-            z: self.R_gps_position_vertical,
-        };
-        let r_gps_velocity = Vector3f32 {
-            x: self.R_gps_velocity_horizontal,
-            y: self.R_gps_velocity_horizontal,
-            z: self.R_gps_velocity_vertical,
-        };
+        let r_gps_position = Vector3f32::new(
+            self.R_gps_position_horizontal,
+            self.R_gps_position_horizontal,
+            self.R_gps_position_vertical,
+        );
+        let r_gps_velocity = Vector3f32::new(
+            self.R_gps_velocity_horizontal,
+            self.R_gps_velocity_horizontal,
+            self.R_gps_velocity_vertical,
+        );
         self.base.correct_position_and_velocity(
             position_m,
             r_gps_position,
@@ -219,11 +219,11 @@ impl KalmanFilterXyzWithSensors {
         position_m: Vector3f32,
         velocity_mps: Vector3f32,
     ) -> KalmanFilterDiagnostics {
-        let r_gps = Vector3f32 {
-            x: self.R_gps_position_horizontal,
-            y: self.R_gps_position_horizontal,
-            z: self.R_gps_position_vertical,
-        };
+        let r_gps = Vector3f32::new(
+            self.R_gps_position_horizontal,
+            self.R_gps_position_horizontal,
+            self.R_gps_position_vertical,
+        );
         let dt_us = time_us - timestamp_us;
         #[allow(clippy::cast_precision_loss)]
         let dt = (dt_us as f32) * 1e-6;
@@ -242,16 +242,16 @@ impl KalmanFilterXyzWithSensors {
         position_m: Vector3f32,
         velocity_mps: Vector3f32,
     ) -> KalmanFilterDiagnostics {
-        let r_gps_position = Vector3f32 {
-            x: self.R_gps_position_horizontal,
-            y: self.R_gps_position_horizontal,
-            z: self.R_gps_position_vertical,
-        };
-        let r_gps_velocity = Vector3f32 {
-            x: self.R_gps_velocity_horizontal,
-            y: self.R_gps_velocity_horizontal,
-            z: self.R_gps_velocity_vertical,
-        };
+        let r_gps_position = Vector3f32::new(
+            self.R_gps_position_horizontal,
+            self.R_gps_position_horizontal,
+            self.R_gps_position_vertical,
+        );
+        let r_gps_velocity = Vector3f32::new(
+            self.R_gps_velocity_horizontal,
+            self.R_gps_velocity_horizontal,
+            self.R_gps_velocity_vertical,
+        );
 
         let dt_us = time_us - timestamp_us;
         #[allow(clippy::cast_precision_loss)]

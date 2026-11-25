@@ -422,12 +422,12 @@ fn madgwick_step(q: Quaternionf32, a: Vector3f32) -> Quaternionf32 {
     let wz_common = 2.0 * (q.x * q.x + q.y * q.y); // 3 multiplications, 1 addition
     let xy_common = 2.0 * (q.w * q.w + q.z * q.z - 1.0 + 2.0 * wz_common + a.z); // 4 multiplications, 3 additions/subtractions
 
-    Quaternionf32 { // 12 multiplications, 8 additions/subtractions
-        w: q.w * wz_common + q.y * a.x - q.x * a.y,
-        x: q.x * xy_common - q.z * a.x - q.w * a.y,
-        y: q.y * xy_common + q.w * a.x - q.z * a.y,
-        z: q.z * wz_common - q.x * a.x - q.y * a.y,
-    }
+    Quaternionf32::new( // 12 multiplications, 8 additions/subtractions
+        q.w * wz_common + q.y * a.x - q.x * a.y,
+        q.x * xy_common - q.z * a.x - q.w * a.y,
+        q.y * xy_common + q.w * a.x - q.z * a.y,
+        q.z * wz_common - q.x * a.x - q.y * a.y,
+    )
 }
 ```
 

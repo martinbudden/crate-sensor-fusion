@@ -101,7 +101,7 @@ pub struct ImuIntegral {
 }
 
 //#[cfg(not(any(feature = "servos", feature = "eight_motors")))]
-const _: () = assert!(size_of::<ImuIntegral>() == 128);
+const _: () = assert!(size_of::<ImuIntegral>() == 116);
 
 impl Default for ImuIntegral {
     fn default() -> Self {
@@ -112,7 +112,7 @@ impl Default for ImuIntegral {
 impl ImuIntegral {
     const G_MPS2: f32 = 9.80665;
     // NED: positive Z points down.
-    const GRAVITY_NED_MPS2: Vector3f32 = Vector3f32 { x: 0.0, y: 0.0, z: Self::G_MPS2 };
+    const GRAVITY_NED_MPS2: Vector3f32 = Vector3f32::new(0.0, 0.0, Self::G_MPS2);
 
     #[must_use]
     pub const fn new() -> Self {
@@ -185,10 +185,7 @@ impl ImuIntegral {
     }
 
     #[must_use]
-    fn orientation_variance_to_ned(
-        orientation: UnitQuaternionf32,
-        euler_variance: RollPitchYawf32,
-    ) -> Matrix3x3f32 {
+    fn orientation_variance_to_ned(orientation: UnitQuaternionf32, euler_variance: RollPitchYawf32) -> Matrix3x3f32 {
         let q = orientation.q();
 
         let a = q.w * q.z + q.x * q.y;
